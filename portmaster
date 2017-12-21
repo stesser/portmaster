@@ -51,7 +51,7 @@ fi
 #=============== Begin functions we always want to have ===============
 
 version () {
-	local pkgname="%%PKGNAME%%"
+	local pkgname="portmaster-3.18_1"
 	echo '' ; echo "===>>> Version ${pkgname##*-}"
 	#svn='$FreeBSD: user/dougb/portmaster/portmaster 241090 2012-10-01 08:32:05Z dougb $'
 }
@@ -2264,12 +2264,14 @@ make_dep_list () {
 
 	for dep_type in $*; do
 		case $dep_type in
-		all-depends-list)
-			var_opt="$var_opt -V BUILD_DEPENDS -V LIB_DEPENDS -V RUN_DEPENDS" ;;
-		build-depends-list)
-			var_opt="$var_opt -V BUILD_DEPENDS -V LIB_DEPENDS" ;;
+		all-depends-list|build-depends-list)
+			var_opt="$var_opt -V PKG_DEPENDS -V EXTRACT_DEPENDS \
+				-V PATCH_DEPENDS -V FETCH_DEPENDS -V BUILD_DEPENDS -V LIB_DEPENDS"
+			[ "$dep_type" = all-depends-list ] && var_opt="$var_opt -V RUN_DEPENDS" ;;
 		run-depends-list)
- 			var_opt="$var_opt -V RUN_DEPENDS -V LIB_DEPENDS" ;;
+			var_opt="$var_opt -V RUN_DEPENDS -V LIB_DEPENDS" ;;
+		test-depends-list)
+			var_opt="$var_opt -V TEST_DEPENDS" ;;
 		*)
 			fail "make_dep_list: Unsupported option '$dep_type'"
 		esac

@@ -1,3 +1,5 @@
+#!/usr/local/bin/bash
+set -o posix
 #!/bin/sh
 
 # Copyright (c) 2005-2012 Douglas Barton, All rights reserved
@@ -53,7 +55,6 @@ initial_init () {
 version () {
 	local pkgname="portmaster-3.18_2"
 	echo '' ; echo "===>>> Version ${pkgname##*-}"
-	#svn='$FreeBSD: user/dougb/portmaster/portmaster 241090 2012-10-01 08:32:05Z dougb $'
 }
 
 fail () {
@@ -535,7 +536,12 @@ usage () {
 	safe_exit ${1:-1}
 }
 
-globstrip () { local in ; in=${1%[*]} ; in=${in%\\} ; echo $in ; }
+globstrip () {
+	local in
+	in=${1%[*]}
+	in=${in%\\}
+	echo $in
+}
 
 # Takes a pattern as input
 # Return values:
@@ -627,6 +633,117 @@ cross_idx () {
 	esac
 }
 
+check_longopts () {
+	local var
+	for var in "$@" ; do
+		case "$var" in
+		-PP[A-Za-z0-9]*|-*[A-Za-z0-9]PP*)
+			fail "The -PP option must stand alone" ;;
+		--packages)		packages_init first ;;
+		-PP|--packages-only)	packages_init only
+					export PM_PACKAGES=only ;;
+		--packages-build)	packages_init build
+					unset PM_PACKAGES			# <se> move outside ...
+					export PM_PACKAGES_BUILD=pmp_build ;;
+		--packages-if-newer)	packages_init newer
+					export PM_PACKAGES_NEWER=pmp_newer ;;
+		--packages-local)	packages_init local
+					export PM_PACKAGES_LOCAL=pmp_local ;;
+		--always-fetch)		export PM_ALWAYS_FETCH=pm_always_fetch ;;
+		--local-packagedir=*)	export LOCAL_PACKAGEDIR=${var#--local-packagedir=} ;;
+		--delete-packages)	export PM_DELETE_PACKAGES=pm_delete_packages ;;
+#		--flavor=*)		PM_FLAVOR=${var#--flavor=} ;;
+		--update-if-newer)	export PM_UPDATE_IF_NEWER=pm_update_if_newer ;;
+		--delete-build-only)	export PM_DEL_BUILD_ONLY=pm_dbo ;;
+		--no-confirm)		export PM_NO_CONFIRM=pm_no_confirm ;;
+		--no-term-title)	export PM_NO_TERM_TITLE=pm_no_term_title ;;
+		--no-index-fetch)	PM_NO_INDEX_FETCH=pm_no_index_fetch ;;
+		--index)		cross_idx "index $*"
+					export PM_INDEX=pm_index ;;
+		--index-first)		cross_idx "first $*"
+					export PM_INDEX=pm_index ; export PM_INDEX_FIRST=pm_index_first ;;
+		--index-only)		cross_idx "only $*"
+					export PM_INDEX=pm_index ; export PM_INDEX_ONLY=pm_index_only ;;
+		--help)			usage 0 ;;
+		--version)		version ; exit 0 ;;
+		--clean-distfiles)	CLEAN_DISTFILES=clean_distfiles ;;
+		--clean-distfiles-all)	echo "===>>> The -all form is deprecated, please use -y instead"
+					CLEAN_DISTFILES=clean_distfiles ; PM_YES=yopt ;;
+		--clean-packages)	CLEAN_PACKAGES=clean_packages ;;
+		--clean-packages-all)	echo "===>>> The -all form is deprecated, please use -y instead"
+					CLEAN_PACKAGES=clean_packages ; PM_YES=yopt ;;
+		--check-depends)	CHECK_DEPENDS=check_depends ;;
+		--check-port-dbdir)	CHECK_PORT_DBDIR=check_port_dbdir ;;
+		--list-origins)		LIST_ORIGINS=list_origins ;;
+		--show-work)		SHOW_WORK=show ; PM_THOROUGH=thorough ;;
+		--force-config)		export PM_FORCE_CONFIG=pm_force_config ;;
+		--*)			echo "Illegal option $var" ; echo ''
+					echo "===>>> Try $progname --help"; exit 1 ;;
+		*)			shortopts="$shortopts $var" ;;
+		esac
+	done
+}
+
+check_opts () {
+	local COMMAND_LINE_ARGUMENT
+	# Save switches for potential child processes
+	while getopts 'BCDFGHKLPRabde:fghilm:nop:r:stvwx:y' COMMAND_LINE_ARGUMENT; do
+		case "${COMMAND_LINE_ARGUMENT}" in
+		B)	NO_BACKUP=Bopt; ARGS="-B $ARGS" ;;
+		C)	DONT_PRE_CLEAN=Copt; ARGS="-C $ARGS" ;;
+		D)	DONT_SCRUB_DISTFILES=Dopt; ARGS="-D $ARGS" ;;
+		F)	FETCH_ONLY=Fopt; ARGS="-F $ARGS" ;;
+		G)	[ -z "$PM_FORCE_CONFIG" ] && {
+				PM_NO_MAKE_CONFIG=Gopt; ARGS="-G $ARGS"; } ;;
+		H)	HIDE_BUILD=Hopt; ARGS="-H $ARGS" ;;
+		K)	DONT_POST_CLEAN=Kopt; ARGS="-K $ARGS" ;;
+		L)	LIST_PLUS=Lopt ;;
+		P)	packages_init first ;;
+		R)	RESTART=Ropt ; ARGS="-R $ARGS" ;;
+		a)	UPDATE_ALL=aopt ;;
+		b)	BACKUP=bopt; ARGS="-b $ARGS" ;;
+		d)	ALWAYS_SCRUB_DISTFILES=dopt; ARGS="-d $ARGS" ;;
+		e)	EXPUNGE=$OPTARG ;;
+		f)	export PM_FORCE=fopt ;;
+		g)	MAKE_PACKAGE=gopt; ARGS="-g $ARGS" ;;
+		h)	usage 0 ;;
+		i)	INTERACTIVE_UPDATE=iopt; ARGS="-i $ARGS" ;;
+		l)	LIST=lopt ;;
+		m)	export PM_MAKE_ARGS=$OPTARG	# For 'make checksum'
+			ARGS="-m $PM_MAKE_ARGS $ARGS" ;;
+		n)	NO_ACTION=nopt; ARGS="-n $ARGS" ;;
+		o)	REPLACE_ORIGIN=oopt ;; # -o should take a parameter and $OPTARG should be assigned here
+		p)	fail 'The -p option has been deprecated' ;;
+		r)	PM_URB=ropt
+			if [ -d "$pdb/$OPTARG" ] && pkg info -e $OPTARG; then
+				glob_dirs=$OPTARG
+			else
+				case "$OPTARG" in */*) fail 'The argument to -r must be a package name, or a glob pattern' ;; esac
+				find_glob_dirs $OPTARG
+				case $? in
+				1)	fail "$OPTARG is not installed" ;;
+				2)	fail 'The argument to -r must match only one port' ;;
+				esac
+			fi
+			PM_URB_IPORTS="${PM_URB_IPORTS}${glob_dirs##*/} "
+			PM_URB_ORIGINS="${PM_URB_ORIGINS}`origin_from_pdb ${glob_dirs##*/}` "
+			unset glob_dirs ;;
+		s)	CLEAN_STALE=sopt ;;
+		t)	PM_THOROUGH=topt; ARGS="-t $ARGS" ;;
+		v)	PM_VERBOSE=vopt; ARGS="-v $ARGS" ;;
+		w)	SAVE_SHARED=wopt; ARGS="-w $ARGS" ;;
+		x)	case "$OPTARG" in
+			-*)	fail 'The -x option requires an argument' ;;
+			esac
+			PM_EXCL="${PM_EXCL}`globstrip ${OPTARG}` " ;;
+		y)	PM_YES=yopt; ARGS="-y $ARGS" ;;
+		*)	echo '' ; echo "===>>> Try $progname --help"; exit 1 ;;
+		esac
+	done
+	shift $(( $OPTIND - 1 ))
+	worklist="$*"
+}
+
 test_command_line () {
 	local var envar
 
@@ -647,37 +764,36 @@ test_command_line () {
 
 # Error checking for getopts
 check_opt_errs () {
-[ -n "$PM_YES" -a -n "$NO_ACTION" ] && fail 'The -y and -n options are mutually exclusive'
+	[ -n "$PM_YES" -a -n "$NO_ACTION" ] && fail 'The -y and -n options are mutually exclusive'
 
-[ -n "$PM_FORCE" -a -n "$INTERACTIVE_UPDATE" ] &&
-	fail "The -f and -i options are mutually exclusive"
-if [ -n "$BACKUP" -a -n "$NO_BACKUP" ]; then
-	test_command_line NO_BACKUP BACKUP ||
-		fail "The -b and -B options are mutually exclusive"
-fi
-if [ -n "$ALWAYS_SCRUB_DISTFILES" -a -n "$DONT_SCRUB_DISTFILES" ]; then
-	test_command_line ALWAYS_SCRUB_DISTFILES DONT_SCRUB_DISTFILES ||
-		fail "The -d and -D options are mutually exclusive"
-fi
-
-if [ -n "$LIST" -o -n "$LIST_PLUS" ]; then
-	if [ -n "$FETCH_ONLY" -o -n "$RESTART" -o -n "$UPDATE_ALL" -o \
-	    -n "$EXPUNGE" -o -n "$PM_FORCE" -o -n "$NO_ACTION" -o \
-	    -n "$REPLACE_ORIGIN" -o -n "$PM_URB" -o -n "$CLEAN_STALE" ]; then
-		fail 'The -[lL] options are not compatible with -FRaefnors'
+	[ -n "$PM_FORCE" -a -n "$INTERACTIVE_UPDATE" ] &&
+		fail "The -f and -i options are mutually exclusive"
+	if [ -n "$BACKUP" -a -n "$NO_BACKUP" ]; then
+		test_command_line NO_BACKUP BACKUP ||
+			fail "The -b and -B options are mutually exclusive"
 	fi
-	[ $# -gt 0 ] && fail 'The -[lL] options are not compatible with updates or installs'
-fi
+	if [ -n "$ALWAYS_SCRUB_DISTFILES" -a -n "$DONT_SCRUB_DISTFILES" ]; then
+		test_command_line ALWAYS_SCRUB_DISTFILES DONT_SCRUB_DISTFILES ||
+			fail "The -d and -D options are mutually exclusive"
+	fi
+
+	if [ -n "$LIST" -o -n "$LIST_PLUS" ]; then
+		if [ -n "$FETCH_ONLY" -o -n "$RESTART" -o -n "$UPDATE_ALL" -o \
+			-n "$EXPUNGE" -o -n "$PM_FORCE" -o -n "$NO_ACTION" -o \
+			-n "$REPLACE_ORIGIN" -o -n "$PM_URB" -o -n "$CLEAN_STALE" ]; then
+			fail 'The -[lL] options are not compatible with -FRaefnors'
+		fi
+		[ $# -gt 0 ] && fail 'The -[lL] options are not compatible with updates or installs'
+	fi
 }
 
 # Update based on options chosen above
 process_options () {
 	# Continue error checking in parent only
 	[ -n "$PM_URB" -o -n "$UPDATE_ALL" ] && [ -n "$1" ] &&
-	    fail 'The -[ar] options are not compatible with other updates'
+		fail 'The -[ar] options are not compatible with other updates'
 
-	if [ -n "$PM_INDEX" ] &&
-	    [ -z "$LIST" -a -z "$LIST_ORIGINS" -a -z "$EXPUNGE" -a -z "$CLEAN_STALE" ]; then
+	if [ -n "$PM_INDEX" ] && [ -z "$LIST" -a -z "$LIST_ORIGINS" -a -z "$EXPUNGE" -a -z "$CLEAN_STALE" ]; then
 		if [ -z "$INDEXFILE" ]; then
 			ver=`uname -r`
 			INDEXFILE=INDEX-${ver%%\.*}
@@ -705,7 +821,7 @@ process_options () {
 			fi
 
 			if [ -n "$do_index_fetch" ] ||
-			    [ ${index_time:-0} -ne `stat -f '%Um' ${PM_INDEX}.bz2 2>/dev/null` ]; then
+				   [ ${index_time:-0} -ne `stat -f '%Um' ${PM_INDEX}.bz2 2>/dev/null` ]; then
 				dli=`/usr/bin/mktemp -d ${TMPDIR}/d-${PM_PARENT_PID}-index 2>/dev/null` ||
 					fail "Could not create a temporary directory for index in $TMPDIR"
 				if [ -n "$do_index_fetch" ]; then
@@ -760,7 +876,7 @@ process_options () {
 			fail 'The value of PORTSDIR cannot be empty'
 		fi
 	else
-		if [ -n "$pd" ] && pm_isdir "$pd" ]; then
+		if [ -n "$pd" ] && pm_isdir "$pd"; then
 			export pd
 		else
 			if [ -z "$DONT_SCRUB_DISTFILES" ]; then
@@ -772,7 +888,7 @@ process_options () {
 	fi
 
 	if [ -z "$DISTDIR" -a "$PM_PACKAGES" != only -a -z "$CHECK_DEPENDS" -a \
-	    -z "$CHECK_PORT_DBDIR" -a -z "$LIST_ORIGINS" ]; then
+		-z "$CHECK_PORT_DBDIR" -a -z "$LIST_ORIGINS" ]; then
 		if ! DISTDIR=`pm_make_b -f/usr/share/mk/bsd.port.mk -V DISTDIR 2>/dev/null`; then
 			if ! pm_isdir "$PWD"; then
 				echo ''
@@ -989,7 +1105,6 @@ read_distinfos_all () {
 	echo ''
 
 	for origin in ${pd}/*/*; do
-#		origin=$(dir_part "$origin")
 		case "${origin#$pd/}" in
 		Mk/*|T*|distfiles/*|packages/*|*/[Mm]akefile*|CVS/*|*/CVS|base/*) continue ;; esac
 
@@ -1245,12 +1360,6 @@ check_port_dbdir () {
 		esac
 	done
 }
-
-[ -n "$CLEAN_DISTFILES" ]	&& { clean_distfiles; safe-exit; }
-[ -n "$CLEAN_PACKAGES" ]	&& { clean_packages; dsafe_exit; }
-[ -n "$CHECK_DEPENDS" ]		&& { pkg check -dn; exit 0; }
-[ -n "$CHECK_PORT_DBDIR" ]	&& { check_port_dbdir; exit 0; }
-[ -n "$LIST_ORIGINS" ]		&& { pkg query -e '%#r = 0' '%o'; exit 0; }
 
 #=============== End code relevant only to --features ===============
 #=============== Begin functions for getopts features and main ===============
@@ -3139,64 +3248,9 @@ if [ "$$" -eq "$PM_PARENT_PID" ]; then
 	init_port_dbdir_var
 fi
 
-for var in "$@" ; do
-	case "$var" in
-	-PP[A-Za-z0-9]*|-*[A-Za-z0-9]PP*)
-				fail "The -PP option must stand alone" ;;
-	--packages)		packages_init first ;;
-	-PP|--packages-only)	packages_init only
-				PM_PACKAGES=only ; export PM_PACKAGES ;;
-	--packages-build)	packages_init build
-				unset PM_PACKAGES
-				PM_PACKAGES_BUILD=pmp_build
-				export PM_PACKAGES_BUILD ;;
-	--packages-if-newer)	packages_init newer
-				PM_PACKAGES_NEWER=pmp_newer
-				export PM_PACKAGES_NEWER ;;
-	--packages-local)	packages_init local
-				PM_PACKAGES_LOCAL=pmp_local
-				export PM_PACKAGES_LOCAL ;;
-	--always-fetch)		PM_ALWAYS_FETCH=pm_always_fetch
-				export PM_ALWAYS_FETCH ;;
-	--local-packagedir=*)	LOCAL_PACKAGEDIR=${var#--local-packagedir=}
-				export LOCAL_PACKAGEDIR ;;
-	--delete-packages)	PM_DELETE_PACKAGES=pm_delete_packages
-				export PM_DELETE_PACKAGES ;;
-#	--flavor=*)		PM_FLAVOR=${var#--flavor=} ;;
-	--update-if-newer)	PM_UPDATE_IF_NEWER=pm_update_if_newer
-				export PM_UPDATE_IF_NEWER ;;
-	--delete-build-only)	PM_DEL_BUILD_ONLY=pm_dbo
-				export PM_DEL_BUILD_ONLY ;;
-	--no-confirm)		PM_NO_CONFIRM=pm_no_confirm
-				export PM_NO_CONFIRM ;;
-	--no-term-title)	PM_NO_TERM_TITLE=pm_no_term_title
-				export PM_NO_TERM_TITLE ;;
-	--no-index-fetch)	PM_NO_INDEX_FETCH=pm_no_index_fetch ;;
-	--index)		cross_idx "index $*" ; PM_INDEX=pm_index ; export PM_INDEX ;;
-	--index-first)		cross_idx "first $*" ; PM_INDEX=pm_index
-				PM_INDEX_FIRST=pm_index_first
-				export PM_INDEX PM_INDEX_FIRST ;;
-	--index-only)		cross_idx "only $*" ; PM_INDEX=pm_index
-				PM_INDEX_ONLY=pm_index_only
-				export PM_INDEX PM_INDEX_ONLY ;;
-	--help)			usage 0 ;;
-	--version)		version ; exit 0 ;;
-	--clean-distfiles)	CLEAN_DISTFILES=clean_distfiles ;;
-	--clean-distfiles-all)	echo "===>>> The -all form is deprecated, please use -y instead"
-				CLEAN_DISTFILES=clean_distfiles ; PM_YES=yopt ;;
-	--clean-packages)	CLEAN_PACKAGES=clean_packages ;;
-	--clean-packages-all)	echo "===>>> The -all form is deprecated, please use -y instead"
-				CLEAN_PACKAGES=clean_packages ; PM_YES=yopt ;;
-	--check-depends)	CHECK_DEPENDS=check_depends ;;
-	--check-port-dbdir)	CHECK_PORT_DBDIR=check_port_dbdir ;;
-	--list-origins)		LIST_ORIGINS=list_origins ;;
-	--show-work)		SHOW_WORK=show ; PM_THOROUGH=thorough ;;
-	--force-config)		export PM_FORCE_CONFIG=pm_force_config ;;
-	--*)			echo "Illegal option $var" ; echo ''
-				echo "===>>> Try $progname --help"; exit 1 ;;
-	*)			newopts="$newopts $var" ;;
-	esac
-done
+shortopts=
+check_longopts "$@"	# sets shortopts
+set -- $shortopts
 
 [ -n "$PM_INDEX" -a -n "$CHECK_PORT_DBDIR" ] &&
 	fail 'The --index* and --check-port-dbdir options are mutually exclusive'
@@ -3204,64 +3258,12 @@ done
 [ -n "$PM_PACKAGES_LOCAL" -a -z "$LOCAL_PACKAGEDIR" ] &&
 	fail 'The --packages-local option requires --local-packagedir to be defined'
 
-set -- $newopts
-unset var newopts
+worklist=
+check_opts "$@"	# sets worklist
+set -- $worklist
+unset worklist
 
-# Save switches for potential child processes
-while getopts 'BCDFGHKLPRabde:fghilm:nop:r:stvwx:y' COMMAND_LINE_ARGUMENT ; do
-	case "${COMMAND_LINE_ARGUMENT}" in
-	B)	NO_BACKUP=Bopt; ARGS="-B $ARGS" ;;
-	C)	DONT_PRE_CLEAN=Copt; ARGS="-C $ARGS" ;;
-	D)	DONT_SCRUB_DISTFILES=Dopt; ARGS="-D $ARGS" ;;
-	F)	FETCH_ONLY=Fopt; ARGS="-F $ARGS" ;;
-	G)	[ -z "$PM_FORCE_CONFIG" ] && {
-			PM_NO_MAKE_CONFIG=Gopt; ARGS="-G $ARGS"; } ;;
-	H)	HIDE_BUILD=Hopt; ARGS="-H $ARGS" ;;
-	K)	DONT_POST_CLEAN=Kopt; ARGS="-K $ARGS" ;;
-	L)	LIST_PLUS=Lopt ;;
-	P)	packages_init first ;;
-	R)	RESTART=Ropt ; ARGS="-R $ARGS" ;;
-	a)	UPDATE_ALL=aopt ;;
-	b)	BACKUP=bopt; ARGS="-b $ARGS" ;;
-	d)	ALWAYS_SCRUB_DISTFILES=dopt; ARGS="-d $ARGS" ;;
-	e)	EXPUNGE=$OPTARG ;;
-	f)	export PM_FORCE=fopt ;;
-	g)	MAKE_PACKAGE=gopt; ARGS="-g $ARGS" ;;
-	h)	usage 0 ;;
-	i)	INTERACTIVE_UPDATE=iopt; ARGS="-i $ARGS" ;;
-	l)	LIST=lopt ;;
-	m)	export PM_MAKE_ARGS=$OPTARG	# For 'make checksum'
-		ARGS="-m $PM_MAKE_ARGS $ARGS" ;;
-	n)	NO_ACTION=nopt; ARGS="-n $ARGS" ;;
-	o)	REPLACE_ORIGIN=oopt ;; # -o should take a parameter and $OPTARG should be assigned here
-	p)	fail 'The -p option has been deprecated' ;;
-	r)	PM_URB=ropt
-		if [ -d "$pdb/$OPTARG" ] && pkg info -e $OPTARG; then
-			glob_dirs=$OPTARG
-		else
-			case "$OPTARG" in */*) fail 'The argument to -r must be a package name, or a glob pattern' ;; esac
-			find_glob_dirs $OPTARG
-			case $? in
-			1)	fail "$OPTARG is not installed" ;;
-			2)	fail 'The argument to -r must match only one port' ;;
-			esac
-		fi
-		PM_URB_IPORTS="${PM_URB_IPORTS}${glob_dirs##*/} "
-		PM_URB_ORIGINS="${PM_URB_ORIGINS}`origin_from_pdb ${glob_dirs##*/}` "
-		unset glob_dirs ;;
-	s)	CLEAN_STALE=sopt ;;
-	t)	PM_THOROUGH=topt; ARGS="-t $ARGS" ;;
-	v)	PM_VERBOSE=vopt; ARGS="-v $ARGS" ;;
-	w)	SAVE_SHARED=wopt; ARGS="-w $ARGS" ;;
-	x)	case "$OPTARG" in
-		-*)	fail 'The -x option requires an argument' ;;
-		esac
-		PM_EXCL="${PM_EXCL}`globstrip ${OPTARG}` " ;;
-	y)	PM_YES=yopt; ARGS="-y $ARGS" ;;
-	*)	echo '' ; echo "===>>> Try $progname --help"; exit 1 ;;
-	esac
-done
-shift $(( $OPTIND - 1 ))
+check_opt_errs
 
 [ -n "$PM_EXCL" ] && export PM_EXCL
 [ -n "$PM_NO_MAKE_CONFIG" -a -n "$PM_FORCE_CONFIG" ] && unset PM_NO_MAKE_CONFIG
@@ -3269,18 +3271,20 @@ shift $(( $OPTIND - 1 ))
 
 [ "$$" -eq "$PM_PARENT_PID" ] && process_options "$@"
 
-check_opt_errs
-
-unset my_environment COMMAND_LINE_ARGUMENT
+unset my_environment
 unset -f packages_init cross_idx test_command_line
 
 #=============== End Command Line Option Processing ===============
-
-[ -n "$LIST" -o -n "$LIST_PLUS" ] && { list_ports; exit 0; }
-[ -n "$EXPUNGE" ] && { expunge; exit 0; }
-[ -n "$CLEAN_STALE" ] && { clean_stale; exit 0; }
-
 #=============== End code relevant only to getopts features ===============
+
+[ -n "$CLEAN_DISTFILES" ]	&& { clean_distfiles; safe-exit; }
+[ -n "$CLEAN_PACKAGES" ]	&& { clean_packages; dsafe_exit; }
+[ -n "$CHECK_DEPENDS" ]		&& { pkg check -dn; exit 0; }
+[ -n "$CHECK_PORT_DBDIR" ]	&& { check_port_dbdir; exit 0; }
+[ -n "$LIST_ORIGINS" ]		&& { pkg query -e '%#r = 0' '%o'; exit 0; }
+[ -n "$LIST" -o -n "$LIST_PLUS" ] && { list_ports; exit 0; }
+[ -n "$EXPUNGE" ]		&& { expunge; exit 0; }
+[ -n "$CLEAN_STALE" ]		&& { clean_stale; exit 0; }
 
 [ -z "$DISTDIR" -a "$PM_PACKAGES" != only -a -z "$DONT_SCRUB_DISTFILES" ] &&
 	fail 'The value of DISTDIR cannot be empty'

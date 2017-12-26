@@ -1,3 +1,5 @@
+#!/usr/local/bin/bash
+set -o posix
 #!/bin/sh
 
 # Copyright (c) 2005-2012 Douglas Barton, All rights reserved
@@ -51,7 +53,7 @@ initial_init () {
 #=============== Begin functions we always want to have ===============
 
 version () {
-	local pkgname="%%PKGNAME%%"
+	local pkgname="portmaster-3.18_2"
 	echo '' ; echo "===>>> Version ${pkgname##*-}"
 }
 
@@ -3730,19 +3732,6 @@ if [ -n "$upg_port" -o -n "$ro_upg_port" ] && [ -z "$FETCH_ONLY" ]; then
 	pm_cd_pd $portdir
 fi
 
-if [ -z "$PM_THOROUGH" -a -z "$NO_DEP_UPDATES" ]; then
-	echo "===>>> Starting check for runtime dependencies"
-	dependency_check run-depends-list
-	pm_cd_pd $portdir
-fi
-
-if [ -n "$FETCH_ONLY" ]; then		# Only reached here if using packages
-	CUR_DEPS="${CUR_DEPS}${new_port}:${portdir}:"
-
-	[ "$$" -eq "$PM_PARENT_PID" ] || safe_exit
-	check_fetch_only Package
-fi
-
 install_failed () {
 	upg_port="${ro_upg_port:-$upg_port}"
 
@@ -3754,7 +3743,7 @@ install_failed () {
 	fail "Installation of $1 ($portdir) failed"
 }
 
-if [ -z "$use_package" ]; then
+install_port () {
 	pm_sv Running make install
 
 	if [ -z "$PM_SU_UNSET_PORT_LOG_ARGS" ]; then
@@ -3778,7 +3767,9 @@ if [ -z "$use_package" ]; then
 	# Defining NO_DEPENDS ensures that we will control the installation
 	# of the depends, not bsd.port.mk.
 	eval pm_make_s -DNO_DEPENDS install $port_log_args || install_failed $new_port
-else
+}
+
+install_package () {
 	[ -n "$local_package" ] && ppd=${LOCAL_PACKAGEDIR}/All
 
 	echo "===>>> Installing package from: ${ppd}/${latest_pv}.txz"
@@ -3790,46 +3781,33 @@ else
 	else
 		install_failed ${latest_pv}.txz
 	fi
-fi
-
-if [ -n "$preserve_dir" ]; then
-	rmdir $preserve_dir 2>/dev/null
-	unset preserve_dir preserve_port_files
-fi
-
-echo ''
-
-[ "$PM_DEL_BUILD_ONLY" = doing_build_only_dep ] &&
-	build_deps_il="$build_deps_il $new_port"
+}
 
 # Remove saved libs that match newly installed files
+delete_old_compat_libs () {
+	local temp file files
 
-temp=`find $LOCALBASE_COMPAT -type d -empty 2>/dev/null`
-if [ -z "$temp" ] && pm_isdir "$LOCALBASE_COMPAT"; then
-	unset files
-	for file in `pkg query %Fp $new_port`; do
-		[ -f "${LOCALBASE_COMPAT}/${file##*/}" ] &&
-			files="${files}${LOCALBASE_COMPAT}/${file##*/} "
-	done
+	temp=`find $LOCALBASE_COMPAT -type d -empty 2>/dev/null`
+	if [ -z "$temp" ] && pm_isdir "$LOCALBASE_COMPAT"; then
+		for file in `pkg query %Fp $new_port`; do
+			[ -f "${LOCALBASE_COMPAT}/${file##*/}" ] &&
+				files="${files}${LOCALBASE_COMPAT}/${file##*/} "
+		done
 
-	if [ -n "$files" ]; then
-		pm_sv Removing old shared libraries, and running ldconfig
-		pm_rm_s `make -V FILES:O:u FILES="$files"`
-		$PM_SU_CMD /etc/rc.d/ldconfig start > /dev/null
+		if [ -n "$files" ]; then
+			pm_sv Removing old shared libraries, and running ldconfig
+			pm_rm_s `make -V FILES:O:u FILES="$files"`
+			$PM_SU_CMD /etc/rc.d/ldconfig start > /dev/null
+		fi
 	fi
-	unset temp file files
-fi
+	[ -n "$temp" ] || temp=`find $LOCALBASE_COMPAT -type d -empty 2>/dev/null`
+	if pm_isdir "$temp"; then
+		pm_sv Deleting the empty $LOCALBASE_COMPAT
+		pm_rmdir_s $temp
+	fi
+}
 
-[ -z "$temp" ] && temp=`find $LOCALBASE_COMPAT -type d -empty 2>/dev/null`
-if pm_isdir "$temp"; then
-	pm_sv Deleting the empty $LOCALBASE_COMPAT
-	pm_rmdir_s $temp
-fi
-unset temp
-
-# This will serve for *delete*distfiles() as well
-[ -z "$use_package" ] && make_distfiles
-if [ -n "$distfiles" ]; then
+keep_distfiles_info () {
 	# Implement storage of distfile information in the way that
 	# it will (hopefully, soon?) be implemented in bsd.port.mk
 	# See http://www.freebsd.org/cgi/query-pr.cgi?pr=106483
@@ -3869,7 +3847,7 @@ if [ -n "$distfiles" ]; then
 	pm_mkdir_s ${dist_list%/*}
 	pm_install_s $pm_mktemp_file $dist_list
 	/bin/unlink $pm_mktemp_file ; unset distinfo pm_mktemp_file file line
-fi
+}
 
 create_package () {
 	if [ -z "$use_package" ]; then
@@ -3880,8 +3858,6 @@ create_package () {
 		pm_pkg_create $PACKAGES $new_port
 	fi
 }
-
-[ -n "$MAKE_PACKAGE" ] && create_package
 
 background_clean () {
 	pm_v "===>>> Running 'make clean' in the background"
@@ -3894,12 +3870,7 @@ update_package_dependencies () {
 	$PM_SU_CMD pkg set -yo $ro_opd:$portdir
 }
 
-# main
-[ -z "$use_package" -a -z "$DONT_POST_CLEAN" ] && background_clean
-
-[ -n "$ro_opd" ] && update_package_dependencies
-
-install_msg () {
+install_type_msg () {
 	local upg_port=$(dir_part $1)
 	case "$upg_port" in
 	"$new_port")	echo "Re-installation of $upg_port" ;;
@@ -3908,11 +3879,51 @@ install_msg () {
 	esac
 }
 
-ilist=`install_msg $upg_port`
-
-if [ "$$" -ne "$PM_PARENT_PID" -o -n "$PM_URB" ]; then
-	echo "===>>> $ilist succeeded" ; echo ''
+if [ -z "$PM_THOROUGH" -a -z "$NO_DEP_UPDATES" ]; then
+	echo "===>>> Starting check for runtime dependencies"
+	dependency_check run-depends-list
+	pm_cd_pd $portdir
 fi
+
+if [ -n "$FETCH_ONLY" ]; then		# Only reached here if using packages
+	CUR_DEPS="${CUR_DEPS}${new_port}:${portdir}:"
+
+	[ "$$" -eq "$PM_PARENT_PID" ] || safe_exit
+	check_fetch_only Package
+fi
+
+if [ -z "$use_package" ]; then
+	install_port
+else
+	install_package
+fi
+
+if [ -n "$preserve_dir" ]; then
+	rmdir $preserve_dir 2>/dev/null
+	unset preserve_dir preserve_port_files
+fi
+
+echo ''
+
+[ "$PM_DEL_BUILD_ONLY" = doing_build_only_dep ] &&
+	build_deps_il="$build_deps_il $new_port"
+
+delete_old_compat_libs
+
+[ "$$" -ne "$PM_PARENT_PID" -o -n "$PM_URB" ] && echo "===>>> $ilist succeeded" && echo ''
+
+# This will serve for *delete*distfiles() as well
+[ -z "$use_package" ] && make_distfiles
+
+[ -n "$distfiles" ] && keep_distfiles_info
+
+[ -n "$MAKE_PACKAGE" ] && create_package
+
+[ -z "$use_package" -a -z "$DONT_POST_CLEAN" ] && background_clean
+
+[ -n "$ro_opd" ] && update_package_dependencies
+
+ilist=`install_type_msg $upg_port`
 
 INSTALLED_LIST="${INSTALLED_LIST}\t${ilist}\n"
 [ -n "`pkg query %M $new_port`" ] && DISPLAY_LIST="${DISPLAY_LIST}$new_port "
@@ -3922,7 +3933,7 @@ CUR_DEPS="${CUR_DEPS}${new_port}:${portdir}:"
 
 [ -n "$PM_URB" -o -n "$PM_URB_UP" ] && PM_URB_DONE="${PM_URB_DONE}${new_port}:"
 [ -n "$PM_URB" -o -n "$PM_URB_UP" -o -n "$PM_FORCE" ] &&
-	pm_mkdir_s $pdb/$new_port &&
+	pm_mkdir_s $pdb/$new_port && 
 	$PM_SU_CMD touch $pdb/$new_port/PM_UPGRADE_DONE_FLAG
 
 if [ -z "$DONT_SCRUB_DISTFILES" ]; then

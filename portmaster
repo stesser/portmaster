@@ -1722,7 +1722,7 @@ find_and_delete_distfiles () {
 }
 
 make_distfiles () {
-	local portdir="$1"
+	local portdir=$(dir_part "$1")
 
 	pm_make -C $pd/$portdir -V ALLFILES
 }
@@ -2263,12 +2263,12 @@ gen_dep_list () {
 #
 #
 # changes PWD!!!
+# Global: doing_dep_check
+# Global: run_dl_g build_only_dl_g
 dependency_check () {
-	# Global: doing_dep_check
-	# Global: run_dl_g build_only_dl_g
+	local dep_types d_port_list
 
-	local d_port_list
-
+	local dep_types="$*"
 	# Print a message here because sometimes list generation takes
 	# a long time to return.
 	if [ -z "$PM_INDEX_ONLY" ]; then
@@ -2276,7 +2276,7 @@ dependency_check () {
 	else
 		echo "===>>> Gathering dependency list for $portdir from ${PM_INDEX##*/}"
 	fi
-	d_port_list=$(gen_dep_list $1)
+	d_port_list=$(gen_dep_list $dep_types)
 
 	if [ -z "$d_port_list" ]; then
 		echo -e "===>>> No dependencies for $portdir\n"
@@ -3724,15 +3724,6 @@ else
 		fetch_package $latest_pv || fail "Fetch for ${latest_pv}.txz failed"; }
 fi
 
-# Ignore if no old port exists, or -F
-if [ -n "$upg_port" -o -n "$ro_upg_port" ] && [ -z "$FETCH_ONLY" ]; then
-	UPGRADE_PORT="${ro_upg_port:-$upg_port}"
-	UPGRADE_PORT_VER=$(echo $UPGRADE_PORT | sed 's#.*-\(.*\)#\1#')
-	export UPGRADE_PORT UPGRADE_PORT_VER
-
-	pre_install_tasks 
-fi
-
 # uses global variables UPGRADE_PORT UPGRADE_PORT_VER SAVE_SHARED LOCALBASE_COMPAT
 pre_install_tasks () {
 	local pm_mktemp_file temp file
@@ -3798,6 +3789,15 @@ pre_install_tasks () {
 	echo ''
 	pm_cd_pd $portdir
 }
+
+# Ignore if no old port exists, or -F
+if [ -n "$upg_port" -o -n "$ro_upg_port" ] && [ -z "$FETCH_ONLY" ]; then
+	UPGRADE_PORT="${ro_upg_port:-$upg_port}"
+	UPGRADE_PORT_VER=$(echo $UPGRADE_PORT | sed 's#.*-\(.*\)#\1#')
+	export UPGRADE_PORT UPGRADE_PORT_VER
+
+	pre_install_tasks 
+fi
 
 install_failed () {
 	upg_port="${ro_upg_port:-$upg_port}"
@@ -3940,7 +3940,7 @@ create_package () {
 }
 
 background_clean () {
-	local portdir="$1"
+	local portdir=$(dir_part "$1")
 
 	pm_v "===>>> Running 'make clean' in the background"
 	(pm_make_s -C $pd/$portdir clean NOCLEANDEPENDS=ncd2 >/dev/null)&

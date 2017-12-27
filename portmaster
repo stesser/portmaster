@@ -102,8 +102,8 @@ trap_exit () {
 	else
 		# Signal the parent if a child trap'ed, or read the file if we are
 		# an intermediate process.
-		if ! ls ${TMPDIR}/f-${PM_PARENT_PID}-TEAC\.* >/dev/null 2>&1; then
-			pm_mktemp TEAC		# Trap Exit Already Called
+		if ! pm_lstemp TEAC >/dev/null; then
+			pm_mktemp TEAC >/dev/null	# Trap Exit Already Called
 		else
 			[ -s "$IPC_SAVE" ] && . $IPC_SAVE
 		fi
@@ -169,10 +169,7 @@ parent_exit () {
 		pm_rmdir_s $pbu
 	fi
 
-	for f in ${TMPDIR}/f-${PM_PARENT_PID}-*; do
-		case "$f" in */f-${PM_PARENT_PID}-\*) continue ;; esac
-		/bin/unlink $f
-	done
+	pm_rmtemp "*"
 
 	if [ -n "$PM_WRKDIRPREFIX" ] && [ -n "$PM_BUILDING" -a -z "$1" ]; then
 		count=0
@@ -231,7 +228,7 @@ parent_exit () {
 				echo "===>>> Warning: $PM_LOG exists, but is not a regular file"
 				unset PM_LOG
 			else
-				pm_mktemp pm_log ; mv $pm_mktemp_file $PM_LOG
+				mv $(pm_mktemp pm_log) $PM_LOG
 			fi
 			[ -n "$PM_LOG" ] && date >> $PM_LOG
 		fi
@@ -334,8 +331,11 @@ pm_kill		() { kill $* >/dev/null 2>/dev/null; }
 pm_make		() { ( unset -v CUR_DEPS INSTALLED_LIST PM_DEPTH build_l PM_URB_LIST;
 			/usr/bin/nice /usr/bin/make $PM_MAKE_ARGS $*; ); }
 pm_make_b	() { /usr/bin/make $PM_MAKE_ARGS BEFOREPORTMK=bpm $*; }
-pm_mktemp	() { pm_mktemp_file=$(/usr/bin/mktemp -t f-${PM_PARENT_PID}-$1 2>&1) ||
-			fail "mktemp for $1 failed:\n       ${pm_mktemp_file#mktemp: }"; }
+pm_mktemp	() { local f=$(/usr/bin/mktemp -t f-${PM_PARENT_PID}-$1 2>&1) ||
+			fail "mktemp for $1 failed:\n       ${f#mktemp: }"; echo "$f"; }
+pm_lstemp	() { local type=$1 key=${2:-*};
+			/bin/ls -1 ${TMPDIR}/f-${PM_PARENT_PID}-${type}.${key} 2>/dev/null; }
+pm_rmtemp	() { local files=$(pm_lstemp "$@") && rm -f $files; }
 pm_unlink	() { [ -e "$1" ] && /bin/unlink $1; }
 pm_islocked	() { [ -n "$1" ] || return 1;
 			[ -e "$pdb/$1/+IGNOREME" ] && pkg info -e "$1" ||
@@ -603,27 +603,29 @@ origin_from_pdb () {
 #=============== End functions we always want to have ===============
 #=============== Begin Command Line Option Processing ===============
 
-packages_init () {
-	local e1 e2 e3
+set_packages_mode () {
+	local conflict
 
-	e1="The -P/--packages and -PP/--packages-only options are mutually exclusive"
-	e2="The --packages-build option and the -P[P] options are mutually exclusive"
-	e3="The --packages-if-newer and -PP/--packages-only options are mutually exclusive"
-
-	case "$1" in
-	first)	[ "$PM_PACKAGES" = only ] && fail $e1
-		[ -n "$PM_PACKAGES_BUILD" ] && fail $e2
-		[ -z "$PM_PACKAGES" ] && { PM_PACKAGES=first ; export PM_PACKAGES; } ;;
-	only)	[ "$PM_PACKAGES" = first ] && fail $e1
-		[ "$PM_PACKAGES" = newer ] && fail $e3
-		[ -n "$PM_PACKAGES_BUILD" ] && fail $e2 ;;
-	build)	case "$PM_PACKAGES" in first|only) fail $e2 ;; esac ;;
-	newer)	[ "$PM_PACKAGES" = only ] && fail $e3
-		[ -z "$PM_PACKAGES" -a -z "$PM_PACKAGES_BUILD" ] && {
-			PM_PACKAGES=newer ; export PM_PACKAGES; } ;;
-	local)	[ -z "$PM_PACKAGES" -a -z "$PM_PACKAGES_BUILD" ] && {
-			PM_PACKAGES=local ; export PM_PACKAGES; } ;;
+	case "$1:$PM_PACKAGES:$PM_PACKAGES_BUILD" in
+	first::|only::)
+		export PM_PACKAGES=$1 ;;
+	newer::)
+		export PM_PACKAGES=$1
+		export PM_PACKAGES_NEWER=pmp_newer ;;
+	local::)
+		export PM_PACKAGES=$1
+		export PM_PACKAGES_LOCAL=pmp_local ;;
+	build:*:)
+		unset PM_PACKAGES
+		export PM_PACKAGES_BUILD=pmp_build ;;
+	first:only:*|only:first:*)
+		conflict="-P/--packages and -PP/--packages-only" ;;
+	build:only:*|build:first:*|only:*:?*|first:*:?*)
+		conflict="--packages-build option and the -P[P]" ;;
+	newer:only:*|only:newer:*)
+		conflict="--packages-if-newer and -PP/--packages-only" ;;
 	esac
+	[ -n "$conflict" ] && fail "The $conflict options are mutually exclusive"
 }
 
 cross_idx () {
@@ -645,18 +647,13 @@ check_longopts () {
 		case "$var" in
 		-PP[A-Za-z0-9]*|-*[A-Za-z0-9]PP*)
 			fail "The -PP option must stand alone" ;;
-		--packages)		packages_init first ;;
-		-PP|--packages-only)	packages_init only
-					export PM_PACKAGES=only ;;
-		--packages-build)	packages_init build
-					unset PM_PACKAGES			# <se> move outside ...
-					export PM_PACKAGES_BUILD=pmp_build ;;
-		--packages-if-newer)	packages_init newer
-					export PM_PACKAGES_NEWER=pmp_newer ;;
-		--packages-local)	packages_init local
-					export PM_PACKAGES_LOCAL=pmp_local ;;
+		--packages)		set_packages_mode first ;;
+		-PP|--packages-only)	set_packages_mode only ;;
+		--packages-build)	set_packages_mode build ;;
+		--packages-if-newer)	set_packages_mode newer ;;
+		--packages-local)	set_packages_mode local ;;
 		--always-fetch)		export PM_ALWAYS_FETCH=pm_always_fetch ;;
-		--backup-format=*)	export PM_BAK_FMT=${var#--backup-format=} ;;
+		--backup-format=*)	export BACKUP_FORMAT=${var#--backup-format=} ;;
 		--local-packagedir=*)	export LOCAL_PACKAGEDIR=${var#--local-packagedir=} ;;
 		--delete-packages)	export PM_DELETE_PACKAGES=pm_delete_packages ;;
 #		--flavor=*)		PM_FLAVOR=${var#--flavor=} ;;
@@ -705,7 +702,7 @@ check_opts () {
 		H)	HIDE_BUILD=Hopt; ARGS="-H $ARGS" ;;
 		K)	DONT_POST_CLEAN=Kopt; ARGS="-K $ARGS" ;;
 		L)	LIST_PLUS=Lopt ;;
-		P)	packages_init first ;;
+		P)	set_packages_mode first ;;
 		R)	RESTART=Ropt ; ARGS="-R $ARGS" ;;
 		a)	UPDATE_ALL=aopt ;;
 		b)	BACKUP=bopt; ARGS="-b $ARGS" ;;
@@ -1141,15 +1138,14 @@ read_distinfos_all () {
 	pm_unlink ${DI_FILES}-e
 }
 
+# Global: roots trunks branches leaves
+# Global: num_roots num_trunks num_branches num_leaves num_ports
 ports_by_category () {
-	# Global: num_roots num_trunks num_branches num_leaves num_ports
-	local pkg
-
 	pm_v "===>>> Sorting ports by category"
-	roots=$(   pkg query -e "%#d = 0 && %#r = 0" "%n-%v")
-	trunks=$(  pkg query -e "%#d = 0 && %#r > 0" "%n-%v")
+	roots=$(pkg    query -e "%#d = 0 && %#r = 0" "%n-%v")
+	trunks=$(pkg   query -e "%#d = 0 && %#r > 0" "%n-%v")
 	branches=$(pkg query -e "%#d > 0 && %#r > 0" "%n-%v")
-	leaves=$(  pkg query -e "%#d > 0 && %#r = 0" "%n-%v")
+	leaves=$(pkg   query -e "%#d > 0 && %#r = 0" "%n-%v")
 
 	num_roots=$(echo    $(echo $roots    | wc -w))
 	num_trunks=$(echo   $(echo $trunks   | wc -w))
@@ -1163,7 +1159,7 @@ delete_empty_dist_subdirs () {
 	# Get back to somewhere safe so we do not
 	# delete our CWD out from under ourselves
 	pm_cd $DISTDIR || fail "Cannot cd into $DISTDIR"
-	find $DISTDIR -depth -mindepth 1 -type d \( -empty -and ! -path \*\.zfs/\* \) -delete
+	find $DISTDIR -depth -mindepth 1 -type d -empty -delete
 }
 
 init_packages_var () {
@@ -1212,7 +1208,7 @@ clean_distfiles () {
 	[ -n "$DISTDIR" ] || fail 'There is no DISTDIR to clean'
 
 	# Set the file name here since we are usually called in a subshell
-	pm_mktemp DI-FILES ; DI_FILES=$pm_mktemp_file
+	DI_FILES=$(pm_mktemp DI-FILES)
 
 	if [ -z "$PM_THOROUGH" ]; then
 		read_distinfos
@@ -1579,7 +1575,7 @@ pm_pkg_create () {
 		echo ''
 		echo "===>>> Creating a backup package for old version $2"
 		backup=backup
-		[ -n "$PM_BAK_FMT" ] && format=$PM_BAK_FMT
+		[ -n "$BACKUP_FORMAT" ] && format=$BACKUP_FORMAT
 	fi
 
 	pm_cd $pkgdir || fail "Cannot cd into $pkgdir to create a package"
@@ -1726,35 +1722,28 @@ find_and_delete_distfiles () {
 }
 
 make_distfiles () {
-	# Global: distfiles
+	local portdir="$1"
 
-	# Even if there are no distfiles there will be a space returned
-	distfiles=$(pm_make -V ALLFILES) ; distfiles=${distfiles%% }
-	if [ -n "$distfiles" ]; then
-		distfiles=" $distfiles "
-	else
-		unset distfiles
-	fi
+	pm_make -C $pd/$portdir -V ALLFILES
 }
 
+# Global: port_subdir full_port_subdir
 make_port_subdir () {
-	# Global: port_subdir full_port_subdir
-
 	port_subdir=$(pm_make -V DIST_SUBDIR)
 	port_subdir="${port_subdir:+${port_subdir}/}"
 	full_port_subdir="${DISTDIR}${port_subdir}"
 }
 
+# Global: distfiles dist_list_files full_port_subdir
 set_distfiles_and_subdir () {
-	[ -z "$dist_list_files" ] && find_dl_distfiles $1
+	local portdir="$1"
 
-	if pm_isdir_pd "$1"; then
-		pm_cd_pd $1
-	else
-		return 1
-	fi
+	[ -z "$dist_list_files" ] && find_dl_distfiles $portdir
 
-	[ -n "$distfiles" ] || make_distfiles
+        pm_isdir_pd "$portdir" || return 1
+	pm_cd_pd $portdir
+
+	[ -n "$distfiles" ] || distfiles=$(make_distfiles $portdir)
 
 	# Ports may have no distfiles
 	[ -z "$dist_list_files" -a -z "$distfiles" ] && return 2
@@ -2073,18 +2062,15 @@ check_exclude () {
 }
 
 check_fetch_only () {
-	[ -n "$FETCH_ONLY" ] || return 0
-	[ -z "$1" -a -n "$PM_PACKAGES" ] && return 0
+	local type=${1:-Distfile} count nf fetches
 
-	local count nf fetches
+	[ -n "$FETCH_ONLY" ] || return 0
+	[ -z "$distfile" -a -n "$PM_PACKAGES" ] && return 0
 
 	echo ''
 	count=0
-	while nf=$(ls ${TMPDIR}/f-${PM_PARENT_PID}-fetchlog-* 2>/dev/null | wc -l); do
-		nf=${nf##* }
-		[ $nf -eq 0 ] && break
-		fetches=fetches ; [ $nf -eq 1 ] && fetches=fetch
-
+	while nf=$(pm_lstemp fetchlog | wc -l) && [ $nf -gt 0 ]; do
+		[ $nf -gt 1 ] && fetches=fetches || fetches=fetch
 		count=$(( $count + 1 ))
 		if [ $count -eq 1 ]; then
 			echo "===>>> Waiting for $nf distfile $fetches to finish"
@@ -2093,7 +2079,7 @@ check_fetch_only () {
 		fi
 		sleep 2
 	done
-	echo "===>>> ${1:-Distfile} fetching is complete"
+	echo "===>>> $type fetching is complete"
 	FETCH_ONLY_DONE=fetch_only_done
 	safe_exit
 }
@@ -2795,7 +2781,7 @@ make_config () {
 init_parent () {
 	[ -f Makefile ] || pm_cd
 	CUR_DEPS=':' ; DISPLAY_LIST='' ; INSTALLED_LIST=''
-	PM_DEPTH='' ; pm_mktemp IPC_SAVE ; IPC_SAVE=$pm_mktemp_file
+	PM_DEPTH='' ; IPC_SAVE=$(pm_mktemp IPC_SAVE)
 	PM_FIRST_PASS=pm_first_pass ; PM_NEEDS_UPDATE=' '	# Used with -F for multiport and -a
 	export CUR_DEPS DISPLAY_LIST INSTALLED_LIST PM_DEPTH IPC_SAVE PM_FIRST_PASS PM_NEEDS_UPDATE
 
@@ -2852,7 +2838,7 @@ init_parent () {
 		export run_dl_g build_only_dl_g rundep_list
 	fi
 	if [ -n "$PM_DEL_BUILD_ONLY" ]; then
-		build_deps_il='' ; export build_deps_il
+		export build_deps_il=''
 	fi
 
 	[ -z "$NO_BACKUP" ] && init_packages
@@ -2868,7 +2854,7 @@ init_parent () {
 
 	# Set the file name here so it's visible to the children
 	if [ -z "$DONT_SCRUB_DISTFILES" -a -z "$FETCH_ONLY" -a -z "$PM_PACKAGES" ]; then
-		pm_mktemp DI-FILES ; DI_FILES=$pm_mktemp_file ; export DI_FILES
+		export DI_FILES=$(pm_mktemp DI-FILES)
 	fi
 
 	[ -n "$PM_URB" ] && multiport $PM_URB_IPORTS
@@ -2909,7 +2895,7 @@ all_first_pass () {
 }
 
 update_all () {
-	[ -n "$DI_FILES" ] && (read_distinfos)&
+	[ -n "$DI_FILES" ] && (read_distinfos) &
 
 	ports_by_category
 	if [ -n "$FETCH_ONLY" ]; then
@@ -3153,17 +3139,41 @@ check_broken () {
 	update_build_l $portdir $upg_port
 }
 
+background_checksum () {
+	local portdir fetchlog
+
+	portdir=="$1"
+	echo "===>>> Launching 'make checksum' for $portdir in background"
+	fetchlog=$(pm_mktemp fetchlog-${portdir#*/})
+	{
+		pm_make -DBATCH checksum && {
+			pm_rmtemp "*-${portdir#*/}"
+			exit 0
+		}
+		allfiles=$(pm_make -V ALLFILES)
+		pm_make delete-distfiles RESTRICTED_FILES="$allfiles" &&
+			echo "===>>> RE-STARTING FETCH <<<==="
+		pm_make -DBATCH checksum
+	} > $fetchlog 2>&1
+	pm_rmtemp "*-${portdir#*/}"
+}
+
 fetch_check_distfiles () {
+	local portdir="$1"
+
 	# PATCHFILES may get added after the first pass, but we want to
 	# do as much of this as we can, as early as we can, and
 	# patch files are usually small anyway.
-	make_distfiles
+	distfiles=$(make_distfiles $portdir)
 
 	# Make sure that different ports using the same distfiles
 	# do not clobber each other's fetchs
 	for file in $distfiles; do
-		case "$file" in */*) file=$(echo $file | sed s#/#_#g) ;; esac
-		if ! ls ${TMPDIR}/f-${PM_PARENT_PID}-${file}-* >/dev/null 2>&1; then
+		case "$file" in
+		*/*)
+			file=$(echo $file | tr "/" "_") ;;
+		esac
+		if ! pm_lstemp "$file-*" >/dev/null; then
 			pm_mktemp ${file}-${portdir#*/} >/dev/null
 		else
 			[ -n "$FETCH_ONLY" ] &&
@@ -3174,16 +3184,7 @@ fetch_check_distfiles () {
 	done
 
 	if [ -z "$DONT_FETCH" -a -n "$distfiles" ]; then
-		echo "===>>> Launching 'make checksum' for $portdir in background"
-		pm_mktemp fetchlog-${portdir#*/} ; fetchlog=$pm_mktemp_file
-		(pm_make -DBATCH checksum >> $fetchlog 2>&1 && {
-			 rm -f ${TMPDIR}/f-${PM_PARENT_PID}-*-${portdir#*/}.*; exit 0; }
-		 allfiles=$(pm_make -V ALLFILES)
-		 pm_make delete-distfiles RESTRICTED_FILES="${allfiles}" \
-			 >> $fetchlog 2>&1 &&
-			 echo "===>>> RE-STARTING FETCH <<<===" >> $fetchlog
-		 pm_make -DBATCH checksum >> $fetchlog 2>&1
-		 rm -f ${TMPDIR}/f-${PM_PARENT_PID}-*-${portdir#*/}.* )&
+		( background_checksum $portdir ) &
 	fi
 }
 
@@ -3263,6 +3264,7 @@ fi
 shortopts=
 check_longopts "$@"	# sets shortopts
 set -- $shortopts
+unset shortopts
 
 [ -n "$PM_INDEX" -a -n "$CHECK_PORT_DBDIR" ] &&
 	fail 'The --index* and --check-port-dbdir options are mutually exclusive'
@@ -3283,9 +3285,6 @@ check_opt_errs
 
 not_in_child && process_options "$@"
 
-unset my_environment
-unset -f packages_init cross_idx test_command_line
-
 #=============== End Command Line Option Processing ===============
 #=============== End code relevant only to getopts features ===============
 
@@ -3298,12 +3297,12 @@ unset -f packages_init cross_idx test_command_line
 [ -n "$EXPUNGE" ]		&& { expunge; exit 0; }
 [ -n "$CLEAN_STALE" ]		&& { clean_stale; exit 0; }
 
-[ -z "$DISTDIR" -a "$PM_PACKAGES" != only -a -z "$DONT_SCRUB_DISTFILES" ] &&
-	fail 'The value of DISTDIR cannot be empty'
+[ "$PM_PACKAGES" != only -a -z "$DONT_SCRUB_DISTFILES" ] &&
+	[ -z "$DISTDIR" ] && fail 'The value of DISTDIR cannot be empty'
 
 [ -n "$PM_URB" -a -n "$RESTART" ] && PM_UPDATE_IF_NEWER=pm_update_if_newer_urb
 
-not_in_child && [ -z "$SHOW_WORK" ] && init_parent "$@"
+[ -z "$SHOW_WORK" ] && not_in_child && init_parent "$@"
 
 [ -n "$UPDATE_ALL" ] && update_all
 
@@ -3357,7 +3356,7 @@ if [ -z "$PM_INDEX_ONLY" -a -z "$PM_BUILDING" -a -z "$SHOW_WORK" -a -z "$NO_ACTI
 	[ -z "$PM_PACKAGES" ] && master_sites=$(pm_make -V MASTER_SITES)
 
 	if [ -n "$master_sites" ]; then
-		fetch_check_distfiles
+		fetch_check_distfiles $portdir
 		unset master_sites distfiles file DONT_FETCH fetchlog
 	elif [ -n "$FETCH_ONLY" ]; then
 		echo "===>>> No distfiles to fetch"
@@ -3489,10 +3488,10 @@ check_remote_package () {
 
 	portdir="$1"
 	new_port="$2"
-	dirlist=$(echo ${TMPDIR}/f-${PM_PARENT_PID}-dl-${portdir%/*}\.*)
+	dirlist=$(pm_lstemp dl-${portdir%/*})
 	if [ ! -r "$dirlist" ]; then
 		pm_unlink $dirlist		# JIC
-		pm_mktemp dl-${portdir%/*} ; dirlist=$pm_mktemp_file
+		dirlist=$(pm_mktemp dl-${portdir%/*})
 		fetch -q -o - ${sitepath} 2>/dev/null |
 			sed -e "s#%2[cC]#,#g" -e "s#%2[bB]#+#g" > $dirlist
 	fi
@@ -3641,7 +3640,7 @@ try_install_package () {
 
 if [ -n "$PM_PACKAGES" -o "$PM_PACKAGES_BUILD" = doing_build_only_dep ]; then
 	if [ -z $(pm_make_b -V PT_NO_INSTALL_PACKAGE) ]; then
-		try_install_package "$new_port"
+		try_install_package $portdir $new_port
 	else
 		if [ "$PM_PACKAGES" = 'only' ]; then
 			echo "===>>> The -PP/--packages-only option was specified, but"
@@ -3657,7 +3656,7 @@ wait_fetch_complete () {
 	local portdir fl_read count
 
 	portdir="$1"
-	fl_read=$(echo ${TMPDIR}/f-${PM_PARENT_PID}-fetchlog-${portdir#*/}.*)
+	fl_read=$(pm_lstemp fetchlog-${portdir#*/})
 	count=0
 	while [ -f "$fl_read" ]; do
 		count=$(( $count + 1 ))
@@ -3678,7 +3677,7 @@ flavor_from_pkg () {
 	pm_make pretty-flavors-package-names | sed -ne 's!^\([A-Za-z0-9_]*\): *'$pkg'$!\1!p';
 }
 
-# global port_log port_log_args
+# sets global variables port_log port_log_args
 build_port () {
 	local portdir=$1
 
@@ -3727,20 +3726,25 @@ fi
 
 # Ignore if no old port exists, or -F
 if [ -n "$upg_port" -o -n "$ro_upg_port" ] && [ -z "$FETCH_ONLY" ]; then
-# pre_install_tasks () {
 	UPGRADE_PORT="${ro_upg_port:-$upg_port}"
 	UPGRADE_PORT_VER=$(echo $UPGRADE_PORT | sed 's#.*-\(.*\)#\1#')
 	export UPGRADE_PORT UPGRADE_PORT_VER
+
+	pre_install_tasks 
+fi
+
+# uses global variables UPGRADE_PORT UPGRADE_PORT_VER SAVE_SHARED LOCALBASE_COMPAT
+pre_install_tasks () {
+	local pm_mktemp_file temp file
 
 	# the invocation of init_packages should be redundant, but pbu is not defined, without???
 	[ -z "$NO_BACKUP" ] && init_packages && pm_pkg_create "$pbu" $UPGRADE_PORT $portdir
 
 	if [ -n "$SAVE_SHARED" ]; then
-		pm_mktemp ldconfig
+		pm_mktemp_file=$(pm_mktemp ldconfig)
 		ldconfig -r | sed 's#.* ##' |
 		    grep -v ^$LOCALBASE_COMPAT > $pm_mktemp_file
 
-		unset temp
 		for file in $(pkg query %Fp $UPGRADE_PORT | sort - $pm_mktemp_file | uniq -d); do
 			temp="${temp}$file "
 		done
@@ -3756,7 +3760,7 @@ if [ -n "$upg_port" -o -n "$ro_upg_port" ] && [ -z "$FETCH_ONLY" ]; then
 			$PM_SU_CMD /etc/rc.d/ldconfig start > /dev/null
 		fi
 
-		/bin/unlink $pm_mktemp_file ; unset pm_mktemp_file temp file
+		/bin/rm -f $pm_mktemp_file
 	fi
 
 	find_dl_distfiles $portdir
@@ -3793,7 +3797,7 @@ if [ -n "$upg_port" -o -n "$ro_upg_port" ] && [ -z "$FETCH_ONLY" ]; then
 
 	echo ''
 	pm_cd_pd $portdir
-fi
+}
 
 install_failed () {
 	upg_port="${ro_upg_port:-$upg_port}"
@@ -3807,6 +3811,8 @@ install_failed () {
 }
 
 install_port () {
+	local portdir="$1" upg_port="$2" new_port="$3"
+
 	pm_sv Running make install
 
 	if [ -z "$PM_SU_UNSET_PORT_LOG_ARGS" ]; then
@@ -3833,6 +3839,8 @@ install_port () {
 }
 
 install_package () {
+	local portdir="$1" latest_pv="$2"
+
 	[ -n "$latest_pv" ] && ppd=${LOCAL_PACKAGEDIR}/All
 
 	echo "===>>> Installing package from: ${ppd}/${latest_pv}.txz"
@@ -3870,10 +3878,17 @@ delete_old_compat_libs () {
 	fi
 }
 
+# Implement storage of distfile information in the way that
+# it will (hopefully, soon?) be implemented in bsd.port.mk
+# See http://www.freebsd.org/cgi/query-pr.cgi?pr=106483
 keep_distfiles_info () {
-	# Implement storage of distfile information in the way that
-	# it will (hopefully, soon?) be implemented in bsd.port.mk
-	# See http://www.freebsd.org/cgi/query-pr.cgi?pr=106483
+	local file dist_list pdb new_port distinfo pm_mktemp_file
+
+	pdb="$1"
+	new_port="$2"
+	shift 2
+	distfiles="$*"
+
 	dist_list="${pdb}/${new_port}/distfiles"
 
 	make_port_subdir
@@ -3885,7 +3900,7 @@ keep_distfiles_info () {
 		[ -n "$distinfo" ] || fail "No DISTINFO_FILE in $portdir"
 	fi
 
-	pm_mktemp dist_list
+	pm_mktemp_file=$(pm_mktemp dist_list)
 	echo '# Added by portmaster' > $pm_mktemp_file
 	for file in $distfiles; do
 		while read line ; do
@@ -3913,6 +3928,8 @@ keep_distfiles_info () {
 }
 
 create_package () {
+	local new_port="$1" portdir="$2"
+
 	if [ -z "$use_package" ]; then
 		echo "===>>> Creating a package for new version $new_port"
 		pm_make_s -D_OPTIONS_OK package >/dev/null || fail "Package creation of $new_port failed"
@@ -3923,12 +3940,16 @@ create_package () {
 }
 
 background_clean () {
+	local portdir="$1"
+
 	pm_v "===>>> Running 'make clean' in the background"
-	(pm_make_s clean NOCLEANDEPENDS=ncd2 >/dev/null)&
+	(pm_make_s -C $pd/$portdir clean NOCLEANDEPENDS=ncd2 >/dev/null)&
 	pm_v
 }
 
 update_package_dependencies () {
+	local ro_opd="$1" portdir="$2"
+
 	echo "===>>> Updating dependency entry for $new_port in each dependent port"
 	$PM_SU_CMD pkg set -yo $ro_opd:$portdir
 }
@@ -3961,9 +3982,9 @@ if [ -n "$FETCH_ONLY" ]; then		# Only reached here if using packages
 fi
 
 if [ -z "$use_package" ]; then
-	install_port
+	install_port $portdir $upg_port $new_port
 else
-	install_package
+	install_package $portdir $latest_pv
 fi
 
 if [ -n "$preserve_dir" ]; then
@@ -3984,15 +4005,15 @@ if ! not_in_child || [ -n "$PM_URB" ]; then
 fi
 
 # This will serve for *delete*distfiles() as well
-[ -z "$use_package" ] && make_distfiles
+[ -z "$use_package" ] && distfiles=$(make_distfiles $portdir)
 
-[ -n "$distfiles" ] && keep_distfiles_info
+[ -n "$distfiles" ] && keep_distfiles_info $pdb $new_port $distfiles
 
-[ -n "$MAKE_PACKAGE" ] && create_package
+[ -n "$MAKE_PACKAGE" ] && create_package $new_port $portdir
 
-[ -z "$use_package" -a -z "$DONT_POST_CLEAN" ] && background_clean
+[ -z "$use_package" -a -z "$DONT_POST_CLEAN" ] && background_clean $portdir
 
-[ -n "$ro_opd" ] && update_package_dependencies
+[ -n "$ro_opd" ] && update_package_dependencies $ro_opd $portdir
 
 ilist=$(install_type_msg $new_port $upg_port $portdir)
 

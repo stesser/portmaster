@@ -3899,7 +3899,7 @@ keep_distfiles_info () {
 		done < $distinfo
 
 		# Make sure any new distfiles get added to the list
-		[ -n "$DI_FILES" -a ! not_in_child ] &&
+		[ -n "$DI_FILES" ] && ! not_in_child &&
 			echo "${port_subdir}${file}" >> $DI_FILES
 	done
 

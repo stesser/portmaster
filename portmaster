@@ -1,5 +1,3 @@
-#!/usr/local/bin/bash
-set -o posix
 #!/bin/sh
 
 # Copyright (c) 2005-2012 Douglas Barton, All rights reserved
@@ -658,6 +656,7 @@ check_longopts () {
 		--packages-local)	packages_init local
 					export PM_PACKAGES_LOCAL=pmp_local ;;
 		--always-fetch)		export PM_ALWAYS_FETCH=pm_always_fetch ;;
+		--backup-format=*)	export PM_BAK_FMT=${var#--backup-format=} ;;
 		--local-packagedir=*)	export LOCAL_PACKAGEDIR=${var#--local-packagedir=} ;;
 		--delete-packages)	export PM_DELETE_PACKAGES=pm_delete_packages ;;
 #		--flavor=*)		PM_FLAVOR=${var#--flavor=} ;;
@@ -1561,11 +1560,12 @@ init_packages () {
 }
 
 pm_pkg_create () {
-	local pkgdir pkgname portdir backup
+	local pkgdir pkgname portdir format backup
 
 	pkgdir="$1"
 	pkgname="$2"
 	portdir="$3"
+	format="${4:-txz}"
 	init_packages
 
 	if [ "$pkgdir" = "$PACKAGES" ]; then
@@ -1579,25 +1579,25 @@ pm_pkg_create () {
 		echo ''
 		echo "===>>> Creating a backup package for old version $2"
 		backup=backup
+		[ -n "$PM_BAK_FMT" ] && format=$PM_BAK_FMT
 	fi
 
 	pm_cd $pkgdir || fail "Cannot cd into $pkgdir to create a package"
-	if $PM_SU_CMD pkg create $pkgname; then
+	if $PM_SU_CMD pkg create -f $format $pkgname; then
 		if [ "$pkgdir" = "$pbu" ]; then
 			if [ -n "$BACKUP" ]; then
-				echo "	===>>> Package saved to $pkdir" ; echo ''
+				echo "===>>> Package saved to $pkgdir" ; echo ''
 			else
-				local pkg ; pkg=
 				NB_DELETE="${NB_DELETE}"$(echo $pkgname.*)" "
 			fi
 		elif [ "$pkgdir" = "$PACKAGES/All" ]; then
-			local pkg ; pkg=${pkgname}.txz
+			local pkg ; pkg=${pkgname}.$format
 
 			if [ -z "$PM_INDEX_ONLY" ]; then
 				local pkg_latest_file
 
 				pm_cd_pd $portdir
-				pkg_latest_file=$(pm_make -V PKGLATESTFILE)
+				pkg_latest_file=$(pm_make -V PKGLATESTFILE) # <se> may not be compatible with $format!!!
 				$PM_SU_CMD install -lr $pkgdir/$pkg ${pkg_latest_file}
 			fi
 

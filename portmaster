@@ -1,3 +1,5 @@
+#!/usr/local/bin/bash
+set -o posix
 #!/bin/sh
 
 # Copyright (c) 2005-2012 Douglas Barton, All rights reserved
@@ -94,7 +96,11 @@ trap_exit () {
 		if [ -n "$HIDE_BUILD" ]; then
 			local logs file
 			logs=$(echo ${TMPDIR}/port_log-${PM_PARENT_PID}-*)
-			case "$logs" in *\*) unset logs ;; esac
+
+			case "$logs" in
+			*\*) unset logs ;;
+			esac
+
 			if [ -n "$logs" ]; then
 				echo ''
 				echo "===>>> Build/Install logs available:"
@@ -617,7 +623,7 @@ globstrip () {
 # 1 - No match
 # 2 - Matched multiple directories
 #
-find_glob_dirs () {
+find_glob_dirs () {		# should return glob_dirs
 	# Global: glob_dirs
 	local pattern
 
@@ -861,9 +867,8 @@ process_options () {
 
 	if [ -n "$PM_INDEX" ] && [ -z "$LIST" -a -z "$LIST_ORIGINS" -a -z "$EXPUNGE" -a -z "$CLEAN_STALE" ]; then
 		if [ -z "$INDEXFILE" ]; then
-			ver=$(uname -r)
+			local ver=$(uname -r)
 			INDEXFILE=INDEX-${ver%%\.*}
-			unset ver
 		fi
 
 		[ -z "$INDEXDIR" -a -n "$PM_INDEX_ONLY" -a -z "$pd" ] && INDEXDIR="$TMPDIR"
@@ -966,10 +971,7 @@ process_options () {
 
 	[ -n "$DISTDIR" ] && export DISTDIR="${DISTDIR%/}/"
 
-	if [ -n "$PM_PACKAGES_BUILD" -o -n "$PM_DEL_BUILD_ONLY" ]; then
-		PM_BUILD_ONLY_LIST=pm_bol
-		export PM_BUILD_ONLY_LIST
-	fi
+	[ -n "$PM_PACKAGES_BUILD" -o -n "$PM_DEL_BUILD_ONLY" ] && export PM_BUILD_ONLY_LIST=pm_bol
 }
  
 #=============== Begin functions relevant to --features and main ===============
@@ -1949,7 +1951,7 @@ list_ports () {
 	fi
 }
 
-# Global: EXPUNGE pdb pbu ARGS
+# Global: EXPUNGE pdb glob_dirs pbu ARGS
 expunge () {
 	local origin deplist f
 
@@ -1985,46 +1987,49 @@ expunge () {
 	echo "===>>> Running pkg delete -f $EXPUNGE"
 	pm_pkg_delete_s $EXPUNGE || fail "pkg delete failed"
 
-	echo '' ; echo "===>>> Running $progname -s $ARGS"
-	exec "$program" -s $ARGS
+	echo '' ; echo "===>>> Cleaning stale ports (no longer depended on)"
+	clean_stale
 }
 
 clean_stale () {
 	[ -z "$no_del_list" ] && export no_del_list=':'
 
-	stale_ports=$(pkg query -ae '%a = 1' '%?r %n-%v' | awk '/^0 / { print \$2 }')
-	for file in $stale_ports; do
-		iport="${file%/+REQUIRED_BY}" ; iport=${iport#$pdb/}
+	local check_needed=1
+	while [ "$check_needed" -eq 1 ]; do
+		stale_ports=$(pkg query -ae '%a = 1' '%?r %n-%v' | awk '/^0 / { print \$2 }')
+		check_needed=0
+		for file in $stale_ports; do
+			iport="${file%/+REQUIRED_BY}" ; iport=${iport#$pdb/}
 
-		case "$no_del_list" in *:${iport}:*) continue ;; esac
+			case "$no_del_list" in *:${iport}:*) continue ;; esac
 
-		origin=$(origin_from_pdb $iport)
-		deplist=""
-		if [ -n "$deplist" ]; then
-			echo ''
-			echo "===>>> Warning: Unrecorded dependencies on ${iport}:"
-			for dep in $deplist; do
-				dep=${dep%/+CON*} ; echo "	${dep##*/}"
-			done
-			echo ''
-			echo "===>>> Try $progname --check-depends"
-			echo ''
-			continue
-		fi
+			origin=$(origin_from_pdb $iport)
+			deplist=""
+			if [ -n "$deplist" ]; then
+				echo ''
+				echo "===>>> Warning: Unrecorded dependencies on ${iport}:"
+				for dep in $deplist; do
+					dep=${dep%/+CON*} ; echo "	${dep##*/}"
+				done
+				echo ''
+				echo "===>>> Try $progname --check-depends"
+				echo ''
+				continue
+			fi
 
-		echo '' ; pkg info -f $iport
+			echo '' ; pkg info -f $iport
 
-		get_answer_yn n "\t===>>> ${iport} is no longer depended on, delete"
-		case "$?" in
-		0)	[ -n "$BACKUP" ] && { init_pbu_var ; pm_pkg_create $pbu $iport $portdir; }
-			[ -z "$DONT_SCRUB_DISTFILES" ] && delete_all_distfiles $origin
+			get_answer_yn n "\t===>>> ${iport} is no longer depended on, delete"
+			case "$?" in
+			0)	[ -n "$BACKUP" ] && { init_pbu_var ; pm_pkg_create $pbu $iport $portdir; }
+				[ -z "$DONT_SCRUB_DISTFILES" ] && delete_all_distfiles $origin
 
-			echo "===>>> Running pkg delete -f $iport"
-			pm_pkg_delete_s $iport || fail "pkg delete failed"
-
-			exec "$program" -s $ARGS ;;
-		*)	no_del_list="${no_del_list}${iport}:" ;;
-		esac
+				echo "===>>> Running pkg delete -f $iport"
+				pm_pkg_delete_s $iport || fail "pkg delete failed"
+				check_needed=1 ;;
+			*)	no_del_list="${no_del_list}${iport}:" ;;
+			esac
+		done
 	done
 }
 
@@ -2995,7 +3000,10 @@ no_valid_port () {
 	echo "===>>> Try $progname --help" ; echo '' ; safe_exit 1
 }
 
-update_new_origin () {
+# Global: portdir upg_port pd pdb glob_dirs
+prepare_update_new_origin () {
+	local argv
+
 	export_flavor $(flavor_part $portdir)
 	[ -n "$portdir" ] && { argv=$portdir ; unset portdir; }
 	argv=${argv:-$1} ; argv=${argv%/} ; argv=$(globstrip $argv)
@@ -3028,7 +3036,10 @@ update_new_origin () {
 	unset argv
 }
 
-update_same_origin () {
+# Global: portdir upg_port ro_upg_port ro_opd pd pdb glob_dirs
+prepare_update_same_origin () {
+	local arg2
+
 	portdir="${1#$pd/}" ; portdir="${portdir%/}"
 	export_flavor=$(flavor_part $portdir)
 	if [ -z "$PM_INDEX_ONLY" ]; then
@@ -3040,7 +3051,8 @@ update_same_origin () {
 	if [ -n "$missing" ]; then
 		echo ''
 		echo "===>>> The first argument to -o must be a directory in $pd"
-		echo '' ; no_valid_port
+		echo ''
+		no_valid_port
 	fi
 
 	upg_port=$(iport_from_origin $portdir) || upg_port=$opd
@@ -3061,7 +3073,6 @@ update_same_origin () {
 		fi
 	esac
 	upg_port="${upg_port:-$ro_upg_port}"
-	unset arg2
 
 	if [ -z "$ro_upg_port" ]; then
 		pkg query -a "%do" | grep -q "^$ro_opd$"
@@ -3072,7 +3083,8 @@ update_same_origin () {
 			echo ''
 			echo "       $ro_opd does not seem to be installed,"
 			echo '       or listed as a dependency'
-			echo '' ; no_valid_port
+			echo ''
+			no_valid_port
 		fi
 	fi
 
@@ -3097,11 +3109,15 @@ get_portdir () {
 }
 
 check_moved () {
+	local portdir upg_port moved_npd
+
+	portdir="$1"
+	upg_port="$2"
+
 	find_moved_port $portdir $upg_port || no_valid_port
 	[ -n "$moved_npd" ] || no_valid_port
 	flavor=$(flavor_part "$moved_npd")
 	export_flavor $flavor
-#	flavor_option=${flavor:+-m FLAVOR=$flavor} # FLAVOR is exported in the environment
 	pm_isdir_pd "$moved_npd" || no_valid_port
 
 	not_in_child && parent_exit
@@ -3937,14 +3953,16 @@ not_in_child && process_options "$@"
 [ -n "$UPDATE_ALL" ] && update_all
 
 if [ -z "$REPLACE_ORIGIN" ]; then
-	update_new_origin "$@"
+	prepare_update_new_origin "$@"
 else
-	update_same_origin "$@"
+	prepare_update_same_origin "$@"
 fi
 
 [ -z "$portdir" ] && get_portdir
 
-[ -z "$PM_INDEX_ONLY" ] && ! pm_isdir_pd "$portdir" && check_moved
+# <se> recursively executes portmaster!!! Should call update_new_origin instead???
+# <se> Should the following line come before the test of REPLACE_ORIGIN???
+[ -z "$PM_INDEX_ONLY" ] && ! pm_isdir_pd "$portdir" && check_moved $portdir $upg_port
 
 [ -z "$upg_port" -a -z "$REPLACE_ORIGIN" ] && upg_port=$(pkg_origin $portdir)
 
@@ -3957,7 +3975,6 @@ else
 	new_port=$(parse_index $portdir name) ||
 		fail "No entry for $portdir in $PM_INDEX"
 fi
-unset -f no_valid_port
 
 if [ -z "$PM_DEPTH" ]; then
 	PM_DEPTH="${upg_port:-$portdir} "

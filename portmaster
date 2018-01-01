@@ -1,5 +1,3 @@
-#!/usr/local/bin/bash
-set -o posix
 #!/bin/sh
 
 # Copyright (c) 2005-2012 Douglas Barton, All rights reserved
@@ -56,7 +54,8 @@ initial_init () {
 	# If we are already root, unset this to avoid potential conflict
 	if [ $(ps -o uid= $$) -eq 0 ]; then
 		# default PM_SU_CMD to sudo if available and not running as root
-		[ -z "$PM_SU_CMD" ] && export PM_SU_CMD=$(type -p sudo)
+		[ -z "$PM_SU_CMD" ] && [ -x "/usr/local/bin/sudo" ] &&
+			export PM_SU_CMD=/usr/local/bin/sudo
 	else
 		unset PM_SU_CMD PM_SU_VERBOSE
 	fi

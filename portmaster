@@ -1,5 +1,3 @@
-#!/usr/local/bin/bash
-set -o posix
 #!/bin/sh
 
 # Copyright (c) 2005-2012 Douglas Barton, All rights reserved
@@ -450,7 +448,7 @@ set_rm () {
 	eval set_values="\$${set_name}"
 	for value in "$@"; do
 		case $set_values in
-		*"|$value|"*)
+		*"|$value|"*|*"|$value	"*)
 			case $value in
 			*'*'*|*'?'*)
 				value=$(echo "$value" | sed -E 's:(\*|\?):[\1]:g') ;;
@@ -467,7 +465,7 @@ set_contains () {
 	local set_values
 	eval set_values="\$${set_name}"
 	case $set_values in
-	*"|$value|"*)
+	*"|$value|"*|*"|$value	"*)
 		return 0 ;;
 	esac
 	return 1
@@ -507,6 +505,38 @@ set_clear () {
 }
 
 # ----- end of set operations
+
+# dict operations operating on global variables
+
+dict_set () {
+	local dict="_dict_$1"
+	local key="$2"
+	local value="$3"
+	set_rm "$dict" "$key"
+	set_add "$dict" "$key	$value"
+}
+
+dict_del () {
+	set_rm "_dict_$1" "$2"
+}
+
+dict_get () {
+	local dict="_dict_$1"
+	local key="$2"
+	local value
+	while read value; do
+		case $value in
+		"$key	"*)
+			echo ${value#*	}
+			return 0 ;;
+		esac
+	done <<-EOF
+	$(set_print $dict)
+EOF
+	return 1
+}
+
+# ----- end of dict operations
 
 
 # Do this here so we can have a reasonably good guess.

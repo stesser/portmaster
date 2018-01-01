@@ -1,3 +1,5 @@
+#!/usr/local/bin/bash
+set -o posix
 #!/bin/sh
 
 # Copyright (c) 2005-2012 Douglas Barton, All rights reserved
@@ -407,7 +409,7 @@ pm_rm_s		() { $PM_SU_CMD /bin/rm $*; }
 pm_rmdir_s	() { $PM_SU_CMD /bin/rmdir $*; }
 pm_unlink_s	() { [ -e "$1" ] && $PM_SU_CMD /bin/unlink $1; }
 
-pm_msg		() { echo -e "$*" >&2; }
+pm_msg		() { echo -e "$@" >&2; }
 pm_v		() { [ -n "$PM_VERBOSE" ] && echo -e "$*" >&2; }
 pm_sv		() { [ -n "$PM_SU_VERBOSE" ] && echo -e "===>>> SU $*" >&2; }
 
@@ -2063,7 +2065,7 @@ delete_stale_distfiles () {
 
 	set_distfiles_and_subdir $portdir $upg_port || return 0
 	distfiles_checked=':'
-set -x
+
 	# If these two match, it means that the distfiles in the
 	# file are the current set, so do not delete them.
 	if [ ! " $dist_list_files" = "$distfiles" ]; then
@@ -2098,7 +2100,7 @@ set -x
 	for file in $distfiles $dist_list_files; do
 		find_and_delete_distfiles ${file%[-]*}-[0-9]
 	done
-set +x
+
 	pm_v "===>>> Distfile cleaning complete\n"
 }
 

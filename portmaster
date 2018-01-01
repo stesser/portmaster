@@ -409,9 +409,9 @@ pm_rm_s		() { $PM_SU_CMD /bin/rm $*; }
 pm_rmdir_s	() { $PM_SU_CMD /bin/rmdir $*; }
 pm_unlink_s	() { [ -e "$1" ] && $PM_SU_CMD /bin/unlink $1; }
 
-pm_msg		() { echo -e "$*" >2; }
-pm_v		() { [ -n "$PM_VERBOSE" ] && echo -e "$*" >2; }
-pm_sv		() { [ -n "$PM_SU_VERBOSE" ] && echo -e "===>>> SU $*" >2; }
+pm_msg		() { echo -e "$*" >&2; }
+pm_v		() { [ -n "$PM_VERBOSE" ] && echo -e "$*" >&2; }
+pm_sv		() { [ -n "$PM_SU_VERBOSE" ] && echo -e "===>>> SU $*" >&2; }
 
 # set operations operating on global variables
 

@@ -1306,7 +1306,7 @@ read_distinfos () {
 	local DI_FILES iport origin distinfo s f DISCARD
 
 	DI_FILES="$1"
-	pm_msg '############' > $DI_FILES		# Make the file > 0 bytes
+	echo '############' > $DI_FILES		# Make the file > 0 bytes
 	pm_msg "===>>> Gathering distinfo list for installed ports"
 	pm_msg ''
 

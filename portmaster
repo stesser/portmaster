@@ -53,14 +53,10 @@ initial_init () {
 
 	my_environment=$(set)
 
+	[ -z "$PM_SU_CMD" ] && [ -x "/usr/local/bin/sudo" ] &&
+		export PM_SU_CMD=/usr/local/bin/sudo
 	# If we are already root, unset this to avoid potential conflict
-	if [ $(ps -o uid= $$) -ne 0 ]; then
-		# default PM_SU_CMD to sudo if available and not running as root
-		[ -z "$PM_SU_CMD" ] && [ -x "/usr/local/bin/sudo" ] &&
-			export PM_SU_CMD=/usr/local/bin/sudo
-	else
-		unset PM_SU_CMD PM_SU_VERBOSE
-	fi
+	[ `id -u` -eq 0 ] && unset PM_SU_CMD PM_SU_VERBOSE
 }
 
 #=============== Begin functions we always want to have ===============
@@ -370,8 +366,9 @@ safe_exit () {
 	exit ${1:-0}
 } # safe_exit()
 
-flavor_part	() { expr "$1" : ".*@" >/dev/null && echo "${1#*@}"; }
-dir_part	() { echo "${1%%@*}"; }
+target_part	() { [ -z "${1##*:*}" ] && echo "${1#*:}" || echo install; }
+flavor_part	() { local tmp="${1%%:*}"; [ -z "${tmp##*@*}" ] && echo "${tmp#*@}"; }
+dir_part	() { local tmp="${1%%:*}"; echo "${tmp%%@*}"; }
 export_flavor	() { local flavor="$1"; if [ "$FLAVOR" != "$flavor" ]; then
 			pm_v "===>>> Setting FLAVOR to '$flavor' (was '$FLAVOR')";
 			export FLAVOR="$flavor"; fi; }
@@ -416,7 +413,7 @@ pm_sv		() { [ -n "$PM_SU_VERBOSE" ] && echo -e "===>>> SU $*" >&2; }
 # set operations operating on global variables
 
 getvar		() { eval echo \$"$1"; }
-\setvar 2>- || setvar () { eval "$1"=\"$2\"; }
+\setvar 2>&- || setvar () { eval "$1"=\"$2\"; }
 
 set_print () {
 	local set_name="_set_${1}_"
@@ -1243,7 +1240,7 @@ get_answer_yn () {
 	fi
 }
 
-match_flavor () {
+validate_flavor () {
 	local moved_npd="$1"
 	local iport="$2"
 	local origin=$(dir_part $moved_npd)
@@ -1308,7 +1305,7 @@ find_moved_port () {
 				moved_npd=${moved#*\|}	# New port directory
 				moved_npd=${moved_npd%%\|*}
 				if [ -n $(flavor_part $moved_npd) ]; then
-					moved_npd=$(match_flavor $moved_npd $iport)
+					moved_npd=$(validate_flavor $moved_npd $iport)
 				fi
 				pm_msg ''
 				pm_msg "	===>>> The $origin port moved to $moved_npd"
@@ -2511,8 +2508,9 @@ update_build_l () {
 }
 
 update_port () {
-	local deps
-
+	local make_target deps
+ 
+	make_target=$(target_part "$1")
 	if [ -n "$2" ]; then
 		pm_msg "===>>> Launching child to update $1 to $2"
 	else
@@ -2627,7 +2625,7 @@ gen_make_dep_list () {
 			fail "gen_make_dep_list: Unsupported option '$type'" ;;
 		esac
 	done
-	[ -n "$var_opt" ] && make -C "$pd/$portdir" $var_opt | tr ' ' '\n' | cut -d: -f2 | sort -u
+	[ -n "$var_opt" ] && make -C "$pd/$portdir" $var_opt | tr ' ' '\n' | cut -d: -f2-3 | sort -u
 }
 
 # print dependency list for dependency types passed as parameter from INDEX
@@ -2673,12 +2671,9 @@ check_conflicts () {
 	local flavor=$(flavor_part $d_port)
 	local conflicts
 
-	if pm_cd "$pd/$dir"; then
-		if grep -ql ^CONFLICTS Makefile ; then
-			conflicts=$(FLAVOR=$flavor pm_make_b -V CONFLICTS -V CONFLICTS_BUILD -V CONFLICTS_INSTALL)
-		fi
-	else
-		fail "Cannot cd to $dir"
+	pm_cd "$pd/$dir" || fail "Cannot cd to $dir"
+	if grep -ql ^CONFLICTS Makefile ; then
+		conflicts=`FLAVOR=$flavor pm_make_b -V CONFLICTS -V CONFLICTS_BUILD -V CONFLICTS_INSTALL`	 
 	fi
 
 	local glob
@@ -2737,15 +2732,17 @@ dependency_check () {
 		rundeps=$(gen_dep_list $portdir run-depends-list)
 
 		for dep in $d_port_list; do
+			# strip optional make target
+			local depdir=${dep%:*}
 			# If the port is already installed, do not mark
 			# it as a build-only dependency, or it will be
 			# installed by package and/or removed
-			pkg info -e ${dep#$pd/} &&
-				run_dl="$run_dl $dep" &&
+			pkg info -e ${depdir#$pd/} &&
+				run_dl="$run_dl $depdir" &&
 				continue
 			case "$rundeps" in
 			*" ${dep} "*|*${dep}*)
-				varname=$(echo ${dep#$pd/} | sed 's#[-+/\.@]#_#g')
+				varname=$(echo ${dep#$pd/} | sed 's#[-+/\.@:]#_#g')
 				rundep_list="$rundep_list $varname"
 				eval export $varname=\"$portdir \$$varname\"
 				eval export ${varname}_p=$dep
@@ -2780,7 +2777,10 @@ dependency_check () {
 
 	# Do not export, for THIS parent process only
 	[ -n "$PM_FIRST_PASS" ] && doing_dep_check=doing_dep_check
-	for d_port in $d_port_list; do
+	for d_port_target in $d_port_list; do
+		# strip optional make target
+		local d_port=${d_port_target%:*}
+		local make_target=$(target_part "$d_port_target")
 		origin="${d_port#$pd/}"
 		if [ -n "$SHOW_WORK" ]; then
 			iport=$(iport_from_origin $origin)
@@ -2809,7 +2809,8 @@ dependency_check () {
 			esac
 
 		# check_conflicts may change d_port!
-		[ -z "$PM_INDEX_ONLY" ] && check_conflicts "$portdir" "$origin"
+		if [ -z "$PM_INDEX_ONLY" -a "$make_target" = install ] &&
+			   check_conflicts "$portdir" "$origin"
 
 		# In case d_port changed above
 		origin="${d_port#$pd/}"
@@ -2851,6 +2852,10 @@ dependency_check () {
 			check_for_updates $iport $origin || fail 'Update failed'
 		else
 			check_interactive $origin || continue
+			if [ "$make_target" != "install" ]; then
+				[ -z "$PM_FIRST_PASS" ] && post_clean_l="$post_clean_l $origin"
+				origin="$origin:$make_target"
+			fi
 			update_port $origin
 		fi
 	done
@@ -3434,9 +3439,9 @@ no_valid_port () {
 }
 
 # check use cases portdir="" and !=""
-# Global: portdir upg_port pd pdb glob_dirs
+# Global: portdir upg_port pd pdb glob_dirs make_target
 prepare_update_new_origin () {
-	local argv="$1"
+	local argv="${1%:*}"
 
 	[ -n "$portdir" ] && {
 		argv=$portdir # <se> ignore passed argument???
@@ -3484,6 +3489,8 @@ prepare_update_new_origin () {
 			upg_port=${glob_dirs#$pdb/} ;;
 		esac
 	fi
+
+	[ "$make_target" != install ] && PM_MAKE_ARGS="-DDISABLE_CONFLICTS $PM_MAKE_ARGS"
 }
 
 # Global: portdir upg_port ro_upg_port ro_opd pd pdb glob_dirs
@@ -4125,12 +4132,18 @@ build_port () {
 	if [ -n "$HIDE_BUILD" ] && [ -n $(pm_make -V LICENSE) ]; then
 		eval pm_make extract ask-license || fail "make extract ask-license failed for $portdir"
 	fi
-	pm_make build $port_log_args || fail "make build failed for $portdir"
+	if [ "$make_target" = "extract" -o "$make_target" = "patch" ]; then
+		eval pm_make -DNO_DEPENDS $make_target $port_log_args || fail "make $make_target failed for $portdir"
+		safe_exit
+	fi
+ 	eval pm_make build $port_log_args || fail "make build failed for $portdir"
+	[ "$make_target" = "build" ] && safe_exit
 
 	pm_sv Running make stage
 	# Defining NO_DEPENDS ensures that we will control the installation
 	# of the depends, not bsd.port.mk.
-	pm_make -DNO_DEPENDS stage $port_log_args || fail "make stage failed for $portdir"
+	eval pm_make -DNO_DEPENDS stage $port_log_args || fail "make stage failed for $portdir"
+	[ "$make_target" = "stage" ] && safe_exit
 }
 
 # Global: LOCALBASE_COMPAT
@@ -4359,6 +4372,13 @@ create_package () {
 	fi
 }
 
+special_deps_clean () {
+	for dir in $*; do
+		pm_v "===>>> Running 'make clean' for special build dependency $dir"
+		(FLAVOR=$(flavor_part $portdir) pm_make_s -C "$pd/$dir" clean NOCLEANDEPENDS=ncd2 >/dev/null)&
+	done
+}
+
 background_clean () {
 	local portdir=$(dir_part "$1")
 	local flavor=$(flavor_part "$1")
@@ -4463,6 +4483,9 @@ fi
 
 [ -n "$UPDATE_ALL" ] && update_all
 
+make_target=$(target_part "$1")
+post_clean_l=""
+
 if [ -z "$REPLACE_ORIGIN" ]; then
 	prepare_update_new_origin "$@"
 else
@@ -4505,6 +4528,9 @@ if [ -z "$FETCH_ONLY" ]; then
 else
 	[ -n "$PM_PACKAGES" ] && update_pm_nu "$portdir"
 fi
+
+# Test for necessary privileges to actually install ports
+[ "$($PM_SU_CMD id -u)" = 0 ] || fail "Insufficient privileges to install ports (run as root or set PM_SU_CMD)"
 
 # Do these things first time through
 if [ -z "$PM_INDEX_ONLY" -a -z "$PM_BUILDING" -a -z "$SHOW_WORK" -a -z "$NO_ACTION" ]; then
@@ -4596,7 +4622,10 @@ fi
 
 [ -n "$MAKE_PACKAGE" ] && create_package $portdir $new_port
 
-[ -z "$use_package" -a -z "$DONT_POST_CLEAN" ] && background_clean $portdir
+if [ -z "$use_package" -a -z "$DONT_POST_CLEAN" ]; then
+	special_deps_clean $post_clean_l
+	background_clean $portdir
+fi
 
 [ -n "$ro_opd" ] && update_package_dependencies $portdir $ro_opd $new_port
 

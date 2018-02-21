@@ -1,6 +1,6 @@
+#!/usr/local/bin/bash -x
+set -o posix
 #!/bin/sh
-##!/usr/local/bin/bash -x
-#set -o posix
 
 # Copyright (c) 2005-2012 Douglas Barton, All rights reserved
 # Please see detailed copyright below
@@ -176,7 +176,7 @@ wait_background_clean () {
 
 	pm_v "===>>> Removing empty directories from WRKDIRPREFIX"
 	[ -n "$needws" ] && pm_msg '' || pm_v
-	find $PM_WRKDIRPREFIX -depth -mindepth 1 -type d -empty -delete 2>/dev/null
+	Find $PM_WRKDIRPREFIX -depth -mindepth 1 -maxdepth 2 -type d -empty -delete 2>/dev/null
 }
 
 print_installed () {
@@ -377,8 +377,8 @@ pm_cd_pd	() { [ -n "$PM_INDEX_ONLY" ] && return 2;
 			[ -n "$1" ] && builtin cd $pd/$(dir_part $1) 2>/dev/null ||
 			fail "Cannot cd to port directory: '$dir'"; }
 pm_isdir	() { builtin test -d "$1"; }
-pm_isdir_pd	() { local dir=$pd/$(dir_part "$1");
-			builtin test -d "$dir"; }
+pm_isdir_pd	() { local dir=$(dir_part "$1");
+			builtin test -n "$dir" -a -d "$pd/$dir"; }
 pm_kill		() { kill $* >/dev/null 2>/dev/null; }
 pm_make		() { ( unset CUR_DEPS INSTALLED_LIST PM_DEPTH build_l PM_URB_LIST;
 			/usr/bin/nice /usr/bin/make $PM_MAKE_ARGS $*; ); }
@@ -1104,21 +1104,22 @@ fetch_index () {
 		unset INDEXFILE INDEXDIR
 }
 
-# Global: PM_INDEX_PORTS PM_INDEX
+# Global: PM_INDEX_PORTS PM_IPD
 outdated_ports_from_index () {
-		PM_INDEX_PORTS=$(pkg version -Ivl\< $PM_INDEX | cut -f1 -d\<)
-		export PM_INDEX_PORTS
+	local PM_INDEX=$1
 
-		if [ -z "$pd" -o "$pd" != /usr/ports ]; then
-			PM_IPD=$(head -1 $PM_INDEX | cut -f 2 -d\|)
-			PM_IPD=${PM_IPD%/*}
-			PM_IPD=${PM_IPD%/*}
+	export PM_INDEX_PORTS=$(pkg version -Ivl\< $PM_INDEX | cut -f1 -d\<)
 
-			[ -n "$PM_INDEX_ONLY" ] && pd=$PM_IPD
-		else
-			PM_IPD=$pd
-		fi
-		export PM_IPD
+	if [ -z "$pd" -o "$pd" != /usr/ports ]; then
+		PM_IPD=$(head -1 $PM_INDEX | cut -f 2 -d\|)
+		PM_IPD=${PM_IPD%/*}
+		PM_IPD=${PM_IPD%/*}
+
+		[ -n "$PM_INDEX_ONLY" ] && pd=$PM_IPD
+	else
+		PM_IPD=$pd
+	fi
+	export PM_IPD
 }
 
 # Update based on options chosen above
@@ -2470,37 +2471,37 @@ update_pm_nu () {
 }
 
 update_build_l () {
-	local originflavor origin flavor iport
+	local originflavor origin flavor iport make_target
 
 	originflavor=$1 ; update_pm_nu $originflavor
 	origin=$(dir_part "$originflavor")
 	flavor=$(flavor_part "$originflavor")
 	iport="$2"
+	make_target=$3
 
 	[ -n "$PM_NO_CONFIRM" ] && return
 
 	if [ -z "$iport" ]; then
-		case "$build_l" in
-		*\ $origin\\*)
-			return ;;
+		case "$build_l" in *\ $origin\\*) return ;; esac
+		case $make_target in
+		install)
+			build_l="${build_l}\tInstall $originflavor\n" ;;
+		*)
+			build_l="${build_l}\tExecute make $make_target for $originflavor\n" ;;
 		esac
-		build_l="${build_l}\tInstall $originflavor\n"
 		return
-	else
-		case "$build_l" in
-		*\ $iport\ *|*\ $iport\\*)
-			return ;;
-		esac
 	fi
+
+	case "$build_l" in *\ $iport\ *|*\ $iport\\*) return ;; esac
 
 	find_new_port "$originflavor" # sets global variable new_port
 
-	case $(pkg version -t $iport $new_port 2>/dev/null) in
-	\<)
+	case `pkg version -t $iport $new_port 2>/dev/null` in
+	"<")
 		build_l="${build_l}\tUpgrade $iport to $new_port\n" ;;
-	=)
+	"=")
 		build_l="${build_l}\tRe-install $iport\n" ;;
-	\>)
+	">")
 		build_l="${build_l}\tDowngrade $iport to $new_port\n" ;;
 	*)
 		build_l="${build_l}\tUpgrade $iport\n" ;;
@@ -2809,8 +2810,7 @@ dependency_check () {
 			esac
 
 		# check_conflicts may change d_port!
-		if [ -z "$PM_INDEX_ONLY" -a "$make_target" = install ] &&
-			   check_conflicts "$portdir" "$origin"
+		[ -z "$PM_INDEX_ONLY" -a "$make_target" = install ] && check_conflicts "$portdir" "$origin"
 
 		# In case d_port changed above
 		origin="${d_port#$pd/}"
@@ -3595,7 +3595,7 @@ iport_from_pkgname () {
 	dir=$(dir_part $1)
 	flavor=$(flavor_part $1)
 	pkgname=$(FLAVOR=$flavor make -C "$pd/$dir" -V PKGNAME) || return 1
-	pkg info -x "^${pkgname%-*}"'-[^-]*' 2>/dev/null
+	pkg info -xC "^${pkgname%-*}\$" 2>/dev/null
 }
 
 pkg_origin () {
@@ -3645,6 +3645,7 @@ check_broken () {
 
 	portdir="$1"
 	upg_port="$2"
+	# <se> special handling of make targets other than "install"???
 	if [ -z "$PM_INDEX_ONLY" ] && ! check_state; then
 		check_state_fail=check_state_fail
 		if [ -n "$PM_FORCE_CONFIG" ]; then
@@ -3658,8 +3659,6 @@ check_broken () {
 			safe_exit 1
 		fi
 	fi
-
-	update_build_l $portdir $upg_port
 }
 
 background_checksum () {
@@ -4129,7 +4128,7 @@ build_port () {
 	[ -n "$PM_NO_MAKE_CONFIG" ] && PM_MAKE_ARGS="$PM_MAKE_ARGS -D_OPTIONS_OK"
 
 	export_flavor=$(flavor_from_pkg $new_port)
-	if [ -n "$HIDE_BUILD" ] && [ -n $(pm_make -V LICENSE) ]; then
+	if [ -n "$HIDE_BUILD" ] && [ -n "$(pm_make -V LICENSE)" ] && [ -z "$(pm_make -V DISABLE_LICENSES)" ]; then
 		eval pm_make extract ask-license || fail "make extract ask-license failed for $portdir"
 	fi
 	if [ "$make_target" = "extract" -o "$make_target" = "patch" ]; then
@@ -4471,7 +4470,7 @@ not_in_child && process_options "$@"
 
 if [ -n "$PM_INDEX" ]; then
 	fetch_index
-	outdated_ports_from_index
+	outdated_ports_from_index $PM_INDEX
 fi
 
 [ "$PM_PACKAGES" != only -a -z "$DONT_SCRUB_DISTFILES" ] &&
@@ -4486,7 +4485,8 @@ fi
 make_target=$(target_part "$1")
 post_clean_l=""
 
-if [ -z "$REPLACE_ORIGIN" ]; then
+if [ -z "$REPLACE_ORIGIN" ]; then	# <se>
+#if [ -n "$REPLACE_ORIGIN" ]; then
 	prepare_update_new_origin "$@"
 else
 	prepare_update_same_origin "$@"
@@ -4524,7 +4524,10 @@ pm_msg "===>>> Port directory: $pd/$portdir"
 pm_msg ''
 
 if [ -z "$FETCH_ONLY" ]; then
-	[ -n "$PM_FIRST_PASS" ] && check_broken "$portdir" "$upg_port"
+	if [ -n "$PM_FIRST_PASS" ]; then
+		check_broken "$portdir" "$upg_port"
+		update_build_l "$portdir" "$upg_port" $make_target
+	fi
 else
 	[ -n "$PM_PACKAGES" ] && update_pm_nu "$portdir"
 fi

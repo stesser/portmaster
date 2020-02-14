@@ -32,99 +32,51 @@ local function describe (action)
    local o_n = action.origin_new and action.origin_new.name
    local p_o = action.pkg_old and action.pkg_old.name
    local p_n = action.pkg_new and action.pkg_new.name
-   local pkgfile = action.pkg_file
-   local vers_cmp = action.vers_cmp
-   TRACE ("DESCRIBE", o_o, o_n, p_o, p_n, pkgfile, vers_cmp)
-   local describe_func = {
-      build = function ()
-	 return string.format ("Create package %s using port %s", p_n, o_n)
-      end,
-      delete = function ()
-	 return string.format ("De-install %s", p_o)
-      end,
-      install = function ()
-	 if pkgfile then
-	    return string.format ("Install %s from package %s", p_n, pkgfile)
-	 else
-	    return string.format ("Install %s using port %s", p_n, o_n)
-	 end
-      end,
-      modify = function ()
-	 if o_o == o_n then
-	    return string.format ("Rename package %s to %s for port %s", p_o, p_n, o_n)
-	 elseif p_o == p_n then
-	    return string.format ("Change registered origin of %s from %s to %s", p_n, o_o, o_n)
-	 else
-	    return string.format ("Rename package %s to %s for port %s (was %s)", p_o, p_n, o_n, o_o)
-	 end
-      end,
-      provide = function ()
-	 if pkgfile then
-	    return string.format ("Provide %s from package %s", p_n, pkgfile)
-	 else
-	    return string.format ("Provide %s using port %s", p_n, o_n)
-	 end
-      end,
-      upgrade = function ()
-	 local verb
-	 if vers_cmp == "<" then
-	    verb = "Upgrade"
-	 elseif vers_cmp == ">" then
-	    verb = "Downgrade"
-	 elseif p_o == p_n then
-	    verb = "Re-install"
-	 elseif o_o == o_n then
-	    verb = "Rename"
-	 else
-	    verb = "Replace"
-	 end
-	 if o_o == o_n then
-	    return string.format ("%s package %s to %s for port %s", verb, p_o, p_n, o_n)
-	 elseif p_o == p_n then
-	    return string.format ("%s registered origin of %s from %s to %s", verb, p_n, o_o, o_n)
-	 else
-	    return string.format ("%s package %s to %s for port %s (was %s)", verb, p_o, p_n, o_n, o_o)
-	 end
-      end,
-   }
-
    local a = action.action
-   local steps = {}
-   if p_n then
-      local from = pkgfile and " from " .. pkgfile or " using " .. o_n
-   end
-   if a.delete then
-      table.insert (steps, string.format ("De-install %s\n", p_o))
-   else
-      if a.portmoved then
-	 table.insert (steps, string.format ("Change registered origin of %s from %s to %s\n", p_n, o_o, o_n))
-      end
-      if a.pkgrenamed then
-	 table.insert (steps, string.format ("Rename package %s to %s for port %s\n", p_o, p_n, o_n))
-      end
-      if a.install then
-	 table.insert (steps, string.format ("Install package %s for port %s%s\n", p_o, p_n, o_n, from))
-      elseif a.upgrade then
-	 local verb
-	 if vers_cmp == "<" then
-	    verb = "Upgrade"
-	 elseif vers_cmp == ">" then
-	    verb = "Downgrade"
-	 elseif p_o == p_n then
-	    verb = "Re-install"
-	 elseif o_o == o_n then
-	    verb = "Rename"
+   TRACE ("DESCRIBE", a, o_o, o_n, p_o, p_n, pkgfile, vers_cmp)
+   if a then
+      if a == "delete" then
+	 return string.format ("De-install %s built from %s", p_o, o_o)
+      elseif a == "change" then
+	 if p_o ~= p_n then
+	    local prev_origin = o_o ~= o_n and " (was " .. o_o .. ")" or ""
+	    return string.format ("Change package name from %s to %s for port %s%s", p_o, p_n, o_n, prev_origin)
 	 else
-	    verb = "Replace"
+	    return string.format ("Change origin of port %s to %s for package %s", o_o, o_n, p_n)
 	 end
-	 table.insert (steps, string.format ("%s package %s to %s for port %s%s", verb, p_o, p_n, o_n, from))
+      else
+	 local from_file = ""
+	 if p_n and action.pkg_file then
+	    from_file = " from " .. action.pkg_file
+	 end
+	 if a == "install" then
+	    return string.format ("Install %s for port %s%s", p_n, o_n, from_file)
+	 elseif a == "upgrade" then
+	    local prev_pkg
+	    local verb
+	    local vers_cmp = action.vers_cmp
+	    if p_o == p_n then
+	       verb = "Re-install"
+	       prev_pkg = ""
+	    else
+	       if action.pkg_old.name_base == action.pkg_new.name_base then
+		  if vers_cmp == "<" then
+		     verb = "Upgrade"
+		  elseif vers_cmp == ">" then
+		     verb = "Downgrade"
+		  end
+		  prev_pkg = p_o .. " to "
+	       else
+		  verb = "Replace"
+		  prev_pkg = p_o .. " by "
+	       end
+	    end
+	    local prev_origin = o_o ~= o_n and " (was " .. o_o .. ")" or ""
+	    return string.format ("%s %s%s for port %s%s%s", verb, prev_pkg, p_n, o_n, prev_origin, from_file)
+	 end
       end
    end
-   if steps[1] then
-      return table.concat (steps, "\n")
-   else
-      return ""
-   end
+   return nil
 end
 
 -- ----------------------------------------------------------------------------------
@@ -1450,7 +1402,7 @@ end
 --
 local function determine_pkg_new (self, k)
    local p = self.origin_new and self.origin_new.pkg_new
-   if not p and self.pkg_old and self.origin_old then
+   if not p and self.origin_old and self.pkg_old then
       p = self.origin_old.pkg_new
       if p and p.name_base_major ~= self.pkg_old.name_base_major then
 	 p = nil
@@ -1478,28 +1430,25 @@ end
 --
 local function verify_origin_new (o)
    if o and o.name and o.name ~= "" then
-      --print ("O", "|" .. o.name .. "|", o)
       local n = o.path .. "/Makefile"
+      print ("PATH", n)
       return access (n, "r")
    end
 end
 
 --
 local function determine_origin_new (self, k)
-   local o = rawget (self, pkg_new) and self.pkg_new.origin
+   local o = self.pkg_new and self.pkg_new.origin
    if o and verify_origin_new (o) then
       return o
    end
    o = self.pkg_old and self.pkg_old.origin
    if o then
-      local new_o = Origin.lookup_moved_origin (o)
-      if verify_origin_new (new_o) then
-	 return new_o
+      local o, reason = Origin.lookup_moved_origin (o)
+      if reason or verify_origin_new (o) then
+	 return o, reason
       end
-      if o and verify_origin_new (o) then
-	 return o
-      end
-      error ("Not a valid port directory: " .. o.path)
+      --error ("Not a valid port directory: " .. o.path)
    end
 end
 
@@ -1529,23 +1478,40 @@ local function determine_action (self, k)
    local o_n = self.origin_new
    local o_o = self.origin_old
    local p_n = self.pkg_new
-
-   action = {}
-   if not p_n then
-      action.delete = true
-   elseif not p_o then
-      action.install = true
-   elseif Options.force or self.build_type == "provide" or self.build_type == "checkabi" or
-      p_o.version ~= p_n.version and not self.pkg_filename or
-      o_o.flavor ~= o_n.flavor
-   then
-      action.upgrade = true
-   else
-      if o_o and o_n and o_o ~= o_n then
-	 action.portmoved = true
-      elseif p_o and p_n and p_o ~= p_n then
-	 action.pkgrenamed = true
+   local function need_upgrade ()
+      if Options.force or self.build_type == "provide" or self.build_type == "checkabi" then
+	 return true
       end
+      if p_o.version ~= p_n.version or o_o.flavor ~= o_n.flavor then
+	 return true
+      end
+      if p_o == p_n then
+	 return false
+      end
+      local pfx_o = string.match (p_o.name, "^([^-]+)-[^-]+-%S+")
+      local pfx_n = string.match (p_n.name, "^([^-]+)-[^-]+-%S+")
+      if pfx_o ~= pfx_n then
+	 --print ("PREFIX MISMATCH:", pfx_o, pfx_n)
+	 return true
+      end
+   end
+   local function excluded ()
+      if p_o and p_o.is_locked or p_n and p_n.is_locked then
+	 return true -- ADD FURTHER CASES: excluded, broken without --try-broken, ignore, ...
+      end
+   end
+
+   local action
+   if excluded () then
+      return "exclude"
+   elseif not p_n then
+      action = "delete"
+   elseif not p_o then
+      action = "install"
+   elseif need_upgrade () then
+      action = "upgrade"
+   elseif o_o ~= o_n or p_o ~= p_n then
+      return "change"
    end
    return action
 end
@@ -1594,9 +1560,11 @@ local function new (action, args)
       action.__index = __index
       action.__tostring = describe
       setmetatable (A, action)
-      local dummy = describe (A)
-      TRACE ("ACTION is", A)
-      print (A)
+      local a = describe (A)
+      if a then
+	 TRACE ("ACTION is", a)
+	 print (a)
+      end
       return A
    else
       error ("Action:new() called with nil argument")

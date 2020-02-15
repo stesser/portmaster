@@ -363,8 +363,8 @@ local function curr_pkg (origin)
 end
 
 -- -------------------------
-local MOVED_CACHE = {} -- table indexed by old origin (as text) and giving struct with new origin (as text), date and reason for move
-local MOVED_CACHE_REV = {} -- table indexed by new origin (as text) giving previous origin (as text)
+local MOVED_CACHE = nil -- table indexed by old origin (as text) and giving struct with new origin (as text), date and reason for move
+local MOVED_CACHE_REV = nil -- table indexed by new origin (as text) giving previous origin (as text)
 
 --
 --[[
@@ -384,172 +384,7 @@ If the passed in origin contains a flavor, then entries before
 the addition of flavors should be ignored, but there is no way
 to reliably get the date when flavors were added from the MOVED 
 file.
-
-
-
 --]]
-
-local function moved_cache_load (filename)
-   local function register_moved (old, new, date, reason)
-      if old and new ~= old then -- skip comment lines and prevent infinite recursion
-	 if new and new ~= "" then
-	    local t = MOVED_CACHE_REV[new] or {}
-	    table.insert (t, old)
-	    MOVED_CACHE_REV[new] = t
-	 end
-	 MOVED_CACHE[old] = { date = date, new = new, reason = reason}
-	 local prev = MOVED_CACHE_REV[old]
-	 if prev then
-	    for i, old in ipairs (prev) do
-	       return register_moved (old, new, date, reason) -- tail recursion
-	    end
-	 end
-      end
-   end
-
-   local movedfile = io.open (filename, "r")
-   for line in movedfile:lines () do
-      register_moved (string.match (line, "^([^#][^|]+)|([^|]*)|([^|]+)|([^|]+)"))
-   end
-end
-
---[[
-   Problem: some origins are mapped to a new origin with flavor, later all ports from that directory 
-   are mapped to another one without flavor specification, which makes them applicable to all flavors
-   
-   This is currently not correctly supported by moved_cache_load() and lookup_moved_origin() !!!
---]]
-
--- try to find origin in list of moved or deleted ports, returns new origin or nil if found, false if not found, followed by reason text
-local function lookup_moved_origin (origin)
-   if not origin then
-      return false
-   end
-   local moved = MOVED_CACHE[origin.name]
-   local movedp = MOVED_CACHE[origin.port]
-   local flavor
-   if movedp then
-      if not moved or movedp.date > moved.date then
-	 moved = movedp
-	 flavor_txt = origin.flavor
-      end
-   end
-   local reason = "not found in MOVED file"
-   local result = false
-   if moved then
-      local moved_origin = moved.new
-      if moved_origin and flavor then
-	 moved_origin = moved_origin .. "@" .. flavor
-      end
-      if moved.reason then
-	 reason = moved.reason .. " on " .. moved.date
-      end
-      if moved_origin then
-	 if moved_origin ~= origin.name then
-	    result = Origin:new (moved_origin)
-	 end
-      end
-   else
-      result = nil
-   end
-   TRACE ("MOVED", result, reason)
-   return result, reason
-end
-
--- return list of previous origins as table of strings (not objects!)
-local function list_prev_origins (origin)
-   local result = {}
-   return MOVED_CACHE_REV[origin.name]
-end
-
--- RE-IMPEMENTATION OVERWRITING PREVIOUS DEFINITIONS
-
-local function moved_cache_load (filename)
-   local function register_moved (old, new, date, reason)
-      if old then
-	 local move_record = {old, new, date, reason}
-	 if not MOVED_CACHE[old] then
-	    MOVED_CACHE[old] = {}
-	 end
-	 table.insert (MOVED_CACHE[old], move_record)
-	 if not new then
-	    new = ""
-	 end
-	 if not MOVED_CACHE_REV[new] then
-	    MOVED_CACHE_REV[new] = {}
-	 end
-	 table.insert (MOVED_CACHE_REV[new], move_record)
-      end
-   end
-
-   local movedfile = io.open (filename, "r")
-   if movedfile then
-      for line in movedfile:lines () do
-	 register_moved (string.match (line, "^([^#][^|]+)|([^|]*)|([^|]+)|([^|]+)"))
-      end
-      io.close (movedfile)
-   end
-end
-
--- try to find origin in list of moved or deleted ports, returns new origin or nil if found, false if not found, followed by reason text
-local function lookup_moved_origin (origin, reverse)
-   -- return false if port dir not found, else field 2 of 2nd parameter: new origin or nil if deleted, reason as 2nd result value
-   local function check_moved (origin, moved_record)
-      local from_origin = reverse and moved_record[2] or moved_record[1]
-      local to_origin = reverse and moved_record[1] or moved_record[2]
-      local f_o = string.match (origin, "@[^:]+") 
-      local f_1 = string.match (from_origin, "@[^:]+")
-      local f_2 = string.match (to_origin, "@[^:]+")
-      local p_2 = string.match (to_origin, "^[^@:]+")
-      if not access ("/usr/ports/" .. p_2 .. "/Makefile", "r") then
-	 return false
-      end
-      if to_origin and f_o and not f_1 and not f_2 then
-	 to_origin = to_origin .. f_o -- copy original flavor
-      end
-      return to_origin, moved_record[4] .. " on " .. moved_record[3]
-   end
-   if not origin then
-      return false
-   end
-   local flavor = origin.flavor
-   local port = origin.port
-   local movedp = MOVED_CACHE[port]
-   local modedp_count = #movedp
-   local movedo = MOVED_CACHE[origin]
-   local modedo_count = #movedo
-
-   while movedp_count > 0 or movedo_coungt > 0 do
-      local mp = movedp[movedp_count] or {}
-      local mp_date = mp[3]
-      local mo = movedo[movedo_count] or {}
-      local mo_date = mo[3]
-      local to_origin
-      local reason
-      if mp_date > mo_date then -- compare entry dates and prefer newer entry
-	 to_origin, reason = check_moved (origin, mp)
-	 movedp_count = movedp_count - 1
-      else
-	 to_origin, reason = check_moved (origin, mo)
-	 movedo_count = movedo_count - 1
-      end
-      TRACE ("MOVED", to_origin, reason)
-      if to_origin then
-	 local next_origin, next_reason = lookup_moved_origin (to_origin, reverse)
-	 if next_origin ~= false then
-	    return next_origin, next_reason
-	 end
-      end
-      return to_origin, reason or "not found in MOVED file"
-   end
-end
-
--- return list of previous origins as table of strings (not objects!)
-local function list_prev_origins (origin)
-   
-end
-
--- RE-IMPEMENTATION OVERWRITING PREVIOUS DEFINITIONS
 
 local function moved_cache_load (filename)
    local function register_moved (old, new, date, reason)
@@ -558,16 +393,22 @@ local function moved_cache_load (filename)
 	 local n_p, n_f = string.match (new, "([^@]+)@?([%S]*)")
 	 o_f = o_f ~= "" and o_f or nil
 	 n_f = n_f ~= "" and n_f or nil
-	 table.insert (MOVED_CACHE, {o_p, o_f, n_p, n_f, date, reason})
+	 if not MOVED_CACHE[o_p] then
+	    MOVED_CACHE[o_p] = {}
+	 end
+	 table.insert (MOVED_CACHE[o_p], {o_p, o_f, n_p, n_f, date, reason})
       end
    end
 
-   local movedfile = io.open (filename, "r")
-   if movedfile then
-      for line in movedfile:lines () do
-	 register_moved (string.match (line, "^([^#][^|]+)|([^|]*)|([^|]+)|([^|]+)"))
+   if not MOVED_CACHE then
+      local movedfile = io.open (filename, "r")
+      MOVED_CACHE = {}
+      if movedfile then
+	 for line in movedfile:lines () do
+	    register_moved (string.match (line, "^([^#][^|]+)|([^|]*)|([^|]+)|([^|]+)"))
+	 end
+	 io.close (movedfile)
       end
-      io.close (movedfile)
    end
 end
 
@@ -579,35 +420,45 @@ local function lookup_moved_origin (origin)
       end
       return p
    end
-   local function locate_move (p, f, min_i, max_i)
+   local function locate_move (p, f, min_i)
+      local m = MOVED_CACHE[p]
+      if not m then
+	 return p, f, nil
+      end
+      local max_i = #m
       local i = max_i
-      local m
+      TRACE ("MOVED?", o (p, f), p, f)
       repeat
-	 m = MOVED_CACHE[i]
-	 if p == m[1] and (not f or not m[2] or f == m[2]) then
-	    local p = m[3]
-	    local f = f ~= m[2] and f or m[4]
-	    local reason = m[6] .. " on " .. m[5]
+	 local o_p, o_f, n_p, n_f, date, reason = table.unpack (m[i])
+	 if p == o_p and (not f or not o_f or f == o_f) then
+	    local p = n_p
+	    local f = f ~= o_f and f or n_f
+	    local r = reason .. " on " .. date
+	    TRACE ("MOVED->", o (p, f), r)
 	    if not p or access (PORTSDIR .. p .. "/Makefile") then
-	       return p, f, reason
+	       return p, f, r
 	    end
-	    return locate_move (p, f, i + 1, max_i)
+	    return locate_move (p, f, i + 1)
 	 end
 	 i = i - 1
       until i < min_i
       return p, f, nil
    end
 
-   local p, f, r = locate_move (origin.port, origin.flavor, 1, #MOVED_CACHE)
-   if r then
-      origin = p and Origin:new (o (p, f)) or nil
+   if not MOVED_CACHE then
+      moved_cache_load (PORTSDIR .. "MOVED") -- use specific configuration parameter ???
    end
-   return origin, r
+   local p, f, r = locate_move (origin.port, origin.flavor, 1)
+   if p and r then
+      origin = Origin:new (o (p, f))
+      origin.reason = r
+      return origin
+   end
 end
 
 -- return list of previous origins as table of strings (not objects!)
 local function list_prev_origins (origin)
-   return {}
+   return {} -- DUMMY / NYI
 end
 
 -- list dependencies for given origin and phase (build, run, test, all)
@@ -657,6 +508,7 @@ local function __index (self, k)
    local function __port_vars (self, k)
       local port = Port:new (self.port)
       local v = rawget (port, k)
+      TRACE ("RAW_GET(" .. port.name .. ", " .. k ..")", v ~= nil and v or "<NIL>")
       if v ~= nil then
 	 return v
       end
@@ -674,6 +526,7 @@ local function __index (self, k)
 				 "CATEGORIES",
 				 "PKGNAME",
       }) or {}
+      TRACE ("PORT_VAR(" .. self.name .. ", " .. k ..")", table.unpack (t))
       set_str (port, "distinfo_file", t[1])
       set_bool (port, "is_broken", t[2])
       set_bool (port, "is_forbidden", t[3])
@@ -687,13 +540,8 @@ local function __index (self, k)
       set_table (port, "categories", t[11])
       local pkgname = t[12]
       if pkgname then
-	 if rawget (self, pkg_new) then
-	    assert (self.pkg_new.name == pkgname, "name mismatch between pkg_new and make -V PKGNAME: " .. self.pkg_new.name .. " vs. " .. pkgname)
-	    TRACE ("PKG_NEW:", pkgname, self.pkg_new, self.name, self, self.pkg_new.origin)
-	    -- 	 assert (self.pkg_new.origin == self, "origin mismatch between pkg_new and current port: " .. self.pkg_new.origin.name) -- .. " vs. " .. self.name)
-	 else
-	    self.pkg_new = Package:new (pkgname)
-	 end
+	 self.pkg_new = Package:new (pkgname)
+	 TRACE ("PKG_NEW", self.name, pkgname)
       end
       return rawget (port, k) or rawget (self, k)
    end
@@ -704,9 +552,9 @@ local function __index (self, k)
    end
    local function __check_port_exists (self, k)
       --return access (PORTSDIR .. self.port .. "/Makefile", "r")
-      print ("PATH:", self.path)
+      --TRACE ("ACESS CHECK FOR PATH:", self.path)
       local result = access (self.path .. "/Makefile", "r")
-      print ("RESULT:", result)
+      --TRACE ("RESULT:", result)
       return result
    end
 
@@ -739,9 +587,9 @@ local function __index (self, k)
       old_pkgs = PkgDb.pkgname_from_origin,
    }
    
+   TRACE ("INDEX(o)", self, k)
    local w = rawget (self.__class, k)
    if w == nil then
-      TRACE ("INDEX(o)", self, k)
       rawset (self, k, false)
       local f = dispatch[k]
       if f then
@@ -755,6 +603,8 @@ local function __index (self, k)
 	 error ("illegal field requested: Origin." .. k)
       end
       TRACE ("INDEX(o)->", self, k, w)
+   else
+      TRACE ("INDEX(o)->", self, k, w, "(cached)")
    end
    return w
 end

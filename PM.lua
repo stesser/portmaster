@@ -1459,9 +1459,8 @@ tracefd = io.open ("/tmp/pm.log", "w")
 -- --[[
 -- ---------------------------------------------------------------------------
 -- TESTING
-function TEST ()
+function TEST_ ()
    local function table_values (t) return "[" .. table.concat (t, ",") .. "]" end
-   Origin.moved_cache_load ("/usr/ports/MOVED")
    local o = Origin:new ("devel/py-setuptools@py27")
    print ("TEST:", o, o.pkg_new, o.is_broken, o.is_ignore, o.is_forbidden, table_values (o.flavors), o.flavor)
    print ("OLD ORIGINS:", table_values (o:list_prev_origins()))
@@ -1486,6 +1485,8 @@ function TEST ()
    local o = Origin:new ("devel/qca@qt5")
    print ("M", o, o:lookup_moved_origin())
    local o = Origin:new ("devel/eric6@qt4_py37")
+   print ("M", o, o:lookup_moved_origin())
+   local o = Origin:new ("archivers/par2cmdline-tbb")
    print ("M", o, o:lookup_moved_origin())
    local o = Origin:new ("shells/bash")
    print ("M", o, o:lookup_moved_origin())

@@ -29,8 +29,8 @@ SUCH DAMAGE.
 -- Describe action to be performed
 local function describe (action)
    local o_o = action.origin_old and action.origin_old.name
-   local o_n = action.origin_new and action.origin_new.name
    local p_o = action.pkg_old and action.pkg_old.name
+   local o_n = action.origin_new and action.origin_new.name
    local p_n = action.pkg_new and action.pkg_new.name
    local a = action.action
    TRACE ("DESCRIBE", a, o_o, o_n, p_o, p_n, pkgfile, vers_cmp)
@@ -45,12 +45,14 @@ local function describe (action)
 	    return string.format ("Change origin of port %s to %s for package %s", o_o, o_n, p_n)
 	 end
       else
-	 local from_file = ""
+	 local from = ""
 	 if p_n and action.pkg_file then
-	    from_file = " from " .. action.pkg_file
+	    from = "from " .. action.pkg_file
+	 else
+	    from = "using " .. o_n .. (o_o ~= o_n and " (was " .. o_o .. ")" or "")
 	 end
 	 if a == "install" then
-	    return string.format ("Install %s for port %s%s", p_n, o_n, from_file)
+	    return string.format ("Install %s %s", p_n, from)
 	 elseif a == "upgrade" then
 	    local prev_pkg
 	    local verb
@@ -68,11 +70,10 @@ local function describe (action)
 		  prev_pkg = p_o .. " to "
 	       else
 		  verb = "Replace"
-		  prev_pkg = p_o .. " by "
+		  prev_pkg = p_o .. " with "
 	       end
 	    end
-	    local prev_origin = o_o ~= o_n and " (was " .. o_o .. ")" or ""
-	    return string.format ("%s %s%s for port %s%s%s", verb, prev_pkg, p_n, o_n, prev_origin, from_file)
+	    return string.format ("%s %s%s %s", verb, prev_pkg, p_n, from)
 	 end
       end
    end
@@ -530,7 +531,12 @@ end
    local function verify_pkgname_old_matches_new (action)
       local p_o, p_n = rawget (action, pkg_old), rawget (action, pkg_new)
       if p_o and p_n then
-	 if p_o.name_base_major ~= p_n.name_base_major then
+	 --[[
+	 if p_o.name_base_major ~= p_n.name_base_major then -- too strict without further tests!
+	    action.pkg_new = nil -- assume package mismatch if names and major numbers do not agree
+	 end
+	 --]]
+	 if p_o.name_base ~= p_n.name_base then -- too strict without further tests!
 	    action.pkg_new = nil -- assume package mismatch if names and major numbers do not agree
 	 end
       end
@@ -1404,9 +1410,11 @@ local function determine_pkg_new (self, k)
    local p = self.origin_new and self.origin_new.pkg_new
    if not p and self.origin_old and self.pkg_old then
       p = self.origin_old.pkg_new
+      --[[
       if p and p.name_base_major ~= self.pkg_old.name_base_major then
-	 p = nil
+	 p = nil -- further tests required !!!
       end
+      --]]
    end
    return p
 end
@@ -1431,25 +1439,32 @@ end
 local function verify_origin_new (o)
    if o and o.name and o.name ~= "" then
       local n = o.path .. "/Makefile"
-      print ("PATH", n)
+      --print ("PATH", n)
       return access (n, "r")
    end
 end
 
 --
 local function determine_origin_new (self, k)
-   local o = self.pkg_new and self.pkg_new.origin
+   local o = rawget (self, pkg_new) and rawget (self.pkg_new, origin)
+   --TRACE ("O_N_1", o and o.name) 
    if o and verify_origin_new (o) then
       return o
    end
    o = self.pkg_old and self.pkg_old.origin
+   --TRACE ("O_N_2", o and o.name)
    if o then
-      local o, reason = Origin.lookup_moved_origin (o)
-      if reason or verify_origin_new (o) then
-	 return o, reason
+      local o = Origin.lookup_moved_origin (o)
+      --TRACE ("O_N_3", o and o.name)
+      if o and o.reason or verify_origin_new (o) then
+	 return o
       end
       --error ("Not a valid port directory: " .. o.path)
    end
+   if o and verify_origin_new (o) then
+      return o
+   end
+   return false
 end
 
 -- 
@@ -1531,9 +1546,9 @@ local function __index (self, k)
       action = determine_action,
    }
 
+   TRACE ("INDEX(a)", k)
    local w = rawget (self.__class, k)
    if w == nil then
-      TRACE ("INDEX(a)", k)
       rawset (self, k, false)
       local f = dispatch[k]
       if f then
@@ -1547,6 +1562,8 @@ local function __index (self, k)
 	 error ("illegal field requested: Action." .. k)
       end
       TRACE ("INDEX(a)->", k, w)
+   else
+      TRACE ("INDEX(a)->", k, w, "(cached)")
    end
    return w
 end

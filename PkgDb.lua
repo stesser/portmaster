@@ -42,6 +42,7 @@ local function query (args) -- optional extra argument: pkgname or origin
    end
    table.insert (args, 1, "query")
    args.safe = true
+   args.trace = true -- DEBUGGING
    return Exec.pkg (args)
 end
 
@@ -202,7 +203,6 @@ local function pkgname_from_origin (origin)
       return nil
    end
    -- [ -n "$OPT_jailed" ] && return 1 # assume PHASE=build: the jails are empty, then
-   result = {}
    if flavor then
       local lines = PkgDb.query {table = true, "%At %Av %n-%v", dir}
       if lines then
@@ -214,23 +214,25 @@ local function pkgname_from_origin (origin)
 		  assert (p.origin == origin)
 	       end
 	       p.origin = origin
-	       table.insert (result, p)
+	       return {p}
 	    end
 	 end
       end
    else
-      local pkgnames = PkgDb.query {table = true, "%At %Av %n-%v", dir}
-      for i, line in ipairs (pkgnames) do
-	 local tag, value, pkgname = string.match (line, "(%S+) (%S+) (%S+)")
-	 local p = Package:new (pkgname)
-	    if rawget (p, "origin") then -- paranoid test
-	       assert (p.origin == origin)
-	    end
+      local result = {}
+      local p
+      --local lines = PkgDb.query {table = true, cond = "%#A==0", "%n-%v", dir}
+      local lines = PkgDb.query {table = true, "%n-%v", dir}
+      for i, pkgname in ipairs (lines) do
+	 p = Package:new (pkgname)
+	 if rawget (p, "origin") then -- paranoid test
+	    assert (p.origin == origin)
+	 end
 	 p.origin = origin
 	 table.insert (result, p)
       end
+      return result
    end
-   return result
 end
 
 -- rename package in package DB (including all dependencies on this package)

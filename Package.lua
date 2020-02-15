@@ -35,7 +35,8 @@ local function filename (basedir, pkgname, extension)
 end
 
 -- 
-local function pkg_filename (pkg, args)
+local function pkg_filename (args)
+   local pkg = args[1]
    local pkgname = pkg.name
    local subdir = args.subdir or "All"
    local extension = args.ext or Options.package_format
@@ -55,18 +56,22 @@ end
 
 -- return package version
 local function pkg_version (pkg)
-   return (string.gsub (pkg.name, ".+%-", ""))
+   local v = (string.match (pkg.name, ".*-([^-]+)"))
+   TRACE ("VERSION", pkg.name, v)
+   return v
 end
 
 -- return package basename without version
 local function pkg_basename (pkg)
-   return (string.match (pkg.name, "(.+)%-"))
+   return (string.match (pkg.name, "(%S+)-"))
 end
 
 -- return package name with only the first part of the version number
 local function pkg_strip_minor (pkg)
-   local v = pkg_version (pkg)
-   return pkg_basename (pkg) .. "-" .. string.match (v, "[^.]*")
+   local major = string.match (pkg_version (pkg), "([^.]+)%.%S+")
+   local result = pkg_basename (pkg) .. "-" .. (major or "")
+   TRACE ("STRIP_MINOR", pkg.name, result)
+   return result
 end
 
 -- ----------------------------------------------------------------------------------
@@ -275,22 +280,30 @@ local function packages_cache_load ()
 	    end
 	 end
       end
-      lines = PkgDb.query {table = true, "%n-%v %o %a %k %#r"}
+      local p = {}
+      lines = PkgDb.query {table = true, "%n-%v %o %rn-%rv %a %k"} -- instead of "%#r" use "%ro %rn-%rv" to fetch actual dependencies at low cost
       for i, line in ipairs (lines) do
-	 local pkgname, origin, automatic, locked, num_depending = string.match (line, "(%S+) (%S+) (%d) (%d) (%d+)")
+	 local pkgname, origin, dep_pkg, automatic, locked = string.match (line, "(%S+) (%S+) (%S+) (%d) (%d)")
 	 --print ("L", line)
-	 local p = Package:new (pkgname)
-	 p.is_automatic = automatic == "1"
-	 p.is_locked = locked == "1"
-	 p.num_depending = tonumber (num_depending)
-	 p.is_installed = true
-	 local f = pkg_flavors[pkgname]
-	 origin = f and origin .. "@" .. f or origin
-	 local o = Origin:new (origin)
-	 if rawget (o, old_pkgs) == nil then
-	    o.old_pkgs = {}
+	 if p.name ~= pkgname then
+	    local f = pkg_flavors[pkgname]
+	    origin = f and origin .. "@" .. f or origin
+	    local o = Origin:new (origin)
+	    if not o.old_pkgs then
+	       o.old_pkgs = {}
+	    end
+	    o.old_pkgs[pkgname] = true
+	    p = Package:new (pkgname)
+	    p.is_automatic = automatic == "1"
+	    p.is_locked = locked == "1"
+	    p.num_depending = 1
+	    p.dep_pkgs = { dep_pkg }
+	    p.is_installed = true
+	    p.origin = o
+	 else
+	    p.num_depending = p.num_depending + 1
+	    table.insert (p.dep_pkgs, dep_pkg)
 	 end
-	 o.old_pkgs[pkgname] = true
       end
       PACKAGES_CACHE_LOADED = true
    end
@@ -366,10 +379,10 @@ local function __index (self, k)
 	 return PkgDb.query {table = true, "%B", self.name}
       end,
       pkg_filename = function (self, k)
-	 return pkg_filename (self, {subdir = "All"})
+	 return pkg_filename {subdir = "All", self}
       end,
       bak_filename = function (self, k)
-	 return pkg_filename (self, {subdir = "portmaster-backup", extension = Options.backup_format, self})
+	 return pkg_filename {subdir = "portmaster-backup", extension = Options.backup_format, self}
       end,
       origin = function (self, k)
 	 TRACE ("Looking up origin for", self.name)
@@ -382,9 +395,9 @@ local function __index (self, k)
       end,
    }
    
+   TRACE ("INDEX(p)", self, k)
    local w = rawget (self.__class, k)
    if w == nil then
-      TRACE ("INDEX(p)", self, k)
       rawset (self, k, false)
       local f = dispatch[k]
       if f then
@@ -398,6 +411,8 @@ local function __index (self, k)
 	 error ("illegal field requested: Package." .. k)
       end
       TRACE ("INDEX(p)->", self, k, w)
+   else
+      TRACE ("INDEX(p)->", self, k, w, "(cached)")
    end
    return w
 end

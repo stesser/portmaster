@@ -28,7 +28,11 @@ SUCH DAMAGE.
 -- ----------------------------------------------------------------------------------
 -- print command if at least one of dry-run or show-work is set
 local function log (level, ...)
-   local text = table.concat ({...}, " ")
+   local args = {...}
+   for i = 1, #args do
+      args[i] = tostring(args[i])
+   end
+   local text = table.concat (args, " ")
    if level <= Msg.level then
       if Options.dry_run then
 	 stdout:write("\t" .. text .. "\n")

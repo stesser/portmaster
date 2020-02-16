@@ -31,7 +31,7 @@ SUCH DAMAGE.
 local function query (args) -- optional extra argument: pkgname or origin
    if args.cond then
       table.insert (args, 1, "-e")
-      table.insert (args, 2, cond)
+      table.insert (args, 2, args.cond)
    end
    if args.pkgfile then
       table.insert (args, 1, "-F")
@@ -42,7 +42,6 @@ local function query (args) -- optional extra argument: pkgname or origin
    end
    table.insert (args, 1, "query")
    args.safe = true
-   args.trace = true -- DEBUGGING
    return Exec.pkg (args)
 end
 

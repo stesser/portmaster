@@ -189,6 +189,7 @@ local function run (cmd, args)
 	       line = inp:read ()
 	    end
 	    io.close (inp)
+	    TRACE ("RUN", cmdline, "-->", #result, "lines")
 	    return result
 	 else
 	    return nil, "command failed: cmdline"

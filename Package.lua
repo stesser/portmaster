@@ -292,7 +292,7 @@ local function packages_cache_load ()
 	    local f = pkg_flavors[pkgname]
 	    origin = f and origin .. "@" .. f or origin
 	    local o = Origin:new (origin)
-	    if not rawget (o, old_pkgs) then
+	    if not rawget (o, "old_pkgs") then
 	       o.old_pkgs = {}
 	    end
 	    o.old_pkgs[pkgname] = true

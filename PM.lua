@@ -1397,9 +1397,12 @@ function main ()
       ports_add_multiple (force, table.unpack (arg))
    end
 
+   -- add missing dependencies
+   Action.add_missing_deps ()
+
    -- sort actions according to registered dependencies
    Action.sort_list ()
-   
+
    -- build list of packages to install after all ports have been built
    Action.register_delayed_installs ()
 

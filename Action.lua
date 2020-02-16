@@ -506,21 +506,21 @@ local function conflicts_adjust (action)
 end
 
    local function derive_pkgname_old_from_origin_old (action)
-      local p_o, o_o = rawget (action, pkg_old), rawget (action, origin_old)
+      local p_o, o_o = rawget (action, "pkg_old"), rawget (action, "origin_old")
       if not p_o and o_o then
 	 action.pkg_old = o_o.pkg_old
       end
    end
 
    local function derive_pkgname_new_from_origin_new (action)
-      local p_n, o_n = rawget (action, pkg_new), rawget (action, origin_new)
+      local p_n, o_n = rawget (action, "pkg_new"), rawget (action, "origin_new")
       if not p_n and o_n then
 	 action.pkg_new = o_n.pkg_new
       end
    end
 
    local function derive_pkgname_new_from_origin_new_jailed (action)
-      local p_n, o_n = rawget (action, pkg_new), rawget (action, origin_new)
+      local p_n, o_n = rawget (action, "pkg_new"), rawget (action, "origin_new")
       if not p_n and o_n then
 	 action.pkg_new = o_n.pkg_new -- WHY JAILED ???
       end
@@ -528,7 +528,7 @@ end
    end
 
    local function verify_pkgname_old_matches_new (action)
-      local p_o, p_n = rawget (action, pkg_old), rawget (action, pkg_new)
+      local p_o, p_n = rawget (action, "pkg_old"), rawget (action, "pkg_new")
       if p_o and p_n then
 	 --[[
 	 if p_o.name_base_major ~= p_n.name_base_major then -- too strict without further tests!
@@ -542,7 +542,7 @@ end
    end
 
    local function derive_pkgname_new_from_origin_old (action)
-      local p_n, o_o = rawget (action, pkg_new), rawget (action, origin_old)
+      local p_n, o_o = rawget (action, "pkg_new"), rawget (action, "origin_old")
       if not p_n and o_o then
 	 action.pkg_new = o_o.pkg_new -- || return 1 # <se> EXPERIMENTAL to prevent deinstallation on Makefile inconsistency!!! --> destroys -o option!!!
 	 verify_pkgname_old_matches_new (action)
@@ -550,14 +550,14 @@ end
    end
 
    local function guess_origin_old_from_origin_pkgname_new (action)
-      local p_n, o_o, o_n = rawget (action, pkg_new), rawget (action, origin_old), rawget (action, origin_new)
+      local p_n, o_o, o_n = rawget (action, "pkg_new"), rawget (action, "origin_old"), rawget (action, "origin_new")
       if not o_o and o_n and p_n then
 	 action.origin_old = guess_origin_old (o_n, p_n)
       end
    end
 
    local function derive_origin_new_from_origin_and_pkgname_old (action)
-      local p_o, o_o, o_n = rawget (action, pkg_old), rawget (action, origin_old), rawget (action, origin_new)
+      local p_o, o_o, o_n = rawget (action, "pkg_old"), rawget (action, "origin_old"), rawget (action, "origin_new")
       if not o_n and p_o then
 	 o_n = origin_new_from_old (o_o, p_o)
 	 if o_n and not o_n:check_path () then
@@ -569,7 +569,7 @@ end
    end
 
    local function derive_pkgname_old_from_origin_new (action)
-      local p_o, o_o, o_n = rawget (action, pkg_old), rawget (action, origin_old), rawget (action, origin_new)
+      local p_o, o_o, o_n = rawget (action, "pkg_old"), rawget (action, "origin_old"), rawget (action, "origin_new")
       if not p_o and o_n and o_o ~= o_n then
 	 p_o = o_n:curr_pkg () -- PkgDb.pkgname_from_origin (o_n)
 	 if not p_o then
@@ -587,7 +587,7 @@ end
    end
 
    local function guess_pkgname_old_from_pkgname_new (action)
-      local p_o, p_n = rawget (action, pkg_old), rawget (action, pkg_new)
+      local p_o, p_n = rawget (action, "pkg_old"), rawget (action, "pkg_new")
       if not p_o and p_n then
 	 local result = PkgDb.query {"%n-%v", p_n:name_base ()}
 	 if result then
@@ -1428,7 +1428,7 @@ end
 
 --
 local function determine_origin_old (self, k)
-   --print ("OO:", self.pkg_old, (rawget (self, pkg_old) and (self.pkg_old).origin or "-"), self.pkg_new, (rawget (self, pkg_new) and (self.pkg_new.origin or "-")))
+   --print ("OO:", self.pkg_old, (rawget (self, "pkg_old") and (self.pkg_old).origin or "-"), self.pkg_new, (rawget (self, "pkg_new") and (self.pkg_new.origin or "-")))
    local o = self.pkg_old and self.pkg_old.origin
       or self.pkg_new and self.pkg_new.origin -- NOT EXACT
    return o
@@ -1445,7 +1445,7 @@ end
 
 --
 local function determine_origin_new (self, k)
-   local o = rawget (self, pkg_new) and rawget (self.pkg_new, origin)
+   local o = rawget (self, "pkg_new") and rawget (self.pkg_new, "origin")
    --TRACE ("O_N_1", o and o.name) 
    if o and verify_origin_new (o) then
       return o

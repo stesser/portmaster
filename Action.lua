@@ -44,22 +44,21 @@ local function describe (action)
 	 else
 	    return string.format ("Change origin of port %s to %s for package %s", o_o, o_n, p_n)
 	 end
-      else
+      elseif a == "upgrade" then
 	 local from = ""
 	 if p_n and action.pkg_file then
 	    from = "from " .. action.pkg_file
 	 else
 	    from = "using " .. o_n .. (o_o ~= o_n and " (was " .. o_o .. ")" or "")
 	 end
-	 if a == "install" then
-	    return string.format ("Install %s %s", p_n, from)
-	 elseif a == "upgrade" then
-	    local prev_pkg
-	    local verb
+	 local prev_pkg = ""
+	 local verb
+	 if not p_o then
+	    verb = "Install"
+	 else
 	    local vers_cmp = action.vers_cmp
 	    if p_o == p_n then
 	       verb = "Re-install"
-	       prev_pkg = ""
 	    else
 	       if action.pkg_old.name_base == action.pkg_new.name_base then
 		  if vers_cmp == "<" then
@@ -73,11 +72,11 @@ local function describe (action)
 		  prev_pkg = p_o .. " with "
 	       end
 	    end
-	    return string.format ("%s %s%s %s", verb, prev_pkg, p_n, from)
 	 end
+	 return string.format ("%s %s%s %s", verb, prev_pkg, p_n, from)
       end
    end
-   return nil
+   return ""
 end
 
 -- ----------------------------------------------------------------------------------
@@ -1467,14 +1466,6 @@ local function determine_origin_new (self, k)
    return false
 end
 
--- 
-local function check_build_depends (self, k)
-end
-
--- 
-local function check_run_depends (self, k)
-end
-
 --
 local function compare_versions (self, k)
    local p_o = self.pkg_old
@@ -1495,7 +1486,7 @@ local function determine_action (self, k)
    local p_n = self.pkg_new
    local function need_upgrade ()
       if Options.force or self.build_type == "provide" or self.build_type == "checkabi" then
-	 return true
+	 return true -- add further checks, e.g. changed dependencies ???
       end
       if p_o.version ~= p_n.version or o_o.flavor ~= o_n.flavor then
 	 return true
@@ -1516,24 +1507,31 @@ local function determine_action (self, k)
       end
    end
 
-   local action
    if excluded () then
       return "exclude"
-   elseif not p_n then
-      action = "delete"
-   elseif not p_o then
-      action = "install"
-   elseif need_upgrade () then
-      action = "upgrade"
+   elseif not o_n then
+      o_o.action = action
+      return "delete"
+   elseif not o_o or need_upgrade () then
+      o_n.action = action
+      return "upgrade"
    elseif o_o ~= o_n or p_o ~= p_n then
+      o_n.action = action
       return "change"
    end
-   return action
+   return false
 end
 
 -- ----------------------------------------------------------------------------------
 --local ACTIONS_CACHE = {}
 local function __index (self, k)
+   local function __depends (self, k)
+      local o_n = self.origin_new
+      if o_n then
+	 k = string.match (k, "[^_]+")
+	 return o_n.depends (self.origin_new, k)
+      end
+   end
    local dispatch = {
       pkg_old = determine_pkg_old,
       pkg_new = determine_pkg_new,
@@ -1541,8 +1539,8 @@ local function __index (self, k)
       vers_cmp = compare_versions,
       origin_old = determine_origin_old,
       origin_new = determine_origin_new,
-      build_depends = check_build_depends,
-      run_depends = check_run_depends,
+      build_depends = __depends,
+      run_depends = __depends,
       action = determine_action,
    }
 
@@ -1569,20 +1567,15 @@ local function __index (self, k)
 end
 
 -- object that controls the upgrading and other changes
-local function new (action, args)
+local function new (Action, args)
    if args then
       TRACE ("ACTION", args.pkg_old or args.pkg_new or args.origin_new)
-      local A = args
-      A.__class = action
-      action.__index = __index
-      action.__tostring = describe
-      setmetatable (A, action)
-      local a = describe (A)
-      if a then
-	 TRACE ("ACTION is", a)
-	 print (a)
-      end
-      return A
+      local action = args
+      action.__class = Action
+      Action.__index = __index
+      Action.__tostring = describe
+      setmetatable (action, Action)
+      return action
    else
       error ("Action:new() called with nil argument")
    end

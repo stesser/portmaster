@@ -401,6 +401,7 @@ local function moved_cache_load (filename)
    end
 
    if not MOVED_CACHE then
+      Msg.cont (1, "Load list of renamed of removed ports")
       local movedfile = io.open (filename, "r")
       MOVED_CACHE = {}
       if movedfile then
@@ -409,6 +410,7 @@ local function moved_cache_load (filename)
 	 end
 	 io.close (movedfile)
       end
+      Msg.cont (1, "The list of renamed of removed ports has been loaded")
    end
 end
 
@@ -470,16 +472,16 @@ local DEPEND_ARGS = {
 }
 DEPEND_ARGS.all = DEPEND_ARGS.build .. " -V RUN_DEPENDS"
 
-local function depends (origin, dep_type)
-   TRACE (origin.name, dep_type)
+local function depends (origin, dep_type) -- Check whether these function can return "special depends" with make target attached to the origin !!! ToDo ???
+   TRACE ("CHECK_DEPENDS", origin.name, dep_type .. "-depends-list")
    local args = DEPEND_ARGS[dep_type]
    assert (args, "No dependency check defined for phase '" .. dep_type .. "'")
-   local lines = origin:port_make {table = true, safe = true, dep_type .. "-depends-list"}
+   local lines = origin:port_make {table = true, safe = true, "-DDEPENDS_SHOW_FLAVOR", dep_type .. "-depends-list"}
    local result = {}
    for i, line in ipairs (lines) do
       table.insert (result, line:match (".*/([^/]+/[^/]+)$"))
---      table.insert (result, Origin:new (line:match (".*/([^/]+/[^/]+)$")))
    end
+   TRACE ("CHECK_DEPENDS->", origin.name, table.unpack (result))
    return result
 end
 
@@ -644,6 +646,7 @@ return {
    check_options = check_options,
    check_path = check_path,
    configure = configure,
+   depends = depends,
    -- ...
    port_make = port_make,
    port_var = port_var,

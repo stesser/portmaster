@@ -1029,6 +1029,22 @@ function ports_add_recursive (name, origin_new) -- 2nd parameter is optional
    end
 end
 
+local function add_action (args)
+   local action = Action:new (args)
+   if action.action then
+      a = tostring (action)
+      Msg.start (0, a)
+      --[[
+      --Dependencies???
+	 local bd = action.build_depends or {}
+	 print ("Build Depends:", table.unpack (bd))
+	 local rd = action.run_depends or {}
+	 print ("Run Depends:", table.unpack (rd))
+      --]]
+      --Add to Action-List???
+   end
+end
+
 -- add all matching ports identified by pkgnames and/or portnames with optional flavor
 function ports_add_multiple (build_type, ...)
    for i, name_glob in ipairs ({...}) do
@@ -1038,29 +1054,24 @@ end
 
 -- process all outdated ports (may upgrade, install, change, or delete ports)
 function ports_add_all_old_abi ()
-   Msg.start (0, "Collecting a list of all packages built for a different OS release ...")
    for i, pkg in ipairs (Package:installed_pkgs ()) do
       if pkg.abi ~= ABI and pkg.abi ~= ABI_NOARCH then
-	 Action:new {build_type = "user", dep_type = "run", pkg_old = pkg}
+	 add_action {build_type = "user", dep_type = "run", pkg_old = pkg}
       end
    end
 end
 
 -- process all outdated ports (may upgrade, install, change, or delete ports)
 function ports_add_all_outdated ()
-   Msg.start (0, "Collecting a list of all user installed packages ...")
-   --
    for i, pkg in ipairs (Package:installed_pkgs ()) do
       if not pkg.is_automatic or pkg.num_depending > 0 then
-	 local a = Action:new {build_type = "user", dep_type = "run", pkg_old = pkg}
-	 --Dependencies???
-	 --Add to Action-List???
+	 add_action {build_type = "user", dep_type = "run", pkg_old = pkg}
       end
    end
    --
    for i, pkg in ipairs (Package:installed_pkgs ()) do
       if not (not pkg.is_automatic or pkg.num_depending > 0) then
-	 Action:new {build_type = "user", dep_type = "run", pkg_old = pkg}
+	 add_action {build_type = "user", dep_type = "run", pkg_old = pkg}
       end
    end
 end

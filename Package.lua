@@ -269,7 +269,7 @@ local PACKAGES_CACHE_LOADED = false -- should be local with iterator ...
 -- load a list of of origins with flavor for currently installed flavored packages
 local function packages_cache_load ()
    if not PACKAGES_CACHE_LOADED then
-      Msg.start (0, "Loading package repository information ...")
+      Msg.cont (1, "Load list of installed packages ...")
       local pkg_flavors = {}
       local lines = PkgDb.query {table = true, "%At %Av %n-%v"}
       if lines then
@@ -281,15 +281,18 @@ local function packages_cache_load ()
 	 end
       end
       local p = {}
-      lines = PkgDb.query {table = true, "%n-%v %o %rn-%rv %a %k"} -- instead of "%#r" use "%ro %rn-%rv" to fetch actual dependencies at low cost
+      local prev_pkgname
+      --lines = PkgDb.query {table = true, "%n-%v %o %#r %a %k"} -- instead of "%#r" use "%ro %rn-%rv" to fetch actual dependencies at low cost
+      lines = PkgDb.query {table = true, "%n-%v %o %rn-%rv %a %k"}
       for i, line in ipairs (lines) do
 	 local pkgname, origin, dep_pkg, automatic, locked = string.match (line, "(%S+) (%S+) (%S+) (%d) (%d)")
 	 --print ("L", line)
-	 if p.name ~= pkgname then
+	 if pkgname ~= prev_pkgname then
+	    prev_pkgname = pkgname
 	    local f = pkg_flavors[pkgname]
 	    origin = f and origin .. "@" .. f or origin
 	    local o = Origin:new (origin)
-	    if not o.old_pkgs then
+	    if not rawget (o, old_pkgs) then
 	       o.old_pkgs = {}
 	    end
 	    o.old_pkgs[pkgname] = true
@@ -305,6 +308,7 @@ local function packages_cache_load ()
 	    table.insert (p.dep_pkgs, dep_pkg)
 	 end
       end
+      Msg.cont (1, "The list of installed packages has been loaded")
       PACKAGES_CACHE_LOADED = true
    end
 end

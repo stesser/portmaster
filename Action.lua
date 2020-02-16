@@ -1479,13 +1479,13 @@ local function compare_versions (self, k)
 end
 
 --
-local function determine_action (self, k)
-   local p_o = self.pkg_old
-   local o_n = self.origin_new
-   local o_o = self.origin_old
-   local p_n = self.pkg_new
+local function determine_action (action, k)
+   local p_o = action.pkg_old
+   local o_n = action.origin_new
+   local o_o = action.origin_old
+   local p_n = action.pkg_new
    local function need_upgrade ()
-      if Options.force or self.build_type == "provide" or self.build_type == "checkabi" then
+      if Options.force or action.build_type == "provide" or action.build_type == "checkabi" then
 	 return true -- add further checks, e.g. changed dependencies ???
       end
       if p_o.version ~= p_n.version or o_o.flavor ~= o_n.flavor then
@@ -1581,6 +1581,69 @@ local function new (Action, args)
    end
 end
 
+--
+ACTION_LIST = {} -- GLOBAL
+
+local function add (args)
+   local action = Action:new (args)
+   if action.action then
+      table.insert (ACTION_LIST, action)
+      a = tostring (action)
+      Msg.start (0, a)
+      --[[
+      --Dependencies???
+	 local bd = action.build_depends or {}
+	 print ("Build Depends:", table.unpack (bd))
+	 local rd = action.run_depends or {}
+	 print ("Run Depends:", table.unpack (rd))
+      --]]
+      --Add to Action-List???
+   end
+end
+
+local function sort_list ()
+   local sorted_list = {}
+   local function add_action (action)
+      if not rawget (action, "planned") then
+	 --if action.action == "upgrade" then
+	 for i, o in ipairs (action.build_depends or {}) do
+	       local origin = Origin:new (o)
+	       local a = origin.action
+	       if a and not rawget (a, "planned") then
+		  --print ("Build", a.origin_new, "for", action.origin_new or action.origin_old)
+		  add_action (a)
+	       end
+	    end
+	 --assert (not rawget (action, "planned"), "Dependency loop for " .. action.origin_new and action.origin_new.name or action.origin_old.name)
+	    table.insert (sorted_list, action)
+	    action.planned = true
+	    Msg.cont (0, #sorted_list, " ", tostring (action))
+	    for i, o in ipairs (action.run_depends or {}) do
+	       local origin = Origin:new (o)
+	       local a = origin.action
+	       if a and not rawget (a, "planned") then
+		  --print ("Provide", a.origin_new, "for", action.origin_new or action.origin_old)
+		  add_action (a)
+	       end
+	    end
+	 --end
+      end
+   end
+
+   Msg.start (0, "Sort actions")
+   for i, a in ipairs (ACTION_LIST) do
+      Msg.start (0)
+      add_action (a)
+   end
+   assert (#ACTION_LIST == #sorted_list, "ACTION_LIST items have been lost: " .. #ACTION_LIST .. " vs. " .. #sorted_list)
+   ACTION_LIST = sorted_list
+   --[[
+   for i, a in ipairs (ACTION_LIST) do
+      print (i, a)
+   end
+   --]]
+end
+
 -- ----------------------------------------------------------------------------------
 --
 return {
@@ -1588,6 +1651,8 @@ return {
    execute = execute,
    packages_delete_stale = packages_delete_stale,
    register_delayed_installs = register_delayed_installs,
+   add = add,
+   sort_list = sort_list,
    --[[
    --]]
 }

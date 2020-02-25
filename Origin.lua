@@ -28,7 +28,7 @@ SUCH DAMAGE.
 -- ----------------------------------------------------------------------------------
 -- return port name without flavor
 local function port (origin)
-   return (string.match (origin.name, "^[^:@]+"))
+   return (string.match (origin.name, "^[^:@%%]+"))
 end
 
 -- return full path to the port directory
@@ -43,7 +43,12 @@ end
 
 -- return flavor of passed origin or nil
 local function flavor (origin)
-   return (string.match (origin.name, "%S+@([^:]+)"))
+   return (string.match (origin.name, "%S+@([^:%%]+)"))
+end
+
+-- return flavor of passed origin or nil
+local function pseudo_flavor (origin)
+   return (string.match (origin.name, "%S+%%([^:%%]+)"))
 end
 
 -- return path to the portdb directory (contains cached port options)
@@ -73,7 +78,21 @@ local function port_make (origin, args)
    end
    table.insert (args, 1, "-C")
    table.insert (args, 2, dir)
-   return Exec.run (MAKE_CMD, args)
+   local pf = pseudo_flavor (origin)
+   if pf then
+      table.insert (args, 1, "DEFAULT_VERSIONS='" .. pf .. "'")
+      TRACE ("DEFAULT_VERSIONS", pf)
+   end
+   local result = Exec.run (MAKE_CMD, args)
+   if result then
+      if args.split then
+	 result = split_words (result)
+      end
+      if result == "" then
+	 result = nil
+      end
+   end
+   return result
 end
 
 -- return the Makefile variable named "$var" for port "$origin" (with optional flavor)
@@ -86,16 +105,7 @@ local function port_var (origin, args)
       local dbginfo = debug.getinfo (2, "ln")
       table.insert (args, "LOC=" .. dbginfo.name .. ":" .. dbginfo.currentline)
    end
-   local result = port_make (origin, args)
-   if result then
-      if args.split then
-	 result = split_words (result)
-      end
-      if result == "" then
-	 result = nil
-      end
-   end
-   return result
+   return port_make (origin, args)
 end
 
 -- check whether port is marked BROKEN, IGNORE, or FORBIDDEN
@@ -397,13 +407,21 @@ local function moved_cache_load (filename)
 	    MOVED_CACHE[o_p] = {}
 	 end
 	 table.insert (MOVED_CACHE[o_p], {o_p, o_f, n_p, n_f, date, reason})
+	 if n_p then
+	    if not MOVED_CACHE_REV[n_p] then
+	       MOVED_CACHE_REV[n_p] = {}
+	    end
+	    table.insert (MOVED_CACHE_REV[n_p], {o_p, o_f, n_p, n_f, date, reason})
+	 end
       end
    end
 
    if not MOVED_CACHE then
-      Msg.cont (1, "Load list of renamed of removed ports")
-      local movedfile = io.open (filename, "r")
       MOVED_CACHE = {}
+      MOVED_CACHE_REV = {}
+      local filename = PORTSDIR .. "MOVED" -- allow override with configuration parameter ???
+      Msg.cont (1, "Load list of renamed of removed ports from " .. filename)
+      local movedfile = io.open (filename, "r")
       if movedfile then
 	 for line in movedfile:lines () do
 	    register_moved (string.match (line, "^([^#][^|]+)|([^|]*)|([^|]+)|([^|]+)"))
@@ -448,7 +466,7 @@ local function lookup_moved_origin (origin)
    end
 
    if not MOVED_CACHE then
-      moved_cache_load (PORTSDIR .. "MOVED") -- use specific configuration parameter ???
+      moved_cache_load ()
    end
    local p, f, r = locate_move (origin.port, origin.flavor, 1)
    if p and r then
@@ -458,6 +476,53 @@ local function lookup_moved_origin (origin)
    end
 end
 
+-- try to find origin in list of moved or deleted ports, returns new origin or nil if found, false if not found, followed by reason text
+local function lookup_prev_origins (origin)
+   --[[
+   local function o (p, f)
+      if p and f then
+	 p = p .. "@" .. f
+      end
+      return p
+   end
+   local function locate_move (p, f, min_i)
+      local m = MOVED_CACHE[p]
+      if not m then
+	 return p, f, nil
+      end
+      local max_i = #m
+      local i = max_i
+      TRACE ("MOVED?", o (p, f), p, f)
+      repeat
+	 local o_p, o_f, n_p, n_f, date, reason = table.unpack (m[i])
+	 if p == o_p and (not f or not o_f or f == o_f) then
+	    local p = n_p
+	    local f = f ~= o_f and f or n_f
+	    local r = reason .. " on " .. date
+	    TRACE ("MOVED->", o (p, f), r)
+	    if not p or access (PORTSDIR .. p .. "/Makefile") then
+	       return p, f, r
+	    end
+	    return locate_move (p, f, i + 1)
+	 end
+	 i = i - 1
+      until i < min_i
+      return p, f, nil
+   end
+
+   if not MOVED_CACHE_REV then
+      moved_cache_load ()
+   end
+   local p, f, r = locate_move (origin.port, origin.flavor, 1)
+   if p and r then
+      origin = Origin:new (o (p, f))
+      origin.reason = r
+      return origin
+   end
+   --]]
+   return {} -- DUMMY RETURN VALUE
+end
+
 -- return list of previous origins as table of strings (not objects!)
 local function list_prev_origins (origin)
    return {} -- DUMMY / NYI
@@ -465,22 +530,27 @@ end
 
 -- list dependencies for given origin and phase (build, run, test, all)
 local DEPEND_ARGS = {
-   build = "-V PKG_DEPENDS -V EXTRACT_DEPENDS -V PATCH_DEPENDS -V FETCH_DEPENDS -V BUILD_DEPENDS -V LIB_DEPENDS",
-   run = "-V RUN_DEPENDS -V LIB_DEPENDS",
-   test = "-V TEST_DEPENDS",
-   -- package = "",
+   build = {"PKG_DEPENDS", "EXTRACT_DEPENDS", "PATCH_DEPENDS", "FETCH_DEPENDS", "BUILD_DEPENDS", "LIB_DEPENDS"},
+   run = {"RUN_DEPENDS", "LIB_DEPENDS"},
+   test = {"TEST_DEPENDS" },
 }
-DEPEND_ARGS.all = DEPEND_ARGS.build .. " -V RUN_DEPENDS"
 
 local function depends (origin, dep_type) -- Check whether these function can return "special depends" with make target attached to the origin !!! ToDo ???
    TRACE ("CHECK_DEPENDS", origin.name, dep_type .. "-depends-list")
    local args = DEPEND_ARGS[dep_type]
    assert (args, "No dependency check defined for phase '" .. dep_type .. "'")
-   local lines = origin:port_make {table = true, safe = true, "-DDEPENDS_SHOW_FLAVOR", dep_type .. "-depends-list"}
-   local result = {}
+   local lines = origin:port_var {table = true, safe = true, table.unpack (args)}
+   local t = {}
    for i, line in ipairs (lines) do
-      table.insert (result, line:match (".*/([^/]+/[^/]+)$"))
+      for j, word in ipairs (split_words (line)) do
+	 local dep = string.match (word, "[^:]+:(%S+)")
+	 if dep then
+	    TRACE ("DEP", word, dep)
+	    t[dep] = true
+	 end
+      end
    end
+   local result = table.keys (t)
    TRACE ("CHECK_DEPENDS->", origin.name, table.unpack (result))
    return result
 end
@@ -506,6 +576,11 @@ end
 local ORIGINS_CACHE = {}
 --setmetatable (ORIGINS_CACHE, {__mode = "v"})
 
+local function __newindex (origin, n, v)
+   TRACE ("SET(o)", origin.name, n, v)
+   rawset (origin, n, v)
+end
+
 local function __index (self, k)
    local function __port_vars (self, k)
       local port = Port:new (self.port)
@@ -514,6 +589,7 @@ local function __index (self, k)
       if v ~= nil then
 	 return v
       end
+      local pkg = self.pkg_old
       local t = port_var (self, {table = true,
 				 "DISTINFO_FILE",
 				 "BROKEN",
@@ -573,6 +649,7 @@ local function __index (self, k)
       new_options = __port_vars,
       port_options = __port_vars,
       categories = __port_vars,
+      pkg_old = Package.packages_cache_load,
       pkg_new = __port_vars,
       path = path,
       port = port,
@@ -623,6 +700,7 @@ local function new (origin, name)
 	 O = {name = name}
 	 O.__class = origin
 	 origin.__index = __index
+	 origin.__newindex = __newindex -- DEBUGGING ONLY
 	 origin.__tostring = function (origin)
 	    return origin.name
 	 end

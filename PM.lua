@@ -427,16 +427,26 @@ end
 
 -- return global ports system variable (not dependent on any specific port)
 -- might possibly have to support reading more than one line???
-function ports_var (var)
+function ports_var (args)
    local exitcode, result
-   args = {"-DBEFOREPORTMK", "-f/usr/share/mk/bsd.port.mk", "-V", var}
+   table.insert (args, 1, "-f/usr/share/mk/bsd.port.mk")
+   table.insert (args, 2, "-V")
+   if not args.needbeforemk then
+      table.insert (args, 1, "-DBEFOREPORTMK")
+   end
    if Options.make_args then
       table.move (Options.make_args, 1, -1, #args + 1, args)
    end
    args.safe = true
    result = Exec.shell (MAKE_CMD, args)
    --if result and strpfx (result, "make: ") then return nil end
-   return chomp (result)
+   if args.table then
+      return result
+   elseif args.split then
+      return split_words (result)
+   else
+      return chomp (result)
+   end
 end
 
 -- initialize global variables after reading configuration files
@@ -451,17 +461,17 @@ function init_globals ()
    MAKE_CMD		= init_global_cmd ("/usr/bin/make")
 
    -- port infrastructure paths, may be modified by user
-   PORTSDIR		= init_global_path (ports_var ("PORTSDIR"), "/usr/ports")
-   DISTDIR		= init_global_path (ports_var ("DISTDIR"), PORTSDIR .. "distfiles")
-   PACKAGES		= init_global_path (Options.local_packagedir, ports_var ("PACKAGES"), PORTSDIR .. "packages", "/usr/packages")
+   PORTSDIR		= init_global_path (ports_var {"PORTSDIR"}, "/usr/ports")
+   DISTDIR		= init_global_path (ports_var {"DISTDIR"}, PORTSDIR .. "distfiles")
+   PACKAGES		= init_global_path (Options.local_packagedir, ports_var {"PACKAGES"}, PORTSDIR .. "packages", "/usr/packages")
    PACKAGES_BACKUP	= init_global_path (PACKAGES .. "portmaster-backup")
 
-   LOCALBASE		= init_global_path (ports_var ("LOCALBASE"), "/usr/local")
+   LOCALBASE		= init_global_path (ports_var {"LOCALBASE"}, "/usr/local")
    LOCAL_LIB		= init_global_path (LOCALBASE .. "lib")
    LOCAL_LIB_COMPAT	= init_global_path (LOCAL_LIB .. "compat/pkg")
 
-   PKG_DBDIR		= init_global_path (ports_var ("PKG_DBDIR"), "/var/db/pkg")
-   PORT_DBDIR		= init_global_path (ports_var ("PORT_DBDIR"), "/var/db/ports")
+   PKG_DBDIR		= init_global_path (ports_var {needportmk = true, "PKG_DBDIR"}, "/var/db/pkg")	-- no value returned for make -DBEFOREPORTMK
+   PORT_DBDIR		= init_global_path (ports_var {"PORT_DBDIR"}, "/var/db/ports")
 
    TMPDIR		= init_global_path (os.getenv ("TMPDIR"), "/tmp")
 
@@ -493,46 +503,18 @@ function init_globals ()
    DISTFILES_LIST = DISTDIR .. "DISTFILES.list"	-- current distfile names of all ports
 
    -- has license framework been disabled by the user
-   DISABLE_LICENSES = ports_var ("DISABLE_LICENSES")
+   DISABLE_LICENSES = ports_var {"DISABLE_LICENSES"}
+
+   -- load default versions of build and run tools
+   DEFAULT_VERSIONS = {}
+   for i, v in ipairs (ports_var {split = true, "DEFAULT_VERSIONS"}) do
+      DEFAULT_VERSIONS[v] = true
+   end
 
    -- sane default path
    setenv ("PATH", "/sbin:/bin:/usr/sbin:/usr/bin:$LOCALASE/sbin:$LOCALBASE/bin")
 
    setenv ("MAKE_JOBS_NUMBER", "4")
-   -- debugging only
-   TRACEFILE = "/tmp/PM.cmd-log"
-end
-
--- initialize all associative arrays
-function init_arrays ()
-   -- sets
-   SEEN = {}
-   PKGSEEN = {}
-   SKIPPED = {}
-   MOVES = {}
-   PKG_RENAMES = {}
-   DELETES = {}
-   UPGRADES = {}
-   BUILDDEP = {}
-   RUNDEP = {}
-   BASEDEP = {}
-   PKGMSG = {}
-   NOTFLAVORED = {}
-   DELAYED_DELETES = {}
-
-   -- dictionaries
-   ORIGIN_OLD = {}
-   PKGNAME_OLD = {}
-   PKGNAME_NEW = {}
-   USEPACKAGE = {}
-   PORT_FLAVORS = {}
-   FLAVORED_ORIGIN = {}
-   CACHED_FLAVORS = {}
-   FORCED_ORIGIN = {}
-   SPECIAL_DEPENDS = {}
-   BUILD_DEPS = {}
-   DEP_DEL_AFTER_BUILD = {}
-   DEP_DEL_AFTER_RUN = {}
 end
 
 -- ----------------------------------------------------------------------------------
@@ -546,7 +528,7 @@ function init_environment ()
    -- cache some build variables in the environment (cannot use ports_var due to its use of "-D BEFOREPORTMK")
    local env_param = Exec.shell ("make", {"-f", "/usr/ports/Mk/bsd.port.mk", "-V", "PORTS_ENV_VARS", safe = true}) -- || fail "$output"
    for i, var in ipairs (split_words (env_param)) do
-      setenv (var, ports_var (var))
+      setenv (var, ports_var {var})
    end
    --
    for line in Exec.shell_pipe ("env", "SCRIPTSDIR=" .. PORTSDIR .. "Mk/Scripts", "PORTSDIR=" .. PORTSDIR, "MAKE=make", "/bin/sh", PORTSDIR .. "Mk/Scripts/ports_env.sh") do
@@ -1036,28 +1018,48 @@ function ports_add_multiple (build_type, ...)
    end
 end
 
--- process all outdated ports (may upgrade, install, change, or delete ports)
-function ports_add_all_old_abi ()
-   for i, pkg in ipairs (Package:installed_pkgs ()) do
-      if pkg.abi ~= ABI and pkg.abi ~= ABI_NOARCH then
-	 Action.add {build_type = "user", dep_type = "run", pkg_old = pkg}
+--
+function ports_update (...)
+   local filters = {...}
+   local pkgs, rest = Package:installed_pkgs (), {}
+   for i, filter in ipairs (filters) do
+      for i, pkg in ipairs (pkgs) do
+	 local selected, force = filter (pkg)
+	 if selected then
+	    Action.add {build_type = "user", dep_type = "run", force = force, pkg_old = pkg}
+	 else
+	    table.insert (rest, pkg)
+	 end
       end
+      pkgs, rest = rest, {}
    end
 end
 
 -- process all outdated ports (may upgrade, install, change, or delete ports)
+-- process all ports with old ABI or linked against outdated shared libraries
 function ports_add_all_outdated ()
-   for i, pkg in ipairs (Package:installed_pkgs ()) do
-      if not pkg.is_automatic or pkg.num_depending > 0 then
-	 Action.add {build_type = "user", dep_type = "run", pkg_old = pkg}
-      end
+   local current_libs = {}
+   for i, lib in ipairs (PkgDb:query {table = true, "%b"}) do
+      current_libs[lib] = true
    end
-   --
-   for i, pkg in ipairs (Package:installed_pkgs ()) do
-      if not (not pkg.is_automatic or pkg.num_depending > 0) then
-	 Action.add {build_type = "user", dep_type = "run", pkg_old = pkg}
+   ports_update (
+      function (pkg)
+	 return pkg.abi ~= ABI and pkg.abi ~= ABI_NOARCH, force
+      end,
+      function (pkg)
+	 if pkg.shared_libs then
+	    for k, v in pairs (pkg.shared_libs) do
+	       return not current_libs[lib], true
+	    end
+	 end
+      end,
+      function (pkg)
+	 return not pkg.is_automatic or pkg.num_depending > 0, false
+      end,
+      function (pkg)
+	 return true, false
       end
-   end
+   )
 end
 
 -- ---------------------------------------------------------------------------
@@ -1347,7 +1349,6 @@ end
 function main ()
    --print (umask ("755")) -- ERROR: results in 7755, check the details of this function
    --shell ({to_tty = true}, "umask")
-   init_arrays ()
 
    -- load option definitions from table
    Options.init ()
@@ -1460,11 +1461,14 @@ tracefd = io.open ("/tmp/pm.log", "w")
 -- --[[
 -- ---------------------------------------------------------------------------
 -- TESTING
-function TEST_ ()
+function TEST ()
    local function table_values (t) return "[" .. table.concat (t, ",") .. "]" end
    local o = Origin:new ("devel/py-setuptools@py27")
    print ("TEST:", o, o.pkg_new, o.is_broken, o.is_ignore, o.is_forbidden, table_values (o.flavors), o.flavor)
+   local o = Origin:new ("devel/py-setuptools@py36")
+   Action.add {build_type = "user", dep_type = "run", origin_new = o}
    print ("OLD ORIGINS:", table_values (o:list_prev_origins()))
+
    --[[
    local o = Origin:new ("devel/ada-util")
    print ("TEST:", o, table_values (o.old_pkgs), o.pkg_new, o.is_broken, o.is_ignore, o.is_forbidden, table_values (o.flavors), o.flavor)
@@ -1715,3 +1719,58 @@ os.exit (0)
 -- #
 -- # # --> choose_action, origin_from_dir_and_pkg
 -- # origin_var_jailed "$origin_new" PKGNAME
+
+--[[
+Ports with special dependencies:
+
+-- fetch:
+databases/mysql-q4m				${_MYSQL_SERVER}:fetch
+graphics/gd					x11-fonts/geminifonts:fetch
+
+-- checksum:
+math/atlas					math/lapack:checksum
+
+-- extract:
+devel/elfutils					devel/gnulib:extract
+devel/p5-Thrift					devel/thrift:extract
+graphics/aseprite				x11/pixman:extract
+irc/gseen.mod					irc/eggdrop16:extract
+print/fontforge					print/freetype2:extract
+russian/p5-XML-Parser-encodings			converters/iconv-extra:extract
+russian/p5-XML-Parser-encodings			converters/iconv:extract
+www/publicfile					databases/cdb:extract
+
+-- patch:
+audio/chromaprint				devel/googletest:patch
+audio/liblastfm-qt5				math/fftw3:patch
+databases/lua-lsqlite3				databases/sqlite3:patch
+databases/py-sqlrelay				${SQLRELAY_PORTDIR}:patch
+databases/zabbix3-libzbxpgsql			net-mgmt/${PKGNAMEPREFIX}agent:patch
+devel/py-omniorb				devel/omniORB:patch
+games/freeminer					x11-toolkits/irrlicht:patch
+games/minetest					x11-toolkits/irrlicht:patch
+net/istgt					emulators/virtualbox-ose:patch
+net/relayd					security/libressl:stage
+net/tigervnc-server				x11-servers/xorg-server:patch
+sysutils/fusefs-rar2fs				${LIBUNRAR_PORT}:patch
+textproc/ruby-rd-mode.el			textproc/ruby-rdtool:patch
+
+-- configure:
+astro/boinc-astropulse				astro/boinc-setiathome:configure
+audio/pulseaudio-module-xrdp			audio/pulseaudio:configure
+databases/mroonga				${_MYSQL_SERVER}:configure
+devel/git-cinnabar				devel/git:configure
+textproc/libxml2-reference			textproc/libxml2:configure
+textproc/libxslt-reference			textproc/libxslt:configure
+
+-- build:
+databases/mysql-q4m				${_MYSQL_SERVER}:build
+finance/gnucash					devel/googletest:build
+net-mgmt/nagios-check_memcached_paranoid	${PLUGINS}:build
+print/ft2demos					print/freetype2:build
+
+-- stage:
+net/openntpd					security/libressl:stage
+security/dsniff					security/libressl:stage
+
+--]]

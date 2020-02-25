@@ -233,13 +233,6 @@ end
 
 -- ----------------------------------------------------------------------------------
 -- return true (exit code 0) if named package is locked
-function check_locked (pkg)
-   local pkgname = pkg.name
-   if pkgname then
-      return PkgDb.query {"%k", pkgname} == "1" -- or access (pkg:portdb_path () .. "/+IGNOREME", "r")
-   end
-end
-
 -- set package to auto-installed if automatic == 1, user-installed else
 local function automatic_set (pkg)
    PkgDb.set ("-A", pkg.automatic, pkg.name)
@@ -261,6 +254,52 @@ local function check_excluded (pkg)
    return Excludes.check_pkg (pkg.name)
 end
 
+-- 
+local T = {
+   apache = "^apache(%d)(%d)-",
+   llvm= "^llvm(%d%d)-",
+   lua = "^lua(%d)(%d)-",
+   mysql = "^mysql(%d)(%d)-",
+   pgsql = "^postgresql(9)(%d)-",
+   pgsql1 = "^postgresql1(%d)-",
+   php = "^php(%d)(%d)-",
+   python2 = "^py(2)(%d)-",
+   python3 = "^py(3)(%d)-",
+   ruby = "^ruby(%d)(%d)-",
+   tcltk = "^t[ck]l?(%d)(%d)-",
+   --[[
+      ssl=openssl111
+      ssl=base
+   --]]
+}
+
+-- check package name for possibly used default version parameter
+local function check_used_default_version (pkg)
+   local function compare (name, pattern, prog)
+      local major, minor = string.match (name, pattern)
+      if major then
+	 local version = minor and major .. "." .. minor or major
+	 return prog .. "=" .. version
+      end
+   end
+   local name = pkg.name
+   TRACE ("DEFAULT_VERSION", name)
+   if name then
+      for k, v in pairs (T) do
+	 local result = compare (name, v, k)
+	 if result then
+	    if DEFAULT_VERSIONS[result] then
+	       result = nil -- identified version is default version
+	    end
+	    TRACE ("DEFAULT_VERSION->", name, result)
+	    return result
+	 end
+      end
+   else
+      error ("Package name has not been set!")
+   end
+end
+
 -- ----------------------------------------------------------------------------------
 local PACKAGES_CACHE = {} -- should be local with iterator ...
 local PACKAGES_CACHE_LOADED = false -- should be local with iterator ...
@@ -268,9 +307,9 @@ local PACKAGES_CACHE_LOADED = false -- should be local with iterator ...
 
 -- load a list of of origins with flavor for currently installed flavored packages
 local function packages_cache_load ()
+   local pkg_flavors = {}
    if not PACKAGES_CACHE_LOADED then
       Msg.cont (1, "Load list of installed packages ...")
-      local pkg_flavors = {}
       local lines = PkgDb.query {table = true, "%At %Av %n-%v"}
       if lines then
 	 for i, line in pairs (lines) do
@@ -280,43 +319,89 @@ local function packages_cache_load ()
 	    end
 	 end
       end
+      -- load 
+      local pkg_count = 0
       local p = {}
-      local prev_pkgname
-      --lines = PkgDb.query {table = true, "%n-%v %o %#r %a %k"} -- instead of "%#r" use "%ro %rn-%rv" to fetch actual dependencies at low cost
-      lines = PkgDb.query {table = true, "%n-%v %o %rn-%rv %a %k"}
+      lines = PkgDb.query {table = true, "%n-%v %o %q %a %k"} -- no dependent packages
       for i, line in ipairs (lines) do
-	 local pkgname, origin, dep_pkg, automatic, locked = string.match (line, "(%S+) (%S+) (%S+) (%d) (%d)")
-	 --print ("L", line)
-	 if pkgname ~= prev_pkgname then
-	    prev_pkgname = pkgname
-	    local f = pkg_flavors[pkgname]
-	    origin = f and origin .. "@" .. f or origin
-	    local o = Origin:new (origin)
-	    if not rawget (o, "old_pkgs") then
-	       o.old_pkgs = {}
-	    end
-	    o.old_pkgs[pkgname] = true
-	    p = Package:new (pkgname)
-	    p.is_automatic = automatic == "1"
-	    p.is_locked = locked == "1"
-	    p.num_depending = 1
-	    p.dep_pkgs = { dep_pkg }
-	    p.is_installed = true
-	    p.origin = o
-	 else
-	    p.num_depending = p.num_depending + 1
-	    table.insert (p.dep_pkgs, dep_pkg)
+	 local pkgname, origin, abi, automatic, locked = string.match (line, "(%S+) (%S+) (%S+) (%d) (%d)")
+	 p = PACKAGES_CACHE[pkgname] or Package:new (pkgname)
+	 local f = pkg_flavors[pkgname]
+	 local pf = check_used_default_version (p)
+	 origin = f and origin .. "@" .. f or origin
+	 origin = pf and origin .. "%" .. pf or origin
+	 local o = Origin:new (origin)
+	 if not rawget (o, "old_pkgs") then
+	    o.old_pkgs = {}
 	 end
+	 o.old_pkgs[pkgname] = true
+	 p.abi = abi
+	 p.is_automatic = automatic == "1"
+	 p.is_locked = locked == "1"
+	 p.is_installed = true
+	 p.origin = o
+	 p.num_depending = 0
+	 p.dep_pkgs = {}
+	 pkg_count = pkg_count + 1
       end
-      Msg.cont (1, "The list of installed packages has been loaded")
+      Msg.cont (1, "The list of installed packages has been loaded (" .. pkg_count .. " packages)")
       PACKAGES_CACHE_LOADED = true
    end
 end
 
+-- add reverse dependency information (who depends on me?)
+DEP_PKGS_CACHE_LOADED = false
+
+local function dep_pkgs_cache_load ()
+   if not DEP_PKGS_CACHE_LOADED then
+      packages_cache_load ()
+      Msg.cont (1, "Load package dependencies")
+      local p = {}
+      local lines = PkgDb.query {table = true, "%n-%v %rn-%rv"}
+      for i, line in ipairs (lines) do
+	 local pkgname, dep_pkg = string.match (line, "(%S+) (%S+)")
+	 if pkgname ~= rawget (p, "name") then
+	    p = Package:new (pkgname) -- fetch cached package record
+	    p.dep_pkgs = {}
+	 end
+	 p.num_depending = p.num_depending + 1
+	 table.insert (p.dep_pkgs, dep_pkg)
+      end
+      Msg.cont (1, "Package dependencies have been loaded")
+      DEP_PKGS_CACHE_LOADED = true
+   end
+end
+
+--
+SHARED_LIBS_CACHE_LOADED = false
+
+local function shared_libs_cache_load ()
+   if not SHARED_LIBS_CACHE_LOADED then
+      packages_cache_load ()
+      Msg.cont (1, "Load list of required shared libraries")
+      local p = {}
+      local lines = PkgDb.query {table = true, "%n-%v %B"}
+      for i, line in ipairs (lines) do
+	 local pkgname, lib = string.match (line, "^(%S+) (%S+%.so.%d+)$")
+	 if pkgname then
+	    if pkgname ~= rawget (p, "name") then
+	       p = Package:new (pkgname) -- fetch cached package record
+	       p.shared_libs = {}
+	    end
+	    table.insert (p.shared_libs, lib)
+	 end
+      end
+      Msg.cont (1, "The list of required shared libraries has been loaded")
+      SHARED_LIBS_CACHE_LOADED = true
+   end
+end
+
+-- 
 local function get (name)
    return PACKAGES_CACHE[name]
 end
 
+-- 
 local function installed_pkgs ()
    packages_cache_load ()
    local result = {}
@@ -328,6 +413,7 @@ local function installed_pkgs ()
    return result
 end
 
+-- 
 local function get_attribute (self, k)
    for i, v in ipairs (PkgDb.query {table = true, "%At %Av", self.name}) do
       local result = string.match (v, "^" .. k .. " (.*)")
@@ -335,6 +421,12 @@ local function get_attribute (self, k)
 	 return result
       end
    end
+end
+
+--
+local function __newindex (pkg, n, v)
+   TRACE ("SET(p)", pkg.name, n, v)
+   rawset (pkg, n, v)
 end
 
 local function __index (self, k)
@@ -370,6 +462,8 @@ local function __index (self, k)
       name_base = pkg_basename,
       name_base_major = pkg_strip_minor,
       version = pkg_version,
+      dep_pkgs = dep_pkgs_cache_load,
+      shared_libs = shared_libs_cache_load,
       is_installed = function (self, k)
 	 return false -- always explicitly set when found or during installation
       end,
@@ -431,6 +525,7 @@ local function new (pkg, name)
 	 P = {name = name}
 	 P.__class = pkg
 	 pkg.__index = __index
+	 pkg.__newindex = __newindex -- DEBUGGING ONLY
 	 pkg.__tostring = function (pkg)
 	    return pkg.name
 	 end
@@ -470,6 +565,7 @@ return {
    automatic_set = automatic_set,
    automatic_get = automatic_get,
    automatic_check = automatic_check,
+   packages_cache_load = packages_cache_load,
 }
 
 --[[

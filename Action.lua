@@ -57,7 +57,7 @@ local function describe (action)
 	 if p_n and action.pkg_file then
 	    from = "from " .. action.pkg_file
 	 else
-	    from = "using " .. o_n .. (o_o ~= "" and o_o ~= o_n and " (was " .. o_o .. ")" or "")
+	    from = "using " .. o_n .. (o_o and o_o ~= "" and o_o ~= o_n and " (was " .. o_o .. ")" or "")
 	 end
 	 local prev_pkg = ""
 	 local verb
@@ -1541,9 +1541,11 @@ end
 local function __index (self, k)
    local function __depends (self, k)
       local o_n = self.origin_new
+      TRACE ("DEP_REF", k, o_n and table.unpack (o_n[k]) or nil)
       if o_n then
-	 k = string.match (k, "[^_]+")
-	 return o_n.depends (self.origin_new, k)
+	 return o_n[k]
+	 --k = string.match (k, "[^_]+")
+	 --return o_n.depends (self.origin_new, k)
       end
    end
    local dispatch = {
@@ -1670,25 +1672,19 @@ local function new (Action, args)
 	 setmetatable (action, Action)
       end
       assert (action, "action is nil") -- should never happen due to "if args" above
-      if action.action and not rawget (action, "listpos") then
-	 table.insert (ACTION_LIST, action)
-	 action.listpos = #ACTION_LIST
-	 local descr = "[" .. tostring (action.listpos) .. "]	" .. tostring (action)
-	 Msg.start (0, descr)
+      if action.action then
+	 if not rawget (action, "listpos") then
+	    table.insert (ACTION_LIST, action)
+	    action.listpos = #ACTION_LIST
+	    local descr = "[" .. tostring (action.listpos) .. "]	" .. tostring (action)
+	    Msg.start (0, descr)
+	 end
+	 cache_add (action)
       end
       return action
    else
       error ("Action:new() called with nil argument")
    end
-end
-
--- 
-local function add (args)
-   local action = Action:new (args)
-   if action.action then
-      cache_add (action)
-   end
-   return action
 end
 
 -- 
@@ -1705,7 +1701,7 @@ local function add_missing_deps ()
 	       local action = rawget (o, "action")
 	       if not action then
 		  --print ("Missing build dependency:", o.name)
-		  action = add {build_type = "auto", dep_type = "build", origin_new = o}
+		  action = Action:new {build_type = "auto", dep_type = "build", origin_new = o}
 		  action.origin_new.action = a
 	       end
 	    end
@@ -1717,7 +1713,7 @@ local function add_missing_deps ()
 	       local action = rawget (o, "action")
 	       if not action then
 		  --print ("Missing run dependency:", o.name)
-		  action = add {build_type = "auto", dep_type = "run", origin_new = o}
+		  action = Action:new {build_type = "auto", dep_type = "run", origin_new = o}
 		  action.origin_new.action = a
 	       end
 	    end
@@ -1744,7 +1740,7 @@ local function sort_list ()
 	       end
 	    end
 	 end
-	 --assert (not rawget (action, "planned"), "Dependency loop for " .. action.origin_new and action.origin_new.name or action.origin_old.name)
+	 assert (not rawget (action, "planned"), "Dependency loop for: " .. describe (action))
 	 table.insert (sorted_list, action)
 	 action.listpos = #sorted_list
 	 action.planned = true

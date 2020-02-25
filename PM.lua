@@ -1019,14 +1019,13 @@ function ports_add_multiple (build_type, ...)
 end
 
 --
-function ports_update (...)
-   local filters = {...}
+function ports_update (filters)
    local pkgs, rest = Package:installed_pkgs (), {}
    for i, filter in ipairs (filters) do
       for i, pkg in ipairs (pkgs) do
 	 local selected, force = filter (pkg)
 	 if selected then
-	    Action.add {build_type = "user", dep_type = "run", force = force, pkg_old = pkg}
+	    Action:new {build_type = "user", dep_type = "run", force = force, pkg_old = pkg}
 	 else
 	    table.insert (rest, pkg)
 	 end
@@ -1037,29 +1036,35 @@ end
 
 -- process all outdated ports (may upgrade, install, change, or delete ports)
 -- process all ports with old ABI or linked against outdated shared libraries
-function ports_add_all_outdated ()
+local function ports_add_all_outdated ()
    local current_libs = {}
+   -- filter return values are: match, force
+   local function filter_old_abi (pkg)
+      return pkg.abi ~= ABI and pkg.abi ~= ABI_NOARCH, force
+   end
+   local function filter_old_shared_libs (pkg)
+      if pkg.shared_libs then
+	 for k, v in pairs (pkg.shared_libs) do
+	    return not current_libs[lib], true
+	 end
+      end
+   end
+   local function filter_is_required (pkg)
+      return not pkg.is_automatic or pkg.num_depending > 0, false
+   end
+   local function filter_pass_all (pkg)
+      return true, false
+   end
+
    for i, lib in ipairs (PkgDb:query {table = true, "%b"}) do
       current_libs[lib] = true
    end
-   ports_update (
-      function (pkg)
-	 return pkg.abi ~= ABI and pkg.abi ~= ABI_NOARCH, force
-      end,
-      function (pkg)
-	 if pkg.shared_libs then
-	    for k, v in pairs (pkg.shared_libs) do
-	       return not current_libs[lib], true
-	    end
-	 end
-      end,
-      function (pkg)
-	 return not pkg.is_automatic or pkg.num_depending > 0, false
-      end,
-      function (pkg)
-	 return true, false
-      end
-   )
+   ports_update {
+      filter_old_abi,
+      filter_old_shared_libs,
+      filter_is_required,
+      filter_pass_all,
+   }
 end
 
 -- ---------------------------------------------------------------------------
@@ -1466,7 +1471,7 @@ function TEST ()
    local o = Origin:new ("devel/py-setuptools@py27")
    print ("TEST:", o, o.pkg_new, o.is_broken, o.is_ignore, o.is_forbidden, table_values (o.flavors), o.flavor)
    local o = Origin:new ("devel/py-setuptools@py36")
-   Action.add {build_type = "user", dep_type = "run", origin_new = o}
+   Action:new {build_type = "user", dep_type = "run", origin_new = o}
    print ("OLD ORIGINS:", table_values (o:list_prev_origins()))
 
    --[[

@@ -328,8 +328,7 @@ local function packages_cache_load ()
 	 p = PACKAGES_CACHE[pkgname] or Package:new (pkgname)
 	 local f = pkg_flavors[pkgname]
 	 local pf = check_used_default_version (p)
-	 origin = f and origin .. "@" .. f or origin
-	 origin = pf and origin .. "%" .. pf or origin
+	 origin = f and origin .. "@" .. f or pf and origin .. "%" .. pf or origin
 	 local o = Origin:new (origin)
 	 if not rawget (o, "old_pkgs") then
 	    o.old_pkgs = {}

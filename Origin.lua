@@ -589,6 +589,12 @@ local function __index (self, k)
       if v ~= nil then
 	 return v
       end
+      local function set_pkgname (port, var, pkgname)
+	 if pkgname then
+	    port[var] = Package:new (pkgname)
+	    TRACE ("PKG_NEW", self.name, pkgname)
+	 end
+      end
       local pkg = self.pkg_old
       local t = port_var (self, {table = true,
 				 "DISTINFO_FILE",
@@ -603,6 +609,14 @@ local function __index (self, k)
 				 "PORT_OPTIONS",
 				 "CATEGORIES",
 				 "PKGNAME",
+				 "FETCH_DEPENDS",
+				 "EXTRACT_DEPENDS",
+				 "PATCH_DEPENDS",
+				 "BUILD_DEPENDS",
+				 "LIB_DEPENDS",
+				 "RUN_DEPENDS",
+				 "TEST_DEPENDS",
+				 "PKG_DEPENDS",
       }) or {}
       TRACE ("PORT_VAR(" .. self.name .. ", " .. k ..")", table.unpack (t))
       set_str (port, "distinfo_file", t[1])
@@ -616,17 +630,50 @@ local function __index (self, k)
       set_table (port, "new_options", t[9])
       set_table (port, "port_options", t[10])
       set_table (port, "categories", t[11])
-      local pkgname = t[12]
-      if pkgname then
-	 self.pkg_new = Package:new (pkgname)
-	 TRACE ("PKG_NEW", self.name, pkgname)
-      end
+      set_pkgname (port, "pkg_new", t[12])
+      set_table (port, "fetch_depends_var", t[13])
+      set_table (port, "extract_depends_var", t[14])
+      set_table (port, "patch_depends_var", t[15])
+      set_table (port, "build_depends_var", t[16])
+      set_table (port, "lib_depends_var", t[17])
+      set_table (port, "run_depends_var", t[18])
+      set_table (port, "test_depends_var", t[19])
+      set_table (port, "pkg_depends_var", t[20])
       return rawget (port, k) or rawget (self, k)
    end
    local function __port_depends (self, k)
-      local d = string.match (k, "[^_]+")
-      TRACE ("DEPENDS", k, d)
-      return depends (self, d)
+      depends_table = {
+	 build_depends = {
+	    "extract_depends_var",
+	    "patch_depends_var",
+	    "fetch_depends_var",
+	    "build_depends_var",
+	    "lib_depends_var",
+	    "pkg_depends_var",
+	 },
+	 run_depends = {
+	    "lib_depends_var",
+	    "run_depends_var",
+	 },
+	 test_depends = {
+	    "test_depends_var",
+	 },
+      }
+      local t = depends_table[k]
+      assert (t, "non-existing dependency " .. k or "<nil>" .. " requested")
+      local ut = {}
+      for i, v in ipairs (t) do
+	 if self[v] then
+	    for j, d in ipairs (self[v]) do
+	       TRACE ("DEP_UT", d)
+	       local o = string.match (d, "[^:]:(%S+)")
+	       if o then
+	       ut[o] = true
+	       end
+	    end
+	 end
+      end
+      return table.keys (ut)
    end
    local function __check_port_exists (self, k)
       --return access (PORTSDIR .. self.port .. "/Makefile", "r")
@@ -651,6 +698,7 @@ local function __index (self, k)
       categories = __port_vars,
       pkg_old = Package.packages_cache_load,
       pkg_new = __port_vars,
+      old_pkgs = PkgDb.pkgname_from_origin,
       path = path,
       port = port,
       port_exists = __check_port_exists,
@@ -660,10 +708,18 @@ local function __index (self, k)
       build_depends = __port_depends,
       run_depends = __port_depends,
       pkg_depends = __port_depends,
+      special_depends = __port_depends,
+      fetch_depends_var = __port_vars,
+      extract_depends_var = __port_vars,
+      patch_depends_var = __port_vars,
+      build_depends_var = __port_vars,
+      lib_depends_var = __port_vars,
+      run_depends_var = __port_vars,
+      test_depends_var = __port_vars,
+      pkg_depends_var = __port_vars,
       conflicts = function (self, k)
 	 return check_conflicts (self)
       end,
-      old_pkgs = PkgDb.pkgname_from_origin,
    }
    
    TRACE ("INDEX(o)", self, k)

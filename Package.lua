@@ -254,52 +254,6 @@ local function check_excluded (pkg)
    return Excludes.check_pkg (pkg.name)
 end
 
--- 
-local T = {
-   apache = "^apache(%d)(%d)-",
-   llvm= "^llvm(%d%d)-",
-   lua = "^lua(%d)(%d)-",
-   mysql = "^mysql(%d)(%d)-",
-   pgsql = "^postgresql(9)(%d)-",
-   pgsql1 = "^postgresql1(%d)-",
-   php = "^php(%d)(%d)-",
-   python2 = "^py(2)(%d)-",
-   python3 = "^py(3)(%d)-",
-   ruby = "^ruby(%d)(%d)-",
-   tcltk = "^t[ck]l?(%d)(%d)-",
-   --[[
-      ssl=openssl111
-      ssl=base
-   --]]
-}
-
--- check package name for possibly used default version parameter
-local function check_used_default_version (pkg)
-   local function compare (name, pattern, prog)
-      local major, minor = string.match (name, pattern)
-      if major then
-	 local version = minor and major .. "." .. minor or major
-	 return prog .. "=" .. version
-      end
-   end
-   local name = pkg.name
-   TRACE ("DEFAULT_VERSION", name)
-   if name then
-      for k, v in pairs (T) do
-	 local result = compare (name, v, k)
-	 if result then
-	    if DEFAULT_VERSIONS[result] then
-	       result = nil -- identified version is default version
-	    end
-	    TRACE ("DEFAULT_VERSION->", name, result)
-	    return result
-	 end
-      end
-   else
-      error ("Package name has not been set!")
-   end
-end
-
 -- ----------------------------------------------------------------------------------
 local PACKAGES_CACHE = {} -- should be local with iterator ...
 local PACKAGES_CACHE_LOADED = false -- should be local with iterator ...
@@ -308,14 +262,17 @@ local PACKAGES_CACHE_LOADED = false -- should be local with iterator ...
 -- load a list of of origins with flavor for currently installed flavored packages
 local function packages_cache_load ()
    local pkg_flavors = {}
+   local pkg_fbsd_version = {}
    if not PACKAGES_CACHE_LOADED then
-      Msg.cont (1, "Load list of installed packages ...")
+      Msg.start (2, "Load list of installed packages ...")
       local lines = PkgDb.query {table = true, "%At %Av %n-%v"}
       if lines then
 	 for i, line in pairs (lines) do
-	    local tag, flavor, pkgname = string.match (line, "(%S+) (%S+) (%S+)")
+	    local tag, value, pkgname = string.match (line, "(%S+) (%S+) (%S+)")
 	    if tag == "flavor" then
-	       pkg_flavors[pkgname] = flavor
+	       pkg_flavors[pkgname] = value
+	    elseif tag == "FreeBSD_version" then
+	       pkg_fbsd_version[pkgname] = value
 	    end
 	 end
       end
@@ -327,8 +284,7 @@ local function packages_cache_load ()
 	 local pkgname, origin, abi, automatic, locked = string.match (line, "(%S+) (%S+) (%S+) (%d) (%d)")
 	 p = PACKAGES_CACHE[pkgname] or Package:new (pkgname)
 	 local f = pkg_flavors[pkgname]
-	 local pf = check_used_default_version (p)
-	 origin = f and origin .. "@" .. f or pf and origin .. "%" .. pf or origin
+	 origin = f and origin .. "@" .. f or origin
 	 local o = Origin:new (origin)
 	 if not rawget (o, "old_pkgs") then
 	    o.old_pkgs = {}
@@ -341,9 +297,10 @@ local function packages_cache_load ()
 	 p.origin = o
 	 p.num_depending = 0
 	 p.dep_pkgs = {}
+	 p.fbsd_version = pkg_fbsd_version[pkgname]
 	 pkg_count = pkg_count + 1
       end
-      Msg.cont (1, "The list of installed packages has been loaded (" .. pkg_count .. " packages)")
+      Msg.cont (2, "The list of installed packages has been loaded (" .. pkg_count .. " packages)")
       PACKAGES_CACHE_LOADED = true
    end
 end
@@ -354,7 +311,7 @@ DEP_PKGS_CACHE_LOADED = false
 local function dep_pkgs_cache_load ()
    if not DEP_PKGS_CACHE_LOADED then
       packages_cache_load ()
-      Msg.cont (1, "Load package dependencies")
+      Msg.start (2, "Load package dependencies")
       local p = {}
       local lines = PkgDb.query {table = true, "%n-%v %rn-%rv"}
       for i, line in ipairs (lines) do
@@ -366,7 +323,7 @@ local function dep_pkgs_cache_load ()
 	 p.num_depending = p.num_depending + 1
 	 table.insert (p.dep_pkgs, dep_pkg)
       end
-      Msg.cont (1, "Package dependencies have been loaded")
+      Msg.cont (2, "Package dependencies have been loaded")
       DEP_PKGS_CACHE_LOADED = true
    end
 end
@@ -377,7 +334,7 @@ SHARED_LIBS_CACHE_LOADED = false
 local function shared_libs_cache_load ()
    if not SHARED_LIBS_CACHE_LOADED then
       packages_cache_load ()
-      Msg.cont (1, "Load list of required shared libraries")
+      Msg.start (2, "Load list of required shared libraries")
       local p = {}
       local lines = PkgDb.query {table = true, "%n-%v %B"}
       for i, line in ipairs (lines) do
@@ -390,7 +347,7 @@ local function shared_libs_cache_load ()
 	    table.insert (p.shared_libs, lib)
 	 end
       end
-      Msg.cont (1, "The list of required shared libraries has been loaded")
+      Msg.cont (2, "The list of required shared libraries has been loaded")
       SHARED_LIBS_CACHE_LOADED = true
    end
 end
@@ -565,6 +522,7 @@ return {
    automatic_get = automatic_get,
    automatic_check = automatic_check,
    packages_cache_load = packages_cache_load,
+   load_default_versions = load_default_versions,
 }
 
 --[[

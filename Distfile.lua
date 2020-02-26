@@ -163,7 +163,7 @@ function update_list ()
       end
    end
    local outfile = io.open (DISTFILES_LIST .. "~", "w")
-   local distfiles = table_keys (result)
+   local distfiles = table.keys (result)
    table.sort (distfiles)
    for i, file in ipairs (distfiles) do
       outfile:write (file .. " " .. table.concat (result[file], " ") .. "\n")

@@ -40,51 +40,51 @@ Msg.sep = Msg.sep1
 
 -- print continuation line
 local function cont (level, ...)
-   if level > Msg.level then
-      return
-   end
-   local lines = split_lines (table.concat ({...}, " "))
-   if not lines then
-      return
-   end
-   -- extra blank line if not a continuation and not following a blank line anyway
-   if not (Msg.empty_line or not Msg.at_start) then
-      stdout:write ("\n")
-      Msg.empty_line = true
-   end
-   -- print lines prefixed with SEP
-   local line
-   for i, line in ipairs (lines) do
-      if not line or line == "" then
-	 if not Msg.empty_line then
+   if level <= Msg.level then
+      local lines = split_lines (table.concat ({...}, " "))
+      if lines then
+	 -- extra blank line if not a continuation and not following a blank line anyway
+	 if not (Msg.empty_line or not Msg.at_start) then
 	    stdout:write ("\n")
 	    Msg.empty_line = true
 	 end
-      else
-	 Msg.empty_line = false
+	 -- print lines prefixed with SEP
+	 local line
+	 for i, line in ipairs (lines) do
+	    if not line or line == "" then
+	       if not Msg.empty_line then
+		  stdout:write ("\n")
+		  Msg.empty_line = true
+	       end
+	    else
+	       Msg.empty_line = false
+	       if Msg.prompt then
+		  -- no newline after prompt
+		  stdout:write (Msg.sep, line)
+	       else
+		  stdout:write (Msg.sep, line, "\n")
+		  Msg.sep = Msg.sep2
+	       end
+	    end
+	    Msg.at_start = false
+	 end
+	 -- reset to default prefix after reading user input
 	 if Msg.prompt then
-	    -- no newline after prompt
-	    stdout:write (Msg.sep, line)
-	 else
-	    stdout:write (Msg.sep, line, "\n")
-	    Msg.sep = Msg.sep2
+	    Msg.sep = Msg.sep1
+	    Msg.at_start = true
+	    Msg.prompt = false
 	 end
       end
-      Msg.at_start = false
-   end
-   -- reset to default prefix after reading user input
-   if Msg.prompt then
-      Msg.sep = Msg.sep1
-      Msg.prompt = false
-      Msg.at_start = true
    end
 end
 
 -- print message with separator for new message section
-local function start (...)
-   Msg.at_start = true
-   Msg.sep = Msg.sep1
-   cont (...)
+local function start (level, ...)
+   if level <= Msg.level then
+      Msg.at_start = true
+      Msg.sep = Msg.sep1
+      cont (level, ...)
+   end
 end
 
 -- print abort message at level 0
@@ -139,7 +139,7 @@ end
 local function display ()
    local packages = {}
    if Options.repo_mode then
-      packages = table_keys (PKGMSG)
+      packages = table.keys (PKGMSG)
    end
    if packages or SUCCESS_MSGS then
       -- preserve current stdout and locally replace by pipe to "more" ???

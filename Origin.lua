@@ -1,5 +1,5 @@
 --[[
-SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+oSPDX-License-Identifier: BSD-2-Clause-FreeBSD
 
 Copyright (c) 2019 Stefan Eßer <se@freebsd.org>
 
@@ -36,9 +36,9 @@ local function path (origin)
    return PORTSDIR .. port (origin)
 end
 
--- check whether port directory for given origin exists
-local function check_path (origin)
-   return is_dir (path (origin))
+--
+local function check_port_exists (origin)
+   return access (path (origin) .. "/Makefile", "r")
 end
 
 -- return flavor of passed origin or nil
@@ -46,6 +46,7 @@ local function flavor (origin)
    return (string.match (origin.name, "%S+@([^:%%]+)"))
 end
 
+--
 -- return flavor of passed origin or nil
 local function pseudo_flavor (origin)
    return (string.match (origin.name, "%S+%%([^:%%]+)"))
@@ -420,7 +421,7 @@ local function moved_cache_load (filename)
       MOVED_CACHE = {}
       MOVED_CACHE_REV = {}
       local filename = PORTSDIR .. "MOVED" -- allow override with configuration parameter ???
-      Msg.cont (1, "Load list of renamed of removed ports from " .. filename)
+      Msg.start (2, "Load list of renamed of removed ports from " .. filename)
       local movedfile = io.open (filename, "r")
       if movedfile then
 	 for line in movedfile:lines () do
@@ -428,7 +429,7 @@ local function moved_cache_load (filename)
 	 end
 	 io.close (movedfile)
       end
-      Msg.cont (1, "The list of renamed of removed ports has been loaded")
+      Msg.cont (2, "The list of renamed of removed ports has been loaded")
    end
 end
 
@@ -528,33 +529,6 @@ local function list_prev_origins (origin)
    return {} -- DUMMY / NYI
 end
 
--- list dependencies for given origin and phase (build, run, test, all)
-local DEPEND_ARGS = {
-   build = {"PKG_DEPENDS", "EXTRACT_DEPENDS", "PATCH_DEPENDS", "FETCH_DEPENDS", "BUILD_DEPENDS", "LIB_DEPENDS"},
-   run = {"RUN_DEPENDS", "LIB_DEPENDS"},
-   test = {"TEST_DEPENDS" },
-}
-
-local function depends (origin, dep_type) -- Check whether these function can return "special depends" with make target attached to the origin !!! ToDo ???
-   TRACE ("CHECK_DEPENDS", origin.name, dep_type .. "-depends-list")
-   local args = DEPEND_ARGS[dep_type]
-   assert (args, "No dependency check defined for phase '" .. dep_type .. "'")
-   local lines = origin:port_var {table = true, safe = true, table.unpack (args)}
-   local t = {}
-   for i, line in ipairs (lines) do
-      for j, word in ipairs (split_words (line)) do
-	 local dep = string.match (word, "[^:]+:(%S+)")
-	 if dep then
-	    TRACE ("DEP", word, dep)
-	    t[dep] = true
-	 end
-      end
-   end
-   local result = table.keys (t)
-   TRACE ("CHECK_DEPENDS->", origin.name, table.unpack (result))
-   return result
-end
-
 -- check conflicts of new port with installed packages (empty table if no conflicts found)
 local function check_conflicts (origin)
    local list = {}
@@ -570,6 +544,63 @@ local function check_conflicts (origin)
    return list
 end
 
+--
+local function load_default_versions (origin)
+   local vars = {
+      { "apache", "^apache(%d)(%d)-", "apache=%d.%d" },
+      --[[
+      --bdb = { "db(%d+)-", "bdb=%d" },
+      --corosync = {},
+      --emacs = {},
+      --firebird = {},
+      --fortran = {},
+      --fpc = {},
+      --gcc = {},
+      --ghostscript = {},
+      --julia = {},
+      --lazarus = {},
+      --linux = {},
+      { "llvm", "^llvm(%d+)-", "llvm=%d" },
+      { "lua", "^lua(%d)(%d)-", "lua=%d.%d" },
+      { "mysql", "^mysql(%d)(%d)-", "mysql=%d.%d" },
+      --perl5 = {},
+      { "pgsql", "^pgsql(1)(%d)-", "postgresql=%d%d" },
+      { "pgsql", "^pgsql(9)(%d)-", "postgresql=%d.%d" },
+      { "php", "^php(%d)(%d)-", "php=%d.%d" },
+      { "python", "^py(%d)(%d)-", "python=%d.%d" },
+      { "python2", "^py(2)(%d)-", "python2=%d.%d" },
+      { "python3", "^py(3)(%d)-", "python3=%d.%d" },
+      { "ruby", "^ruby(%d)(%d)-", "ruby=%d.%d" },
+      --rust = {},
+      { "samba", "^samba(%d)(%d+)", "samba=%d.%d" },
+      --ssl = {},
+      { "tcltk", "^t[ck]l?(%d)(%d)-", "tcltk=%d.%d" },
+      --varnish = {},
+      --]]
+      "apache",
+      "llvm",
+      "lua",
+      "mysql",
+      "pgsql",
+      "php",
+      "python",
+      "python2",
+      "python3",
+      "ruby",
+      "samba",
+      "tcltk",
+   }
+   local default_versions = {}
+   local make_args = {}
+   for i, make_var in ipairs (vars) do
+      make_args[i] = "DEFAULT_" .. string.upper (make_var)
+   end
+   local T = origin:port_var { table = true, make_args }
+   for i, make_var in ipairs (vars) do
+      DEFAULT_VERSIONS[make_var] = T[i]
+   end
+end
+
 -- ----------------------------------------------------------------------------------
 -- create new Origins object or return existing one for given name
 -- the Origin class describes a port with optional flavor
@@ -581,67 +612,69 @@ local function __newindex (origin, n, v)
    rawset (origin, n, v)
 end
 
-local function __index (self, k)
-   local function __port_vars (self, k)
-      local port = Port:new (self.port)
-      local v = rawget (port, k)
-      TRACE ("RAW_GET(" .. port.name .. ", " .. k ..")", v ~= nil and v or "<NIL>")
-      if v ~= nil then
-	 return v
-      end
-      local function set_pkgname (port, var, pkgname)
-	 if pkgname then
-	    port[var] = Package:new (pkgname)
-	    TRACE ("PKG_NEW", self.name, pkgname)
+local function __index (origin, k)
+   local function __port_vars (origin, k)
+      local v = rawget (origin, k)
+      TRACE ("RAW_GET(" .. origin.name .. ", " .. k ..")", v == nil and "<nil>" or v)
+      if not v then
+	 local function set_pkgname (origin, var, pkgname)
+	    if pkgname then
+	       origin[var] = Package:new (pkgname)
+	       TRACE ("PKG_NEW", origin.name, pkgname)
+	    end
 	 end
+	 --local pkg = origin.pkg_old
+	 TRACE ("PORT_VAR")
+	 local t = origin:port_var {
+	    table = true,
+	    "DISTINFO_FILE",
+	    "BROKEN",
+	    "FORBIDDEN",
+	    "IGNORE",
+	    "IS_INTERACTIVE",
+	    "LICENSE",
+	    "FLAVORS",
+	    "FLAVOR",
+	    "ALL_OPTIONS",
+	    "NEW_OPTIONS",
+	    "PORT_OPTIONS",
+	    "CATEGORIES",
+	    "PKGNAME",
+	    "FETCH_DEPENDS",
+	    "EXTRACT_DEPENDS",
+	    "PATCH_DEPENDS",
+	    "BUILD_DEPENDS",
+	    "LIB_DEPENDS",
+	    "RUN_DEPENDS",
+	    "TEST_DEPENDS",
+	    "PKG_DEPENDS",
+	 } or {}
+	 TRACE ("PORT_VAR(" .. origin.name .. ", " .. k ..")", table.unpack (t))
+	 set_str (origin, "distinfo_file", t[1])
+	 set_bool (origin, "is_broken", t[2])
+	 set_bool (origin, "is_forbidden", t[3])
+	 set_bool (origin, "is_ignore", t[4])
+	 set_bool (origin, "is_interactive", t[5])
+	 set_table (origin, "license", t[6])
+	 set_table (origin, "flavors", t[7])
+	 set_str (origin, "flavor", t[8])
+	 set_table (origin, "all_options", t[9])
+	 set_table (origin, "new_options", t[10])
+	 set_table (origin, "port_options", t[11])
+	 set_table (origin, "categories", t[12])
+	 set_pkgname (origin, "pkg_new", t[13])
+	 set_table (origin, "fetch_depends_var", t[14])
+	 set_table (origin, "extract_depends_var", t[15])
+	 set_table (origin, "patch_depends_var", t[16])
+	 set_table (origin, "build_depends_var", t[17])
+	 set_table (origin, "lib_depends_var", t[18])
+	 set_table (origin, "run_depends_var", t[19])
+	 set_table (origin, "test_depends_var", t[20])
+	 set_table (origin, "pkg_depends_var", t[21])
+	 return rawget (origin, k)
       end
-      local pkg = self.pkg_old
-      local t = port_var (self, {table = true,
-				 "DISTINFO_FILE",
-				 "BROKEN",
-				 "FORBIDDEN",
-				 "IGNORE",
-				 "IS_INTERACTIVE",
-				 "LICENSE",
-				 "FLAVORS",
-				 "ALL_OPTIONS",
-				 "NEW_OPTIONS",
-				 "PORT_OPTIONS",
-				 "CATEGORIES",
-				 "PKGNAME",
-				 "FETCH_DEPENDS",
-				 "EXTRACT_DEPENDS",
-				 "PATCH_DEPENDS",
-				 "BUILD_DEPENDS",
-				 "LIB_DEPENDS",
-				 "RUN_DEPENDS",
-				 "TEST_DEPENDS",
-				 "PKG_DEPENDS",
-      }) or {}
-      TRACE ("PORT_VAR(" .. self.name .. ", " .. k ..")", table.unpack (t))
-      set_str (port, "distinfo_file", t[1])
-      set_bool (port, "is_broken", t[2])
-      set_bool (port, "is_forbidden", t[3])
-      set_bool (port, "is_ignore", t[4])
-      set_bool (port, "is_interactive", t[5])
-      set_table (port, "license", t[6])
-      set_table (port, "flavors", t[7])
-      set_table (port, "all_options", t[8])
-      set_table (port, "new_options", t[9])
-      set_table (port, "port_options", t[10])
-      set_table (port, "categories", t[11])
-      set_pkgname (port, "pkg_new", t[12])
-      set_table (port, "fetch_depends_var", t[13])
-      set_table (port, "extract_depends_var", t[14])
-      set_table (port, "patch_depends_var", t[15])
-      set_table (port, "build_depends_var", t[16])
-      set_table (port, "lib_depends_var", t[17])
-      set_table (port, "run_depends_var", t[18])
-      set_table (port, "test_depends_var", t[19])
-      set_table (port, "pkg_depends_var", t[20])
-      return rawget (port, k) or rawget (self, k)
    end
-   local function __port_depends (self, k)
+   local function __port_depends (origin, k)
       depends_table = {
 	 build_depends = {
 	    "extract_depends_var",
@@ -663,24 +696,16 @@ local function __index (self, k)
       assert (t, "non-existing dependency " .. k or "<nil>" .. " requested")
       local ut = {}
       for i, v in ipairs (t) do
-	 if self[v] then
-	    for j, d in ipairs (self[v]) do
-	       TRACE ("DEP_UT", d)
+	 --if origin[v] then
+	 for j, d in ipairs (origin[v] or {}) do
 	       local o = string.match (d, "[^:]:(%S+)")
 	       if o then
-	       ut[o] = true
+		  ut[o] = true
 	       end
 	    end
-	 end
+         --end
       end
       return table.keys (ut)
-   end
-   local function __check_port_exists (self, k)
-      --return access (PORTSDIR .. self.port .. "/Makefile", "r")
-      --TRACE ("ACESS CHECK FOR PATH:", self.path)
-      local result = access (self.path .. "/Makefile", "r")
-      --TRACE ("RESULT:", result)
-      return result
    end
 
    local dispatch = {
@@ -701,7 +726,7 @@ local function __index (self, k)
       old_pkgs = PkgDb.pkgname_from_origin,
       path = path,
       port = port,
-      port_exists = __check_port_exists,
+      port_exists = check_port_exists,
       fetch_depends = __port_depends,
       extract_depends = __port_depends,
       patch_depends = __port_depends,
@@ -717,37 +742,34 @@ local function __index (self, k)
       run_depends_var = __port_vars,
       test_depends_var = __port_vars,
       pkg_depends_var = __port_vars,
-      conflicts = function (self, k)
-	 return check_conflicts (self)
+      conflicts = function (origin, k)
+	 return check_conflicts (origin)
       end,
    }
    
-   TRACE ("INDEX(o)", self, k)
-   local w = rawget (self.__class, k)
+   TRACE ("INDEX(o)", origin, k)
+   local w = rawget (origin.__class, k)
    if w == nil then
-      rawset (self, k, false)
+      rawset (origin, k, false)
       local f = dispatch[k]
       if f then
-	 w = f (self, k)
+	 w = f (origin, k)
 	 if w then
-	    rawset (self, k, w)
+	    rawset (origin, k, w)
 	 else
 	    w = false
 	 end
       else
 	 error ("illegal field requested: Origin." .. k)
       end
-      TRACE ("INDEX(o)->", self, k, w)
+      TRACE ("INDEX(o)->", origin, k, w)
    else
-      TRACE ("INDEX(o)->", self, k, w, "(cached)")
+      TRACE ("INDEX(o)->", origin, k, w, "(cached)")
    end
    return w
 end
 
---[[
-
---]]
-
+--
 local function new (origin, name)
    --local TRACE = print -- TESTING
    if name then
@@ -789,6 +811,7 @@ return {
    moved_cache_load = moved_cache_load,
    lookup_moved_origin = lookup_moved_origin,
    list_prev_origins = list_prev_origins,
+   load_default_versions = load_default_versions, -- MUST BE CALLED ONCE WITH ANY ORIGIN AS PARAMETER
 }
 
 --[[

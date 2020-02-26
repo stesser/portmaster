@@ -194,17 +194,6 @@ function chomp (str)
    return str
 end
 
--- return list of all keys of a table -- UTIL
-function table:keys ()
-   local result = {}
-   for k, v in pairs (self) do
-      if type (k) ~= "number" then
-	 table.insert (result, k)
-      end
-   end
-   return result
-end
-
 --
 function set_str (self, field, v)
    self[field] = v ~= "" and v or false
@@ -247,6 +236,27 @@ function target_part (dep)
    local target = string.match (dep, "%S+:(%a+)")
    return target or "install"
 end
+
+-- return list of all keys of a table -- UTIL
+function table:keys ()
+   local result = {}
+   for k, v in pairs (self) do
+      if type (k) ~= "number" then
+	 table.insert (result, k)
+      end
+   end
+   return result
+end
+
+-- return index of element equal to val or nil if not found
+function table:index (list, val)
+   for i, v in ipairs (list) do
+      if v == val then
+	 return i
+      end
+   end
+   return nil
+end 
 
 -- ---------------------------------------------------------------------------------- (UTIL)
 -- create tempfile with a name that contains "$type" and the portmaster PID
@@ -365,6 +375,14 @@ end
 -- 	fail_bug "Required parameter $global_var cannot be initialised."
 -- }
 
+function path_concat (...)
+   local result = ""
+   for i, v in ipairs ({...}) do
+      result = string.sub (result, -1) == "/" and result .. v or result .. "/" .. v
+   end
+   return result
+end
+
 -- check whether path points to a directory
 function is_dir (path)
    if path then
@@ -379,36 +397,24 @@ end
 function scan_dir (dir)
    local result = {}
    assert (dir, "empty directory argument")
-   if dir:sub(-1) == "/" then
-      dir = dir:sub(1, -2)
-   end
-   local files = glob (dir .. "/*")
-   if files then
-      for i, f in ipairs (files) do
-	 if is_dir (f) then
-	    local d = f
-	    local dirs = scan_dir (d)
-	    if dirs then
-	       for i, f in ipairs (dirs) do
-		  table.insert (result, f)
-	       end
-	    end
-	 else
+   local files = glob (path_concat (dir, "*")) or {}
+   for i, f in ipairs (files) do
+      if is_dir (f) then
+	 for i, f in ipairs (scan_dir (f)) do
 	    table.insert (result, f)
 	 end
+      else
+	 table.insert (result, f)
       end
-      return result
    end
+   return result
 end
 
 -- set global variable to first parameter that is a directory
 function init_global_path (...)
    for i, dir in pairs ({...}) do
-      if string.sub (dir, -1) ~= "/" then
-	 dir = dir .. "/"
-      end
-      if is_dir (dir) then
-	 return dir
+      if is_dir (path_concat (dir, ".")) then
+	 return path_concat (dir, "")
       end
    end
    error ("init_global_path")
@@ -416,10 +422,9 @@ end
 
 -- return first parameter that is an existing executable
 function init_global_cmd (...)
-   local names = {...}
-   for i = 1, #names do
-      if access (names[i], "x") then
-	 return names[i]
+   for i, n in ipairs ({...}) do
+      if access (n, "x") then
+	 return n
       end
    end
    error ("init_global_cmd")
@@ -506,10 +511,7 @@ function init_globals ()
    DISABLE_LICENSES = ports_var {"DISABLE_LICENSES"}
 
    -- load default versions of build and run tools
-   DEFAULT_VERSIONS = {}
-   for i, v in ipairs (ports_var {split = true, "DEFAULT_VERSIONS"}) do
-      DEFAULT_VERSIONS[v] = true
-   end
+   --DEFAULT_VERSIONS = load_default_versions () ???
 
    -- sane default path
    setenv ("PATH", "/sbin:/bin:/usr/sbin:/usr/bin:$LOCALASE/sbin:$LOCALBASE/bin")
@@ -876,7 +878,10 @@ function add_one_pkg (pkgname_old, origin_new) -- 2nd parameter is optional
 end
 
 -- expand passed in pkgname or port glob (port glob with optional flavor)
-function add_with_globbing (build_type, origin_glob, origin_new) -- ??? origin_new is actually never passed ...
+function add_with_globbing (args)
+   local build_type = args.force and "force"
+   local origin_new = args.origin_new -- ??? origin_new is actually never passed ...
+   local origin_glob = args[1]
    local dir_glob = dir_part (origin_glob)
    local flavor = flavor_part (origin_glob)
    Msg.start (1, "Checking upgrades for", origin_glob, "and ports it depends on ...")
@@ -913,32 +918,11 @@ function ports_add_changed_origin (build_type, name, origin_new) -- 3d´rd arg i
    end
 end
 
--- return list of all keys of a table -- UTIL
-function table_keys (t)
-   local result = {}
-   for k, v in pairs (t) do
-      if type (k) ~= "number" then
-	 table.insert (result, k)
-      end
-   end
-   return result
-end
-
--- return index of element equal to val or nil if not found
-function table_match (val, list)
-   for i, v in ipairs (list) do
-      if v == val then
-	 return i
-      end
-   end
-   return nil
-end 
-
 -- find origin of a port that depends on the origin passed as second parameter
 function origin_new_from_dependency (origin_old, origin_dep)
    assert (origin_dep)
    local depends = origin_old:depends ("all") --  "all" vs. "run" ???
-   if table_match (origin_dep, depends) then
+   if table.index (depends, origin_dep) then
       return origin_old
    end
    local flavors = port_flavors_get (origin_old)
@@ -947,7 +931,7 @@ function origin_new_from_dependency (origin_old, origin_dep)
       for i, flavor in ipairs (flavors) do
 	 local origin = dir .. "@" .. flavor
 	 depends = origin:depends ("run")
-	 if table_match (origin_dep, depends) then
+	 if table.index (depends, origin_dep) then
 	    return origin
 	 end
       end
@@ -957,7 +941,7 @@ function origin_new_from_dependency (origin_old, origin_dep)
 	 local origin = origin_old:match ("([^/]+/)") .. flavor .. origin_dep:match (".*/%w+-(.*)")
 	 if origin ~= origin_old then
 	    depends = origin:depends ("run")
-	    if table_match (origin_dep, depends) then
+	    if table.index (depends, origin_dep) then
 	       return origin
 	    end
 	 end
@@ -1011,13 +995,6 @@ function ports_add_recursive (name, origin_new) -- 2nd parameter is optional
    end
 end
 
--- add all matching ports identified by pkgnames and/or portnames with optional flavor
-function ports_add_multiple (build_type, ...)
-   for i, name_glob in ipairs ({...}) do
-      add_with_globbing (build_type, name_glob)
-   end
-end
-
 --
 function ports_update (filters)
    local pkgs, rest = Package:installed_pkgs (), {}
@@ -1032,6 +1009,32 @@ function ports_update (filters)
       end
       pkgs, rest = rest, {}
    end
+end
+
+-- add all matching ports identified by pkgnames and/or portnames with optional flavor
+function ports_add_multiple (args)
+   local pattern_table = {}
+   for i, name_glob in ipairs (args) do
+      local pattern = string.gsub (name_glob, "%.", "%%.")
+      pattern = string.gsub (pattern, "%?", ".")
+      pattern = string.gsub (pattern, "%*", ".*")
+      table.insert (pattern_table, "^(" .. pattern .. ")")
+   end
+   local function check_origin (pkg)
+   end
+   local function filter_match (pkg)
+      for i, v in ipairs (pattern_table) do
+	 if string.match (pkg.name_base, v .. "$") then
+	    return true
+	 end
+	 if string.match (pkg.origin.name, v .. "$") or string.match (pkg.origin.name, v .. "@%S+$") then
+	    return true
+	 end
+      end
+   end
+   ports_update {
+      filter_match,
+   }
 end
 
 -- process all outdated ports (may upgrade, install, change, or delete ports)
@@ -1394,13 +1397,10 @@ function main ()
       ports_add_all_old_abi ()
    end
       
-   --  we allow specification of -a and -r together with individual ports to install or upgrade
+   --  allow the specification of -a and -r together with further individual ports to install or upgrade
    if #arg > 0 then
-      local force
-      if Options.force then
-	 force = "force"
-      end
-      ports_add_multiple (force, table.unpack (arg))
+      arg.force = Options.force
+      ports_add_multiple (arg)
    end
 
    -- add missing dependencies
@@ -1409,6 +1409,12 @@ function main ()
    -- sort actions according to registered dependencies
    Action.sort_list ()
 
+   -- 
+   Action.port_options ()
+   
+   -- 
+   Action.check_licenses ()
+   
    -- build list of packages to install after all ports have been built
    Action.register_delayed_installs ()
 
@@ -1466,7 +1472,7 @@ tracefd = io.open ("/tmp/pm.log", "w")
 -- --[[
 -- ---------------------------------------------------------------------------
 -- TESTING
-function TEST ()
+function TEST_ ()
    local function table_values (t) return "[" .. table.concat (t, ",") .. "]" end
    local o = Origin:new ("devel/py-setuptools@py27")
    print ("TEST:", o, o.pkg_new, o.is_broken, o.is_ignore, o.is_forbidden, table_values (o.flavors), o.flavor)

@@ -375,12 +375,16 @@ end
 -- 	fail_bug "Required parameter $global_var cannot be initialised."
 -- }
 
-function path_concat (...)
-   local result = ""
-   for i, v in ipairs ({...}) do
-      result = string.sub (result, -1) == "/" and result .. v or result .. "/" .. v
+-- concatenate file path, first element must not be empty
+function path_concat (result, ...)
+   if result and result ~= "" then
+      for i, v in ipairs ({...}) do
+	 if v and v ~= "" then
+	    result = result .. (string.sub (result, -1) ~= "/" and "/" or "") .. v
+	 end
+      end
+      return result
    end
-   return result
 end
 
 -- check whether path points to a directory
@@ -414,7 +418,10 @@ end
 function init_global_path (...)
    for i, dir in pairs ({...}) do
       if is_dir (path_concat (dir, ".")) then
-	 return path_concat (dir, "")
+	 if string.sub (dir, -1) ~= "/" then
+	    dir = dir .. "/"
+	 end
+	 return dir
       end
    end
    error ("init_global_path")
@@ -467,13 +474,13 @@ function init_globals ()
 
    -- port infrastructure paths, may be modified by user
    PORTSDIR		= init_global_path (ports_var {"PORTSDIR"}, "/usr/ports")
-   DISTDIR		= init_global_path (ports_var {"DISTDIR"}, PORTSDIR .. "distfiles")
-   PACKAGES		= init_global_path (Options.local_packagedir, ports_var {"PACKAGES"}, PORTSDIR .. "packages", "/usr/packages")
+   DISTDIR		= init_global_path (ports_var {"DISTDIR"}, path_concat (PORTSDIR, "distfiles"))
+   PACKAGES		= init_global_path (Options.local_packagedir, ports_var {"PACKAGES"}, path_concat (PORTSDIR, "packages"), "/usr/packages")
    PACKAGES_BACKUP	= init_global_path (PACKAGES .. "portmaster-backup")
 
    LOCALBASE		= init_global_path (ports_var {"LOCALBASE"}, "/usr/local")
-   LOCAL_LIB		= init_global_path (LOCALBASE .. "lib")
-   LOCAL_LIB_COMPAT	= init_global_path (LOCAL_LIB .. "compat/pkg")
+   LOCAL_LIB		= init_global_path (path_concat (LOCALBASE, "lib"))
+   LOCAL_LIB_COMPAT	= init_global_path (path_concat (LOCAL_LIB, "compat/pkg"))
 
    PKG_DBDIR		= init_global_path (ports_var {needportmk = true, "PKG_DBDIR"}, "/var/db/pkg")	-- no value returned for make -DBEFOREPORTMK
    PORT_DBDIR		= init_global_path (ports_var {"PORT_DBDIR"}, "/var/db/ports")
@@ -485,10 +492,10 @@ function init_globals ()
 
    -- Bootstrap pkg if not yet installed
 -- 	[ -x "${LOCALBASE}sbin/pkg-static" ] || ASSUME_ALWAYS_YES=yes /usr/sbin/pkg -v > /dev/null
-   PKG_CMD		= init_global_cmd (LOCALBASE .. "sbin/pkg-static")
+   PKG_CMD		= init_global_cmd (path_concat (LOCALBASE, "sbin/pkg-static"))
 
    if not SUDO_CMD and geteuid () ~= 0 then
-      SUDO_CMD = init_global_cmd (LOCALBASE .. "bin/sudo")
+      SUDO_CMD = init_global_cmd (path_concat (LOCALBASE, "bin/sudo"))
    end
 
    -- locate grep command that provided required functionality

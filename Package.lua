@@ -40,7 +40,7 @@ local function pkg_filename (args)
    local pkgname = pkg.name
    local subdir = args.subdir or "All"
    local extension = args.ext or Options.package_format
-   return PACKAGES .. subdir .. "/" .. pkgname .. "." ..extension
+   return path_concat (PACKAGES, subdir, pkgname .. "." .. extension)
 end
 
 -- fetch ABI from package file

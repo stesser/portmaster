@@ -372,7 +372,7 @@ local function register_delete (action)
 end
 
 -- check conflicts of new port with installed packages (empty table if no conflicts found)
-local function conflicts (action, mode)
+local function conflicting_pkgs (action, mode)
    local origin = action.origin_new
    if origin and origin.build_conflicts and origin.build_conflicts[1] then
       local list = {}
@@ -414,7 +414,7 @@ local function check_conflicts_override (action, build_type)
    -- <se> ToDo: support multiple conflicting packages
    local conflicting_pkg
    if build_type ~= "unused" then
-      conflicting_pkg = conflicts (action, "build_conflicts")
+      conflicting_pkg = conflicting_pkgs (action, "build_conflicts")
 
       for i, pkg in ipairs (conflicting_pkg) do
 	 print ("CONFL-PKG:", pkg) -- TABLE !!! ???
@@ -1839,6 +1839,9 @@ local function new (Action, args)
 	 setmetatable (action, Action)
       end
       action_enrich (action)
+      if action.action == "upgrade" then
+	 action.origin_new:checksum ()
+      end
       return cache_add (action)
    else
       error ("Action:new() called with nil argument")
@@ -1977,12 +1980,12 @@ local function port_options ()
 end
 
 --
-local function check_conflicts (k)
+local function check_conflicts (mode)
    Msg.start (0)
    for i, action in ipairs (ACTION_LIST) do
       local o_n = rawget (action, "origin_new")
-      if o_n and o_n[k] then
-	 local conflicts_table = conflicts (action, k)
+      if o_n and o_n[mode] then
+	 local conflicts_table = conflicting_pkgs (action, mode)
 	 if conflicts_table and #conflicts_table > 0 then
 	    local text = ""
 	    for i, pkg in ipairs (conflicts_table) do

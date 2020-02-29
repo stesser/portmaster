@@ -28,7 +28,7 @@ SUCH DAMAGE.
 -- perform "make checksum", analyse status message and write success status to file (meant to be executed in a background task)
 local function dist_fetch (origin)
 --   Msg.cont (3, "Fetch distfiles for '" .. port .. "'")
-   local port = origin:port ()
+   local port = origin.port
    local result = ""
    local lines = origin:port_make {table = true, safe = true, "-D", "NO_DEPENDS", "-D", "DISABLE_CONFLICTS", "-D", "DISABLE_LICENSES", "DEV_WARNING_WAIT=0", "checksum"}
    for i, l in ipairs (lines) do

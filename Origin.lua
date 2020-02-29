@@ -320,13 +320,18 @@ local function check_license (origin)
    end
 end
 
+--
+local function checksum (origin)
+   Distfile.fetch (origin.name)
+end
+
 -- # wait for a line stating success or failure fetching all distfiles for some port origin and return status
 local function wait_checksum (origin)
-   local dir = port (origin)
    if Options.dry_run then
       return true
    end
    local errmsg = "cannot find fetch acknowledgement file"
+   local dir = origin.port
    if TMPFILE_FETCH_ACK then
       local status = shell (GREP_CMD, {safe = true, "-m", "1", "OK " .. dir .. " ", TMPFILE_FETCH_ACK})
       print ("'" .. status .. "'")
@@ -863,9 +868,9 @@ return {
    check_excluded = check_excluded,
    check_options = check_options,
    check_path = check_path,
+   checksum = checksum,
    configure = configure,
    depends = depends,
-   -- ...
    port_make = port_make,
    port_var = port_var,
    origin_alias = origin_alias,

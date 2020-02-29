@@ -614,6 +614,21 @@ end
 
 local function __index (origin, k)
    local function __port_vars (origin, k)
+      local function check_default_flavor (origin)
+	 local default_flavor = origin.flavors and origin.flavors[1]
+	 if default_flavor then
+	    local flavor = origin.flavor
+	    if flavor then
+	       if default_flavor == flavor then
+		  TRACE ("ADD_ORIGIN_CACHE", origin.port)
+		  ORIGINS_CACHE[origin.port] = origin
+	       end
+	    else
+	       TRACE ("ADD_ORIGIN_CACHE", origin.name .. "@" .. default_flavor)
+	       ORIGINS_CACHE[origin.name .. "@" .. default_flavor] = origin
+	    end
+	 end
+      end
       local v = rawget (origin, k)
       TRACE ("RAW_GET(" .. origin.name .. ", " .. k ..")", v == nil and "<nil>" or v)
       if not v then
@@ -671,6 +686,7 @@ local function __index (origin, k)
 	 set_table (origin, "run_depends_var", t[19])
 	 set_table (origin, "test_depends_var", t[20])
 	 set_table (origin, "pkg_depends_var", t[21])
+	 check_default_flavor (origin)
 	 return rawget (origin, k)
       end
    end

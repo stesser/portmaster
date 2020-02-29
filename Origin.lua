@@ -691,19 +691,21 @@ local function __index (origin, k)
 	 test_depends = {
 	    "test_depends_var",
 	 },
+	 special_depends = {
+	    "build_depends_var",
+	 },
       }
       local t = depends_table[k]
       assert (t, "non-existing dependency " .. k or "<nil>" .. " requested")
       local ut = {}
       for i, v in ipairs (t) do
-	 --if origin[v] then
 	 for j, d in ipairs (origin[v] or {}) do
-	       local o = string.match (d, "[^:]:(%S+)")
-	       if o then
-		  ut[o] = true
-	       end
+	    local pattern = k == "special_depends" and "^[^:]+:[^:]+:(%S+)" or "^[^:]+:([^:]+)$"
+	    local o = string.match (d, pattern)
+	    if o then
+	       ut[o] = true
 	    end
-         --end
+	 end
       end
       return table.keys (ut)
    end

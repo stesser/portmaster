@@ -67,9 +67,6 @@ local function describe (action)
 	    if p_o == p_n then
 	       verb = "Re-install"
 	    else
-	       TRACE ("P?", action.action)
-	       TRACE ("PO", action.pkg_old and action.pkg_old.name)
-	       TRACE ("PN", action.pkg_new and action.pkg_new.name)
 	       if action.pkg_old.name_base == action.pkg_new.name_base then
 		  if vers_cmp == "<" then
 		     verb = "Upgrade"
@@ -1539,8 +1536,8 @@ local function __newindex (action, n, v)
    TRACE ("SET(a)", rawget (action, "pkg_new") and  action.pkg_new.name or
 	     rawget (action, "pkg_old") and  action.pkg_old.name or
 	     rawget (action, "origin") and action.origin.name, n, v)
-   if n == "pkg_old" or n == "pkg_new" or n == "origin_new" then
-      ACTION_CACHE[n] = v
+   if v and (n == "pkg_old" or n == "pkg_new" or n == "origin_new") then
+      ACTION_CACHE[v] = action
    end
    rawset (action, n, v)
 end
@@ -1899,16 +1896,19 @@ local function sort_list ()
    local sorted_list = {}
    local function add_action (action)
       if not rawget (action, "planned") then
-	 local deps = rawget (action, "build_depends") or {}
-	 for i, o in ipairs (deps) do
-	    local origin = Origin:new (o)
-	    local a = rawget (ACTION_CACHE, origin)
-	    TRACE ("BUILD_DEP", a and rawget (a, "action"), origin.name, origin.pkg_new, origin.pkg_new and rawget (origin.pkg_new, "is_installed"))
-	    if a and not rawget (origin.pkg_new, "is_installed") and not rawget (a, "planned") then
-	       if a ~= action then
-		  add_action (a)
-	       else
-		  TRACE ("a == action", a)
+	 local deps = rawget (action, "build_depends")
+	 if deps then
+	    for i, o in ipairs (deps) do
+	       local origin = Origin:new (o)
+	       local a = rawget (ACTION_CACHE, origin)
+	       TRACE ("BUILD_DEP", a and rawget (a, "action"), origin.name, origin.pkg_new, origin.pkg_new and rawget (origin.pkg_new, "is_installed"))
+	       if a and not rawget (origin.pkg_new, "is_installed") and not rawget (a, "planned") then
+		  if a ~= action then
+		     TRACE ("BUILD_DEP RECURSE")
+		     add_action (a)
+		  else
+		     TRACE ("a == action", a)
+		  end
 	       end
 	    end
 	 end
@@ -1918,16 +1918,19 @@ local function sort_list ()
 	 action.planned = true
 	 Msg.cont (0, "[" .. tostring (#sorted_list) .. "/" .. max_str .. "]", tostring (action))
 	 --
-	 local deps = rawget (action, "run_depends") or {}
-	 for i, o in ipairs (deps) do
-	    local origin = Origin:new (o)
-	    local a = rawget (ACTION_CACHE, origin)
-	    TRACE ("RUN_DEP", a and rawget (a, "action"), origin.name, origin.pkg_new, origin.pkg_new and rawget (origin.pkg_new, "is_installed"))
-	    if a and not rawget (origin.pkg_new, "is_installed") and not rawget (a, "planned") then
-	       if a ~= action then
-		  add_action (a)
-	       else
-		  TRACE ("a == action", a)
+	 local deps = rawget (action, "run_depends")
+	 if deps then
+	    for i, o in ipairs (deps) do
+	       local origin = Origin:new (o)
+	       local a = rawget (ACTION_CACHE, origin)
+	       TRACE ("RUN_DEP", a and rawget (a, "action"), origin.name, origin.pkg_new, origin.pkg_new and rawget (origin.pkg_new, "is_installed"))
+	       if a and not rawget (origin.pkg_new, "is_installed") and not rawget (a, "planned") then
+		  if a ~= action then
+		     TRACE ("RUN_DEP RECURSE")
+		     add_action (a)
+		  else
+		     TRACE ("a == action", a)
+		  end
 	       end
 	    end
 	 end

@@ -1071,7 +1071,7 @@ local function ports_add_all_outdated ()
       return true, false
    end
 
-   for i, lib in ipairs (PkgDb:query {table = true, "%b"}) do
+   for i, lib in ipairs (PkgDb.query {table = true, "%b"}) do
       current_libs[lib] = true
    end
    ports_update {
@@ -1296,70 +1296,98 @@ function portdb_purge ()
    chdir ("/")
 end
 
--- ----------------------------------------------------------------------------------
-function list_ports_category (mode, condition, descr)
-   local t = {}
-   for k, pkg in pairs (Package:installed_pkgs ()) do
-      if pkg.num_dependencies and condition (pkg) then
-	 if mode == "verbose" then
-	    local origin_old = pkg.origin
-	    assert (origin_old, "no origin for package " .. pkgname_old)
-	    local pkgname_new = origin_old.pkg_new
-	    if not pkgname_new then
-	       local origin_new, reason = origin_find_moved (origin_old)
-	       if origin_new and origin_new ~= origin_old then
-		  pkgname_new = origin_new.pkg_new
-	       end
-	       local text
-	       if not pkgname_new then
-		  if reason then
-		     text = "has been removed: " .. reason
-		  else
-		     text = "cannot be found in the ports system"
-		  end
-	       elseif pkgname_new ~= pkgname_old then
-		  text = "needs update to " .. pkgname_new
-	       end
-	       table.insert (t, pkg.name .. " " .. text)
-	    end
-	 else
-	    table.insert (t, pkg.name)
-	 end
-      end
-   end
-   if #t > 0 then
-      table.sort (t)
-      Msg.start (0, #t, descr)
-      for i, line in ipairs (t) do
-	 Msg.cont (0, line)
-      end
-   end
-end
-
 -- list ports (optionally with information about updates / moves / deletions)
 function list_ports (mode)
-   function is_root_port (pkg)
-      return pkg.num_depending == 0 and pkg.num_dependencies == 0 and pkg.is_automatic == false
-   end
-   function is_trunk_port (pkg)
-      return pkg.num_depending ~= 0 and pkg.num_dependencies == 0
-   end
-   function is_branch_port (pkg)
-      return pkg.num_depending ~= 0 and pkg.num_dependencies ~= 0
-   end
-   function is_leaf_port (pkg)
-      return pkg.num_depending == 0 and pkg.num_dependencies ~= 0 and pkg.is_automatic == false
-   end
-   function is_leftover_port (pkg)
-      return pkg.num_depending == 0 and pkg.is_automatic == true
-   end
- 
+   local filter = {
+      {
+	  "root ports (no dependencies and not depended on)",
+	  function (pkg)
+	     return pkg.num_depending == 0 and pkg.num_dependencies == 0 and pkg.is_automatic == false
+	  end
+      },
+      {
+	 "trunk ports (no dependencies but depended on)",
+	 function (pkg)
+	    return pkg.num_depending ~= 0 and pkg.num_dependencies == 0
+	 end
+      },
+      {
+         "branch ports (have dependencies and are depended on)",
+	 function (pkg)
+	    return pkg.num_depending ~= 0 and pkg.num_dependencies ~= 0
+	 end
+      },
+      {
+         "leaf ports (have dependencies but are not depended on)",
+	 function (pkg)
+	    return pkg.num_depending == 0 and pkg.num_dependencies ~= 0 and pkg.is_automatic == false
+	 end
+      },
+      {
+         "left over ports (e.g. build tools that are not required at run-time)",
+	 function (pkg)
+	    return pkg.num_depending == 0 and pkg.is_automatic == true
+	 end
+      },
+   }
+
+   local pkg_list = Package:installed_pkgs ()
+   table.sort (pkg_list, function (a, b) return a.name > b.name end)
    Msg.start (0, "List of installed packages by category:")
-   list_ports_category (mode, is_root_port, "root ports (no dependencies and not depended on)")
-   list_ports_category (mode, is_trunk_port, "trunk ports (no dependencies but depended on)")
-   list_ports_category (mode, is_branch_port, "branch ports (have dependencies and are depended on)")
-   list_ports_category (mode, is_leaf_port, "leaf ports (have dependencies but are not depended on)")
-   list_ports_category (mode, is_leftover_port, "left over ports (e.g. build tools not required at run-time)")
+   for i, f in ipairs (filter) do
+      local descr = f[1]
+      local test = f[2]
+      local rest = {}
+      local first = true
+      local count = 0
+      for k, pkg_old in ipairs (pkg_list) do
+	 if test (pkg_old) then
+	    count = count + 1
+	 end
+      end
+      if count > 0 then
+	 for k, pkg_old in ipairs (pkg_list) do
+	    if test (pkg_old) then
+	       local line = pkg_old.name
+	       if mode == "verbose" then
+		  local origin_old = pkg_old.origin
+		  assert (origin_old, "no origin for package " .. pkg_old.name)
+		  local pkg_new = origin_old.pkg_new
+		  local pkgname_new = pkg_new and pkg_new.name
+		  local reason
+		  if not pkgname_new then
+		     local origin_new = origin_old:lookup_moved_origin ()
+		     reason = origin_old.reason
+		     TRACE ("MOVED??", reason)
+		     if origin_new and origin_new ~= origin_old then
+			pkg_new = origin_new.pkg_new
+			pkgname_new = pkg_new and pkg_new.name
+		     end
+		  end
+		  if not pkgname_new then
+		     if reason then
+			line = line .. " has been removed: " .. reason
+		     else
+			line = line .. " cannot be found in the ports system"
+		     end
+		  elseif pkgname_new ~= pkg_old.name then
+		     line = line .. " needs update to " .. pkgname_new
+		  end
+	       end
+	       if first then
+		  Msg.start (0, count, descr)
+		  first = false
+	       end
+	       Msg.cont (0, line)
+	    else
+	       table.insert (rest, pkg_old)
+	    end
+	    --end
+	 end
+	 pkg_list = rest
+      end
+   end
+   assert (pkg_list[1] == nil, "not all packages covered in tests")
 end
 
 -- ----------------------------------------------------------------------------------
@@ -1422,10 +1450,14 @@ function main ()
    Action.sort_list ()
 
    -- 
-   Action.port_options ()
+--   Action.port_options ()
    
    -- 
-   Action.check_licenses ()
+   --Action.check_conflicts ("build_conflicts")
+   Action.check_conflicts ("install_conflicts")
+   
+   -- 
+--   Action.check_licenses ()
    
    -- build list of packages to install after all ports have been built
    Action.register_delayed_installs ()

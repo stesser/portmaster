@@ -67,6 +67,9 @@ local function describe (action)
 	    if p_o == p_n then
 	       verb = "Re-install"
 	    else
+	       TRACE ("P?", action.action)
+	       TRACE ("PO", action.pkg_old and action.pkg_old.name)
+	       TRACE ("PN", action.pkg_new and action.pkg_new.name)
 	       if action.pkg_old.name_base == action.pkg_new.name_base then
 		  if vers_cmp == "<" then
 		     verb = "Upgrade"
@@ -116,14 +119,16 @@ end
 
 -- check for build conflicts immediately before a port build is started
 local function check_build_conflicts (action)
-   local origin = action.origin_new.name
+   local origin = action.origin_new
+   local build_conflicts = origin.build_conflicts
    local result = {}
-   local pattern_list = origin:port_var {table = true, "BUILD_CONFLICTS"} -- or ??? $(origin_var "$origin_new" CONFLICTS)
+   --
    for i, pattern in ipairs (pattern_list) do
       for j, pkgname in ipairs (PkgDb.query {table = true, glob = true, "%n-%v", pattern}) do
 	 table.insert (result, pkgname)
       end
    end
+   --]]
    return result
 end
 
@@ -367,20 +372,25 @@ local function register_delete (action)
 end
 
 -- check conflicts of new port with installed packages (empty table if no conflicts found)
-local function conflicts (action)
-   local list = {}
-   conflicts = action:port_make {table = true, safe = true, "check-conflicts"}
-   if conflicts then
-      for i, line in ipairs (conflicts) do
-	 local pkgname = line:match ("^%s+(%S+)%s*")
-	 if pkgname then
-	    table.insert (list, Package:new (pkgname))
-	 elseif #list > 0 then
-	    break
+local function conflicts (action, mode)
+   local origin = action.origin_new
+   if origin and origin.build_conflicts and origin.build_conflicts[1] then
+      local list = {}
+      local make_target = mode == "build_conflicts" and "check-build-conflicts" or "check-conflicts"
+      local conflicts_table = origin:port_make {table = true, safe = true, make_target}
+      if conflicts_table then
+	 for i, line in ipairs (conflicts_table) do
+	    TRACE ("CONFLICTS", line)
+	    local pkgname = line:match ("^%s+(%S+)%s*")
+	    if pkgname then
+	       table.insert (list, Package:new (pkgname))
+	    elseif #list > 0 then
+	       break
+	    end
 	 end
       end
+      return list
    end
-   return list
 end
 
 -- ----------------------------------------------------------------------------------
@@ -404,7 +414,7 @@ local function check_conflicts_override (action, build_type)
    -- <se> ToDo: support multiple conflicting packages
    local conflicting_pkg
    if build_type ~= "unused" then
-      conflicting_pkg = conflicts (action)
+      conflicting_pkg = conflicts (action, "build_conflicts")
 
       for i, pkg in ipairs (conflicting_pkg) do
 	 print ("CONFL-PKG:", pkg) -- TABLE !!! ???
@@ -1494,7 +1504,7 @@ local function determine_action (action, k)
       if p_o == p_n then
 	 return false
       end
-      if not p_o or p_o.version ~= p_n.version then
+      if not p_o or not p_n or p_o.version ~= p_n.version then
 	 return true
       end
       --[[
@@ -1514,11 +1524,11 @@ local function determine_action (action, k)
 
    if excluded () then
       return "exclude"
-   elseif not o_n then
+   elseif not p_n then
       return "delete"
-   elseif not o_o or need_upgrade () then
+   elseif not p_o or need_upgrade () then
       return "upgrade"
-   elseif origin_changed (o_o, o_n) or p_o ~= p_n then
+   elseif p_o ~= p_n or origin_changed (o_o, o_n) then
       return "change"
    end
    return false
@@ -1596,18 +1606,26 @@ local function set_cached_action (action)
       local v = rawget (action, field)
       if v then
 	 local n = v.name
-	 if n and ACTION_CACHE[n] ~= action then
-	    --error ()
-	 end
-	 ACTION_CACHE[n] = action
-	 if (field == "origin_old" or field == "origin_new") and string.match (n, "@") then
-	    local nn = string.match (n, "(%S+)@")
-	    TRACE ("ACTON_CACHE_ALIAS", n, nn)
+	 if n and n ~= "" then
+	    if ACTION_CACHE[n] ~= action then
+	       --error ()
+	    end
 	    ACTION_CACHE[n] = action
+	    if (field == "origin_old" or field == "origin_new") then
+	       TRACE ("ALIAS?", v)
+	       local alias = Origin.origin_alias (v)
+	       if alias then
+		  TRACE ("ACTION_CACHE_ALIAS", n, alias)
+		  ACTION_CACHE[alias] = action
+	       end
+	    end
+	 else
+	    --error ("Empty origin name " .. field " " .. describe (action))
 	 end
       end
    end
    assert (action, "set_cached_action called with nil argument")
+   TRACE ("SET_CACHED_ACTION", describe (action))
    check_and_set ("pkg_old")
    check_and_set ("pkg_new")
    check_and_set ("origin_old")
@@ -1739,9 +1757,14 @@ local function action_enrich (action)
 	 end
       end
       local p_n = action.pkg_new
-      local namebase = p_n.name_base
-      local o = PkgDb:query {"%o", namebase}
-      
+      if p_n then
+	 local namebase = p_n.name_base
+	 local p_o = PkgDb.query {"%n-%v", namebase}
+	 if p_o and p_o ~= "" then
+	    local p = Package:new (p_o)
+	    action.origin_old = p.origin
+	 end
+      end
    end
 
    --[[
@@ -1953,6 +1976,25 @@ local function port_options ()
    end
 end
 
+--
+local function check_conflicts (k)
+   Msg.start (0)
+   for i, action in ipairs (ACTION_LIST) do
+      local o_n = rawget (action, "origin_new")
+      if o_n and o_n[k] then
+	 local conflicts_table = conflicts (action, k)
+	 if conflicts_table and #conflicts_table > 0 then
+	    local text = ""
+	    for i, pkg in ipairs (conflicts_table) do
+	       text = text .. " " .. pkg.name
+	    end
+	    Msg.cont (0, "Conflicting packages for", o_n.name, text)
+	 end
+      end
+   end
+end
+
+
 -- ----------------------------------------------------------------------------------
 --
 return {
@@ -1964,6 +2006,7 @@ return {
    sort_list = sort_list,
    add_missing_deps = add_missing_deps,
    check_licenses = check_licenses,
+   check_conflicts = check_conflicts,
    port_options = port_options,
 }
 

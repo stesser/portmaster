@@ -456,7 +456,7 @@ local function lookup_moved_origin (origin)
 	    local f = f ~= o_f and f or n_f
 	    local r = reason .. " on " .. date
 	    TRACE ("MOVED->", o (p, f), r)
-	    if not p or access (PORTSDIR .. p .. "/Makefile") then
+	    if not p or access (PORTSDIR .. p .. "/Makefile", "r") then
 	       return p, f, r
 	    end
 	    return locate_move (p, f, i + 1)
@@ -470,8 +470,10 @@ local function lookup_moved_origin (origin)
       moved_cache_load ()
    end
    local p, f, r = locate_move (origin.port, origin.flavor, 1)
-   if p and r then
-      origin = Origin:new (o (p, f))
+   if r then
+      if p then
+	 origin = Origin:new (o (p, f))
+      end
       origin.reason = r
       return origin
    end
@@ -612,24 +614,31 @@ local function __newindex (origin, n, v)
    rawset (origin, n, v)
 end
 
+local function origin_alias (origin)
+   local default_flavor = origin.flavors and origin.flavors[1]
+   TRACE ("ORIGIN_ALIAS", origin.name, default_flavor)
+   if default_flavor then
+      local flavor = origin.flavor
+      if flavor then
+	 if default_flavor == flavor then
+	    TRACE ("ORIGIN_ALIAS", origin.port)
+	    return origin.port
+	 end
+      else
+	 -- add missing default flavor to port name
+	 origin.name = origin.name .. "@" .. default_flavor
+	 TRACE ("ORIGINS_CACHE_ALIAS", origin.name)
+	 return origin.name
+      end
+   end
+end
+
 local function __index (origin, k)
    local function __port_vars (origin, k)
       local function check_default_flavor (origin)
-	 local default_flavor = origin.flavors and origin.flavors[1]
-	 if default_flavor then
-	    local flavor = origin.flavor
-	    if flavor then
-	       if default_flavor == flavor then
-		  -- register alias without flavor for default flavor case
-		  TRACE ("ORIGINS_CACHE_ALIAS", origin.port)
-		  ORIGINS_CACHE[origin.port] = origin
-	       end
-	    else
-	       -- add default flavor to port name
-	       origin.name = origin.name .. "@" .. default_flavor
-	       TRACE ("ORIGINS_CACHE_ALIAS", origin.name)
-	       ORIGINS_CACHE[origin.name] = origin
-	    end
+	 local alias = origin_alias (origin)
+	 if alias then
+	    ORIGINS_CACHE[alias] = origin
 	 end
       end
       local v = rawget (origin, k)
@@ -666,6 +675,9 @@ local function __index (origin, k)
 	    "RUN_DEPENDS",
 	    "TEST_DEPENDS",
 	    "PKG_DEPENDS",
+	    "CONFLICTS_BUILD",
+	    "CONFLICTS_INSTALL",
+	    "CONFLICTS",
 	 } or {}
 	 TRACE ("PORT_VAR(" .. origin.name .. ", " .. k ..")", table.unpack (t))
 	 set_str (origin, "distinfo_file", t[1])
@@ -689,12 +701,15 @@ local function __index (origin, k)
 	 set_table (origin, "run_depends_var", t[19])
 	 set_table (origin, "test_depends_var", t[20])
 	 set_table (origin, "pkg_depends_var", t[21])
+	 set_table (origin, "conflicts_build_var", t[22])
+	 set_table (origin, "conflicts_install_var", t[23])
+	 set_table (origin, "conflicts_var", t[24])
 	 check_default_flavor (origin)
 	 return rawget (origin, k)
       end
    end
    local function __port_depends (origin, k)
-      depends_table = {
+      local depends_table = {
 	 build_depends = {
 	    "extract_depends_var",
 	    "patch_depends_var",
@@ -723,6 +738,31 @@ local function __index (origin, k)
 	    local o = string.match (d, pattern)
 	    if o then
 	       ut[o] = true
+	    end
+	 end
+      end
+      return table.keys (ut)
+   end
+   local function __port_conflicts (origin, k)
+      local conflicts_table = {
+	 build_conflicts = {
+	    "conflicts_build_var",
+	    "conflicts_var",
+	 },
+	 install_conflicts = {
+	    "conflicts_install_var",
+	    "conflicts_var",
+	 },
+      }
+      local t = conflicts_table[k]
+      assert (t, "non-existing conflict type " .. k or "<nil>" .. " requested")
+      local ut = {}
+      for i, v in ipairs (t) do
+	 local t = origin[v]
+	 TRACE ("CHECK_C?", origin.name, k, v)
+	 if t then
+	    for j, d in ipairs (t) do
+	       ut[d] = true
 	    end
 	 end
       end
@@ -762,10 +802,11 @@ local function __index (origin, k)
       lib_depends_var = __port_vars,
       run_depends_var = __port_vars,
       test_depends_var = __port_vars,
-      pkg_depends_var = __port_vars,
-      conflicts = function (origin, k)
-	 return check_conflicts (origin)
-      end,
+      conflicts_build_var = __port_vars,
+      conflicts_install_var = __port_vars,
+      conflicts_var = __port_vars,
+      build_conflicts = __port_conflicts,
+      install_conflicts = __port_conflicts,
    }
    
    TRACE ("INDEX(o)", origin, k)
@@ -827,6 +868,7 @@ return {
    -- ...
    port_make = port_make,
    port_var = port_var,
+   origin_alias = origin_alias,
    portdb_path = portdb_path,
    wait_checksum = wait_checksum,
    moved_cache_load = moved_cache_load,

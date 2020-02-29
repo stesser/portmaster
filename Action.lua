@@ -1592,57 +1592,66 @@ ACTION_LIST = {} -- GLOBAL
 ACTION_CACHE = {}
 
 local function set_cached_action (action)
+   local function check_and_set (field)
+      local v = rawget (action, field)
+      if v then
+	 local n = v.name
+	 if n and ACTION_CACHE[n] ~= action then
+	    --error ()
+	 end
+	 ACTION_CACHE[n] = action
+	 if (field == "origin_old" or field == "origin_new") and string.match (n, "@") then
+	    n = string.match (n, "(%S+)@")
+	    print ("N", n)
+	    ACTION_CACHE[n] = action
+	 end
+      end
+   end
    assert (action, "set_cached_action called with nil argument")
-   if rawget (action, "pkg_old") then
-      if ACTION_CACHE[action.pkg_old] ~= action then
-	 --assert (ACTION_CACHE[action.pkg_old] == action)
-      end
-   end
-   ACTION_CACHE[action.pkg_old] = action	 
-   if rawget (action, "pkg_new") then
-      if ACTION_CACHE[action.pkg_new] ~= action then
-	 --assert (ACTION_CACHE[action.pkg_new] == action)
-      end
-   end
-   if action.origin_old and rawget (action, "origin_old") then
-      if ACTION_CACHE[action.origin_old] ~= action then
-	 --assert (ACTION_CACHE[action.origin_old] == action)
-      end
-   end
-   ACTION_CACHE[action.origin_old] = action
-   if action.origin_new and rawget (action, "origin_new") then
-      if ACTION_CACHE[action.origin_new] ~= action then
-	 --assert (ACTION_CACHE[action.origin_new] == action)
-      end
-   end
-   ACTION_CACHE[action.origin_new] = action
+   check_and_set ("pkg_old")
+   check_and_set ("pkg_new")
+   check_and_set ("origin_old")
+   check_and_set ("origin_new")
    return action
 end
 
 -- object that controls the upgrading and other changes
 local function cache_add (action)
-   local pkgname
+   local pkgname, origin
    if action.action ~= "exclude" then
       if action.pkg_old and action.action == "delete" then
 	 pkg = action.pkg_old
       elseif action.pkg_new then
 	 pkg = action.pkg_new
+	 origin = action.origin_new
       else
 	 error ("Neither old nor new package name can be found for action: ", describe (action))
       end
       local action0 = ACTION_CACHE[pkg]
       if action0 then
-	 error ("Duplicate actions for " .. pkg.name .. ":\n1) " .. (action0 and describe (action0) or "") .. "\n2) " .. (action and describe (action) or ""))
+	 error ("Duplicate actions for " .. pkg.name .. ":\n#	1) " .. (action0 and describe (action0) or "") .. "\n#	2) " .. (action and describe (action) or ""))
       end
+      local action0 = ACTION0
    end
    return set_cached_action (action)
+end
+
+--
+local function check_action_origin (origin_name)
+   local a = ACTION_CACHE[origin_name]
+   if not a and string.match (origin_name, "@") then
+      a = ACTION_CACHE[string.match (origin_name, "($S+)@")]
+   end
+   return a
 end
 
 -- 
 local function cached_action (args)
    local action
    assert (args, "cached_action: called with nil argument")
-   action = args.pkg_new and ACTION_CACHE[args.pkg_new] or args.pkg_old and ACTION_CACHE[args.pkg_old]
+   action = args.pkg_new and ACTION_CACHE[args.pkg_new]
+      or args.pkg_old and ACTION_CACHE[args.pkg_old]
+      or args.origin_new and check_action_origin (args.origin_new.name)
    TRACE ("CACHED_ACTION", args.pkg_new, args.pkg_old, action and action.pkg_old, action and action.pkg_new, "END")
    return action
 end
@@ -1789,6 +1798,13 @@ local function new (Action, args)
 	       assert (action.pkg_new.name == args.pkg_new.name, "Conflicting pkg_new: " .. action.pkg_new.name .. " vs. " .. args.pkg_new.name)
 	    else
 	       action.pkg_new = args.pkg_new
+	    end
+	 end
+	 if args.origin_new then
+	    if rawget (action, "origin_new") then
+	       assert (action.origin_new.name == args.origin_new.name, "Conflicting origin_new: " .. action.origin_new.name .. " vs. " .. args.origin_new.name)
+	    else
+	       action.origin_new = args.origin_new
 	    end
 	 end
       else

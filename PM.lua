@@ -1020,8 +1020,6 @@ function ports_add_multiple (args)
       pattern = string.gsub (pattern, "%*", ".*")
       table.insert (pattern_table, "^(" .. pattern .. ")")
    end
-   local function check_origin (pkg)
-   end
    local function filter_match (pkg)
       for i, v in ipairs (pattern_table) do
 	 if string.match (pkg.name_base, v .. "$") then
@@ -1035,6 +1033,20 @@ function ports_add_multiple (args)
    ports_update {
       filter_match,
    }
+   for i, name_glob in ipairs (args) do
+      local filenames = glob (path_concat (PORTSDIR, name_glob, "Makefile"))
+      if filenames then
+	 for j, filename in ipairs (filenames) do
+	    if access (filename, "r") then
+	       local port = string.match (filename, "/([^/]+/[^/]+)/Makefile")
+	       local origin = Origin:new (port)
+	       Action:new {build_type = "user", dep_type = "run", origin_new = origin} 
+	    end
+	 end
+      else
+	 error ("No ports match " .. name_glob)
+      end
+   end
 end
 
 -- process all outdated ports (may upgrade, install, change, or delete ports)

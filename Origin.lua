@@ -620,12 +620,15 @@ local function __index (origin, k)
 	    local flavor = origin.flavor
 	    if flavor then
 	       if default_flavor == flavor then
-		  TRACE ("ADD_ORIGIN_CACHE", origin.port)
+		  -- register alias without flavor for default flavor case
+		  TRACE ("ORIGINS_CACHE_ALIAS", origin.port)
 		  ORIGINS_CACHE[origin.port] = origin
 	       end
 	    else
-	       TRACE ("ADD_ORIGIN_CACHE", origin.name .. "@" .. default_flavor)
-	       ORIGINS_CACHE[origin.name .. "@" .. default_flavor] = origin
+	       -- add default flavor to port name
+	       origin.name = origin.name .. "@" .. default_flavor
+	       TRACE ("ORIGINS_CACHE_ALIAS", origin.name)
+	       ORIGINS_CACHE[origin.name] = origin
 	    end
 	 end
       end

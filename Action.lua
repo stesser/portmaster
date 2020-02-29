@@ -1601,8 +1601,8 @@ local function set_cached_action (action)
 	 end
 	 ACTION_CACHE[n] = action
 	 if (field == "origin_old" or field == "origin_new") and string.match (n, "@") then
-	    n = string.match (n, "(%S+)@")
-	    print ("N", n)
+	    local nn = string.match (n, "(%S+)@")
+	    TRACE ("ACTON_CACHE_ALIAS", n, nn)
 	    ACTION_CACHE[n] = action
 	 end
       end

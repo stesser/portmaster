@@ -301,6 +301,7 @@ local function packages_cache_load ()
 	 pkg_count = pkg_count + 1
       end
       Msg.cont (2, "The list of installed packages has been loaded (" .. pkg_count .. " packages)")
+      Msg.start (2)
       PACKAGES_CACHE_LOADED = true
    end
 end
@@ -324,6 +325,7 @@ local function dep_pkgs_cache_load ()
 	 table.insert (p.dep_pkgs, dep_pkg)
       end
       Msg.cont (2, "Package dependencies have been loaded")
+      Msg.start (2)
       DEP_PKGS_CACHE_LOADED = true
    end
 end
@@ -348,6 +350,7 @@ local function shared_libs_cache_load ()
 	 end
       end
       Msg.cont (2, "The list of required shared libraries has been loaded")
+      Msg.start (2)
       SHARED_LIBS_CACHE_LOADED = true
    end
 end
@@ -497,6 +500,15 @@ local function new (pkg, name)
    return nil
 end
 
+-- DEBUGGING: DUMP INSTANCES CACHE
+local function dump_cache ()
+   local t = PACKAGES_CACHE
+   for i, v in ipairs (table.keys (t)) do
+      local name = tostring (v)
+      TRACE ("PACKAGES_CACHE", name, table.unpack (table.keys (t[v])))
+   end
+end
+
 -- ----------------------------------------------------------------------------------
 return {
    name = false,
@@ -523,6 +535,7 @@ return {
    automatic_check = automatic_check,
    packages_cache_load = packages_cache_load,
    load_default_versions = load_default_versions,
+   dump_cache = dump_cache,
 }
 
 --[[

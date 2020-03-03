@@ -1598,55 +1598,105 @@ end
 ACTION_LIST = {} -- GLOBAL
 ACTION_CACHE = {}
 
+local function clear_cached_action (action)
+   if action.action == "delete" then
+      if ACTION_CACHE[pkg_old] then
+	 ACTION_CACHE[pkg_old.name] = nil
+      end
+   end
+   if ACTION_CACHE[pkg_new] then
+      ACTION_CACHE[pkg_new.name] = nil
+   end
+end
+
 local function set_cached_action (action)
    local function check_and_set (field)
       local v = rawget (action, field)
       if v then
 	 local n = v.name
 	 if n and n ~= "" then
-	    if ACTION_CACHE[n] ~= action then
+	    if ACTION_CACHE[n] and ACTION_CACHE[n] ~= action then
 	       --error ()
+	       TRACE ("SET_CACHED_ACTION_CONFLICT", describe (ACTION_CACHE[n]), describe (action))
 	    end
 	    ACTION_CACHE[n] = action
-	    if (field == "origin_old" or field == "origin_new") then
-	       TRACE ("ALIAS?", v)
-	       local alias = Origin.origin_alias (v)
-	       if alias then
-		  TRACE ("ACTION_CACHE_ALIAS", n, alias)
-		  ACTION_CACHE[alias] = action
-	       end
-	    end
+	    TRACE ("SET_CACHED_ACTION")
 	 else
-	    --error ("Empty origin name " .. field " " .. describe (action))
+	    error ("Empty package name " .. field .. " " .. describe (action))
 	 end
       end
    end
    assert (action, "set_cached_action called with nil argument")
    TRACE ("SET_CACHED_ACTION", describe (action))
    check_and_set ("pkg_old")
-   check_and_set ("pkg_new")
-   check_and_set ("origin_old")
-   check_and_set ("origin_new")
+   if action.action ~= "delete" then
+      check_and_set ("pkg_new")
+   end
    return action
+end
+
+--
+local function get_pkgname (action)
+   if action.pkg_old and action.action == "delete" then
+      return action.pkg_old.name
+   elseif action.pkg_new then
+      return action.pkg_new.name
+   end
+end
+
+--
+local function fixup_conflict (action1, action2)
+   TRACE ("FIXUP", action1.action, action2.action)
+   if action2.action and (not action1.action or action1.action > action2.action) then
+      action1, action2 = action2, action1 -- normalize order: action1 < action2 or action2 == nil
+   end
+   local pkgname = get_pkgname (action1) or get_pkgname (action2)
+   local a1 = action1.action
+   local a2 = action2.action
+   if a1 == "upgrade" then
+      if not a2 then -- attempt to upgrade some port to already existing package
+	 TRACE ("FIXUP_CONFLICT1", describe (action1))
+	 TRACE ("FIXUP_CONFLICT2", describe (action2))
+	 action1.action = "delete"
+	 action1.origin_old = action1.origin_old or action1.origin_new
+	 action1.origin_new = nil
+	 action1.pkg_old = action1.pkg_old or action1.pkg_new
+	 action1.pkg_new = nil
+	 TRACE ("FIXUP_CONFLICT->", describe (action1))
+      elseif a2 == "upgrade" then
+	 TRACE ("FIXUP_CONFLICT1", describe (action1))
+	 TRACE ("FIXUP_CONFLICT2", describe (action2))
+	 if action1.pkg_new == action2.pkg_new then
+	    for k, v1 in pairs (action1) do
+	       v2 = rawget (action2, k)
+	       if v1 and not v2 then
+		  action2[k] = v1
+	       end
+	    end
+	    action1.action = nil
+	    TRACE ("FIXUP_CONFLICT->", describe (action2))
+	 else
+	    -- other cases
+	 end
+      else
+	 -- other cases
+      end
+   else
+      -- other cases
+   end
+   error ("Duplicate actions for " .. pkgname .. ":\n#	1) " .. (action1 and describe (action1) or "") .. "\n#	2) " .. (action2 and describe (action2) or ""))
 end
 
 -- object that controls the upgrading and other changes
 local function cache_add (action)
-   local pkgname, origin
-   if action.action ~= "exclude" then
-      if action.pkg_old and action.action == "delete" then
-	 pkg = action.pkg_old
-      elseif action.pkg_new then
-	 pkg = action.pkg_new
-	 origin = action.origin_new
-      else
-	 error ("Neither old nor new package name can be found for action: ", describe (action))
-      end
-      local action0 = ACTION_CACHE[pkg]
-      if action0 then
-	 error ("Duplicate actions for " .. pkg.name .. ":\n#	1) " .. (action0 and describe (action0) or "") .. "\n#	2) " .. (action and describe (action) or ""))
-      end
-      local action0 = ACTION0
+   local pkgname = get_pkgname (action)
+   local action0 = ACTION_CACHE[pkgname]
+   if action0 and action0 ~= action then
+      clear_cached_action (action)
+      clear_cached_action (action0)
+      fixup_conflict (action, action0) -- re-register in ACTION_CACHE after fixup???
+      error ("Duplicate actions resolved for " .. pkgname .. ":\n#	1) " .. (action and describe (action) or "") .. "\n#	2) " .. (action0 and describe (action0) or ""))
+      set_cached_action (action0)
    end
    return set_cached_action (action)
 end
@@ -1661,13 +1711,12 @@ local function check_action_origin (origin_name)
 end
 
 -- 
-local function cached_action (args)
+local function lookup_cached_action (args) -- args.pkg_new is a string not an object!!
    local action
    assert (args, "cached_action: called with nil argument")
    action = args.pkg_new and ACTION_CACHE[args.pkg_new]
       or args.pkg_old and ACTION_CACHE[args.pkg_old]
-      or args.origin_new and check_action_origin (args.origin_new.name)
-   TRACE ("CACHED_ACTION", args.pkg_new, args.pkg_old, action and action.pkg_old, action and action.pkg_new, "END")
+   TRACE ("CACHED_ACTION", args.pkg_new, args.pkg_old, action and action.pkg_old and action.pkg_old.name, action and action.pkg_new and action.pkg_new.name, "END")
    return action
 end
 
@@ -1803,7 +1852,7 @@ local function new (Action, args)
    if args then
       local action
       TRACE ("ACTION", args.pkg_old or args.pkg_new or args.origin_new)
-      action = cached_action (args)
+      action = lookup_cached_action (args)
       if action then
 	 action.force = rawget (action, "force") or args.force -- copy over some flags
 	 if args.pkg_old then
@@ -1837,7 +1886,7 @@ local function new (Action, args)
       end
       action_enrich (action)
       if action.action == "upgrade" then
-	 action.origin_new:checksum ()
+--	 action.origin_new:checksum ()
       end
       return cache_add (action)
    else
@@ -1865,7 +1914,7 @@ local function add_missing_deps ()
 		     text = nil
 		  end
 		  action = Action:new {build_type = "auto", dep_type = "build", origin_new = o}
-		  action.origin_new.action = a
+		  action.origin_new.action = action
 	       end
 	    end
 	 end
@@ -1882,7 +1931,7 @@ local function add_missing_deps ()
 		     text = nil
 		  end
 		  action = Action:new {build_type = "auto", dep_type = "run", origin_new = o}
-		  action.origin_new.action = a
+		  action.origin_new.action = action
 	       end
 	    end
 	 end
@@ -1900,7 +1949,8 @@ local function sort_list ()
 	 if deps then
 	    for i, o in ipairs (deps) do
 	       local origin = Origin:new (o)
-	       local a = rawget (ACTION_CACHE, origin)
+	       local pkg_new = origin.pkg_new
+	       local a = rawget (ACTION_CACHE, pkg_new)
 	       TRACE ("BUILD_DEP", a and rawget (a, "action"), origin.name, origin.pkg_new, origin.pkg_new and rawget (origin.pkg_new, "is_installed"))
 	       if a and not rawget (origin.pkg_new, "is_installed") and not rawget (a, "planned") then
 		  if a ~= action then
@@ -1922,7 +1972,8 @@ local function sort_list ()
 	 if deps then
 	    for i, o in ipairs (deps) do
 	       local origin = Origin:new (o)
-	       local a = rawget (ACTION_CACHE, origin)
+	       local pkg_new = origin.pkg_new
+	       local a = rawget (ACTION_CACHE, pkg_new)
 	       TRACE ("RUN_DEP", a and rawget (a, "action"), origin.name, origin.pkg_new, origin.pkg_new and rawget (origin.pkg_new, "is_installed"))
 	       if a and not rawget (origin.pkg_new, "is_installed") and not rawget (a, "planned") then
 		  if a ~= action then
@@ -1972,7 +2023,7 @@ end
 
 --
 local function port_options ()
-   Msg.start (0)
+   Msg.start (2, "Check for new port options")
    for i, a in ipairs (ACTION_LIST) do
       local o = rawget (a, "origin_new")
       --if o then print ("O", o, o.new_options) end
@@ -1980,11 +2031,12 @@ local function port_options ()
 	 Msg.cont (0, "Set port options for", rawget (o, "name"), table.unpack (rawget (o, "new_options")))
       end
    end
+   Msg.start (2, "Check for new port options has completed")
 end
 
 --
 local function check_conflicts (mode)
-   Msg.start (0)
+   Msg.start (2, "Check for conflicts between requested updates and installed packages")
    for i, action in ipairs (ACTION_LIST) do
       local o_n = rawget (action, "origin_new")
       if o_n and o_n[mode] then
@@ -1997,6 +2049,16 @@ local function check_conflicts (mode)
 	    Msg.cont (0, "Conflicting packages for", o_n.name, text)
 	 end
       end
+   end
+   Msg.start (2, "Check for conflicts has been completed")
+end
+
+-- DEBUGGING: DUMP INSTANCES CACHE
+local function dump_cache ()
+   local t = ACTION_CACHE
+   for i, v in ipairs (table.keys (t)) do
+      local name = tostring (v)
+      TRACE ("ACTION_CACHE", name, table.unpack (table.keys (t[v])))
    end
 end
 
@@ -2014,6 +2076,7 @@ return {
    check_licenses = check_licenses,
    check_conflicts = check_conflicts,
    port_options = port_options,
+   dump_cache = dump_cache,
 }
 
 --[[

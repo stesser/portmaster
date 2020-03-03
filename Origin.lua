@@ -435,6 +435,7 @@ local function moved_cache_load (filename)
 	 io.close (movedfile)
       end
       Msg.cont (2, "The list of renamed of removed ports has been loaded")
+      Msg.start (2)
    end
 end
 
@@ -626,7 +627,6 @@ local function origin_alias (origin)
       local flavor = origin.flavor
       if flavor then
 	 if default_flavor == flavor then
-	    TRACE ("ORIGIN_ALIAS", origin.port)
 	    return origin.port
 	 end
       else
@@ -641,9 +641,44 @@ end
 local function __index (origin, k)
    local function __port_vars (origin, k)
       local function check_default_flavor (origin)
-	 local alias = origin_alias (origin)
-	 if alias then
-	    ORIGINS_CACHE[alias] = origin
+	 local default_flavor = origin.flavors and origin.flavors[1]
+	 if default_flavor and not string.match (origin.name, "@") then
+	    local flavored_name = origin.name .. "@" .. default_flavor
+	    TRACE ("ORIGIN_CACHE_ADD ", origin.name, flavored_name)
+	    if ORIGINS_CACHE[flavored_name] and ORIGINS_CACHE[flavored_name] ~= origin then
+	       -- DEBUGGING
+	       error ("Conflicting Origin objects for " .. origin.name .. " and " .. flavored_name)
+	       for k, v in pairs (origin) do
+		  v_old = rawget (ORIGINS_CACHE[flavored_name], k)
+		  if type (v) == "table" then
+		     v = table.concat (v, " ")
+		  end
+		  if type (v_old) == "table" then
+		     v_old = table.concat (v_old, " ")
+		  end
+		  if v_old ~= v then
+		     TRACE ("Conflict:", k, v_old, v)
+		  end
+	       end
+	       for k, v_old in pairs (ORIGINS_CACHE[flavored_name]) do
+		  v = rawget (origin, k)
+		  if v_old and not v then
+		     if type (v_old) == "table" then
+			v_old = table.concat (v_old, " ")
+		     end
+		     TRACE ("Conflict:", k, v_old, v)
+		  end
+	       end
+	       -- DEBUGGING END
+	       for k, v_old in pairs (ORIGINS_CACHE[flavored_name]) do
+		  v = rawget (origin, k)
+		  if v_old and not v then
+		     origin[k] = v_old
+		  end
+	       end
+	    end
+	    origin.name = flavored_name
+	    ORIGINS_CACHE[flavored_name] = origin
 	 end
       end
       local v = rawget (origin, k)
@@ -854,11 +889,19 @@ local function new (origin, name)
 	 TRACE ("NEW Origin", name)
 	 ORIGINS_CACHE[name] = O
       else
-	 TRACE ("NEW Origin", name, "(cached)")
+	 TRACE ("NEW Origin", name, "(cached)", O.name)
       end
       return O
    end
    return nil
+end
+
+-- DEBUGGING: DUMP INSTANCES CACHE
+local function dump_cache ()
+   local t = ORIGINS_CACHE
+   for i, v in ipairs (table.keys (t)) do
+      TRACE ("ORIGINS_CACHE", v, table.unpack (table.keys (t[v])))
+   end
 end
 
 -- 
@@ -880,6 +923,7 @@ return {
    lookup_moved_origin = lookup_moved_origin,
    list_prev_origins = list_prev_origins,
    load_default_versions = load_default_versions, -- MUST BE CALLED ONCE WITH ANY ORIGIN AS PARAMETER
+   dump_cache = dump_cache,
 }
 
 --[[

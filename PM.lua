@@ -1456,6 +1456,11 @@ function main ()
    -- sort actions according to registered dependencies
    Action.sort_list ()
 
+   -- DEBUGGING!!!
+   Origin.dump_cache ()
+   Package.dump_cache ()
+   Action.dump_cache ()
+
    -- 
 --   Action.port_options ()
    

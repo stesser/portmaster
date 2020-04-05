@@ -254,6 +254,33 @@ local function check_excluded (pkg)
    return Excludes.check_pkg (pkg.name)
 end
 
+-- check package name for possibly used default version parameter
+local function check_default_version (origin_name, pkgname)
+   local T = {
+      apache = "^apache(%d)(%d)-",
+      llvm= "^llvm(%d%d)-",
+      lua = "^lua(%d)(%d)-",
+      mysql = "^mysql(%d)(%d)-",
+      pgsql = "^postgresql(9)(%d)-",
+      pgsql1 = "^postgresql1(%d)-",
+      php = "^php(%d)(%d)-",
+      python2 = "^py(2)(%d)-",
+      python3 = "^py(3)(%d)-",
+      ruby = "^ruby(%d)(%d)-",
+      tcltk = "^t[ck]l?(%d)(%d)-",
+   }
+   TRACE ("DEFAULT_VERSION", origin_name, pkgname)
+   for prog, pattern in pairs (T) do
+      local major, minor = string.match (pkgname, pattern)
+      if major then
+	 local default_version = prog .. "=" .. (minor and major .. "." .. minor or major)
+	 origin_name = origin_name .. "%" .. default_version
+	 TRACE ("DEFAULT_VERSION->", origin_name, pkgname)
+      end
+   end
+   return origin_name
+end
+
 -- ----------------------------------------------------------------------------------
 local PACKAGES_CACHE = {} -- should be local with iterator ...
 local PACKAGES_CACHE_LOADED = false -- should be local with iterator ...
@@ -261,49 +288,66 @@ local PACKAGES_CACHE_LOADED = false -- should be local with iterator ...
 
 -- load a list of of origins with flavor for currently installed flavored packages
 local function packages_cache_load ()
-   local pkg_flavors = {}
-   local pkg_fbsd_version = {}
-   if not PACKAGES_CACHE_LOADED then
-      Msg.start (2, "Load list of installed packages ...")
-      local lines = PkgDb.query {table = true, "%At %Av %n-%v"}
-      if lines then
-	 for i, line in pairs (lines) do
-	    local tag, value, pkgname = string.match (line, "(%S+) (%S+) (%S+)")
-	    if tag == "flavor" then
-	       pkg_flavors[pkgname] = value
-	    elseif tag == "FreeBSD_version" then
-	       pkg_fbsd_version[pkgname] = value
-	    end
-	 end
-      end
-      -- load 
-      local pkg_count = 0
-      local p = {}
-      lines = PkgDb.query {table = true, "%n-%v %o %q %a %k"} -- no dependent packages
-      for i, line in ipairs (lines) do
-	 local pkgname, origin, abi, automatic, locked = string.match (line, "(%S+) (%S+) (%S+) (%d) (%d)")
-	 p = PACKAGES_CACHE[pkgname] or Package:new (pkgname)
-	 local f = pkg_flavors[pkgname]
-	 origin = f and origin .. "@" .. f or origin
-	 local o = Origin:new (origin)
-	 if not rawget (o, "old_pkgs") then
-	    o.old_pkgs = {}
-	 end
-	 o.old_pkgs[pkgname] = true
-	 p.abi = abi
-	 p.is_automatic = automatic == "1"
-	 p.is_locked = locked == "1"
-	 p.is_installed = true
-	 p.origin = o
-	 p.num_depending = 0
-	 p.dep_pkgs = {}
-	 p.fbsd_version = pkg_fbsd_version[pkgname]
-	 pkg_count = pkg_count + 1
-      end
-      Msg.cont (2, "The list of installed packages has been loaded (" .. pkg_count .. " packages)")
-      Msg.start (2)
-      PACKAGES_CACHE_LOADED = true
+   if PACKAGES_CACHE_LOADED then
+      return
    end
+   local pkg_flavor = {}
+   local pkg_fbsd_version = {}
+   Msg.start (2, "Load list of installed packages ...")
+   local lines = PkgDb.query {table = true, "%At %Av %n-%v"}
+   if lines then
+      for i, line in pairs (lines) do
+	 local tag, value, pkgname = string.match (line, "(%S+) (%S+) (%S+)")
+	 if tag == "flavor" then
+	    pkg_flavor[pkgname] = value
+	 elseif tag == "FreeBSD_version" then
+	    pkg_fbsd_version[pkgname] = value
+	 end
+      end
+   end
+   -- load 
+   local pkg_count = 0
+   lines = PkgDb.query {table = true, "%n-%v %o %q %a %k"} -- no dependent packages
+   for i, line in ipairs (lines) do
+      local pkgname, origin_name, abi, automatic, locked = string.match (line, "(%S+) (%S+) (%S+) (%d) (%d)")
+      local f = pkg_flavor[pkgname]
+      if f then
+	 origin_name = origin_name .. "@" .. f
+      else
+	 origin_name = check_default_version (origin_name, pkgname)
+      end
+      local p = Package:new (pkgname)
+      local o = Origin:new (origin_name)
+      if not rawget (o, "old_pkgs") then
+	 o.old_pkgs = {}
+      end
+      o.old_pkgs[pkgname] = true
+      p.origin = o
+      p.abi = abi
+      p.is_automatic = automatic == "1"
+      p.is_locked = locked == "1"
+      p.is_installed = true
+      p.num_depending = 0
+      p.dep_pkgs = {}
+      p.fbsd_version = pkg_fbsd_version[pkgname]
+      pkg_count = pkg_count + 1
+   end
+   Msg.cont (2, "The list of installed packages has been loaded (" .. pkg_count .. " packages)")
+   Msg.start (2, "Load package dependencies")
+   local p = {}
+   local lines = PkgDb.query {table = true, "%n-%v %rn-%rv"}
+   for i, line in ipairs (lines) do
+      local pkgname, dep_pkg = string.match (line, "(%S+) (%S+)")
+      if pkgname ~= rawget (p, "name") then
+	 p = Package:new (pkgname) -- fetch cached package record
+	 p.dep_pkgs = {}
+      end
+      p.num_depending = p.num_depending + 1
+      table.insert (p.dep_pkgs, dep_pkg)
+   end
+   Msg.cont (2, "Package dependencies have been loaded")
+   Msg.start (2)
+   PACKAGES_CACHE_LOADED = true
 end
 
 -- add reverse dependency information (who depends on me?)
@@ -311,21 +355,6 @@ DEP_PKGS_CACHE_LOADED = false
 
 local function dep_pkgs_cache_load ()
    if not DEP_PKGS_CACHE_LOADED then
-      packages_cache_load ()
-      Msg.start (2, "Load package dependencies")
-      local p = {}
-      local lines = PkgDb.query {table = true, "%n-%v %rn-%rv"}
-      for i, line in ipairs (lines) do
-	 local pkgname, dep_pkg = string.match (line, "(%S+) (%S+)")
-	 if pkgname ~= rawget (p, "name") then
-	    p = Package:new (pkgname) -- fetch cached package record
-	    p.dep_pkgs = {}
-	 end
-	 p.num_depending = p.num_depending + 1
-	 table.insert (p.dep_pkgs, dep_pkg)
-      end
-      Msg.cont (2, "Package dependencies have been loaded")
-      Msg.start (2)
       DEP_PKGS_CACHE_LOADED = true
    end
 end
@@ -373,8 +402,8 @@ local function installed_pkgs ()
 end
 
 -- 
-local function get_attribute (self, k)
-   for i, v in ipairs (PkgDb.query {table = true, "%At %Av", self.name}) do
+local function get_attribute (pkg, k)
+   for i, v in ipairs (PkgDb.query {table = true, "%At %Av", pkg.name}) do
       local result = string.match (v, "^" .. k .. " (.*)")
       if result then
 	 return result
@@ -388,26 +417,29 @@ local function __newindex (pkg, n, v)
    rawset (pkg, n, v)
 end
 
-local function __index (self, k)
-   local function __pkg_vars (self, k)
+local function __index (pkg, k)
+   local function __pkg_vars (pkg, k)
       local function set_field (field, v)
 	 if v == "" then v = false end
-	 self[field] = v
+	 pkg[field] = v
       end
-      local t = PkgDb.query {table = true, "%q\n%k\n%a\n%#r", self.name_base}
+      local t = PkgDb.query {table = true, "%q\n%k\n%a\n%#r", pkg.name_base}
       set_field ("abi", t[1])
       set_field ("is_locked", t[2] == "1")
       set_field ("is_automatic", t[3] == "1")
       set_field ("num_depending", tonumber (t[4]))
-      return self[k]
+      return pkg[k]
    end
-   function load_num_dependencies (self, k)
+   function load_num_dependencies (pkg, k)
+      Msg.start (2, "Load dependency counts")
       local t = PkgDb.query {table = true, "%#d %n-%v"}
       for i, line in ipairs (t) do
 	 local num_dependencies, pkgname = string.match (line, "(%d+) (%S+)")
 	 PACKAGES_CACHE[pkgname].num_dependencies = tonumber (num_dependencies)
       end
-      return self[k]
+      Msg.cont (2, "Dependency counts have been loaded")
+      Msg.start (2)
+      return pkg[k]
    end
 
    local dispatch = {
@@ -416,60 +448,68 @@ local function __index (self, k)
       is_locked = __pkg_vars,
       num_depending = __pkg_vars,
       num_dependencies = load_num_dependencies,
-      flavor = get_attribute,
-      FreeBSD_version = get_attribute,
+      -- flavor = get_attribute,
+      -- FreeBSD_version = get_attribute,
       name_base = pkg_basename,
       name_base_major = pkg_strip_minor,
       version = pkg_version,
       dep_pkgs = dep_pkgs_cache_load,
       shared_libs = shared_libs_cache_load,
-      is_installed = function (self, k)
+      is_installed = function (pkg, k)
 	 return false -- always explicitly set when found or during installation
       end,
-      categories = function (self, k)
-	 return PkgDb.query {table = true, "%C", self.name}
+      --[[
+      categories = function (pkg, k)
+	 error ("should be cached")
+	 return PkgDb.query {table = true, "%C", pkg.name}
       end,
-      files = function (self, k)
-	 return PkgDb.query {table = true, "%Fp", self.name}
+      files = function (pkg, k)
+	 error ("should be cached")
+	 return PkgDb.query {table = true, "%Fp", pkg.name}
       end,
-      shlibs = function (self, k)
-	 return PkgDb.query {table = true, "%B", self.name}
+      shlibs = function (pkg, k)
+	 error ("should be cached")
+	 return PkgDb.query {table = true, "%B", pkg.name}
       end,
-      pkg_filename = function (self, k)
-	 return pkg_filename {subdir = "All", self}
+      --]]
+      pkg_filename = function (pkg, k)
+	 return pkg_filename {subdir = "All", pkg}
       end,
-      bak_filename = function (self, k)
-	 return pkg_filename {subdir = "portmaster-backup", extension = Options.backup_format, self}
+      bak_filename = function (pkg, k)
+	 return pkg_filename {subdir = "portmaster-backup", extension = Options.backup_format, pkg}
       end,
-      origin = function (self, k)
-	 TRACE ("Looking up origin for", self.name)
-	 local port = PkgDb.query {"%o", self.name}
-	 if port then
-	    local flavor = self.flavor
+      --[[
+      origin = function (pkg, k)
+	 error ("should be cached")
+	 TRACE ("Looking up origin for", pkg.name)
+	 local port = PkgDb.query {"%o", pkg.name}
+	 if port ~= "" then
+	    local flavor = pkg.flavor
 	    local n = flavor and port .. "@" .. flavor or port
 	    return Origin:new (n)
 	 end
       end,
+      --]]
    }
    
-   TRACE ("INDEX(p)", self, k)
-   local w = rawget (self.__class, k)
+   TRACE ("INDEX(p)", pkg, k)
+   local w = rawget (pkg.__class, k)
    if w == nil then
-      rawset (self, k, false)
+      rawset (pkg, k, false)
       local f = dispatch[k]
       if f then
-	 w = f (self, k)
+	 w = f (pkg, k)
 	 if w then
-	    rawset (self, k, w)
+	    rawset (pkg, k, w)
 	 else
 	    w = false
 	 end
       else
 	 error ("illegal field requested: Package." .. k)
       end
-      TRACE ("INDEX(p)->", self, k, w)
+      TRACE ("INDEX(p)->", pkg, k, w)
    else
-      TRACE ("INDEX(p)->", self, k, w, "(cached)")
+      TRACE ("INDEX(p)->", pkg, k, w, "(cached)")
    end
    return w
 end
@@ -534,7 +574,6 @@ return {
    automatic_get = automatic_get,
    automatic_check = automatic_check,
    packages_cache_load = packages_cache_load,
-   load_default_versions = load_default_versions,
    dump_cache = dump_cache,
 }
 

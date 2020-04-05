@@ -677,30 +677,31 @@ function origin_from_dir_and_pkg (origin_new, pkgname_old)
 	    end
 	    origin_new.pkg_new = nil
 	 end
-      -- try available flavors in search for a matching package name ignoring the version number (in case major version has been incremented)
-      local pkgname_base = pkgname_old.name_base_major
-      if pkgname_base == pkgname_new.name_base then
-	 return PkgDb.query {"%o", pkgname_old} -- is this correct ???
-      end
-      -- <se> is this additional search loop required? Better to fail if no packages with same major version?
-      local flavor = origin_new:flavor ()
-      if flavor then flavors:insert (1) end
-      for i, flavor in ipairs (flavors) do
-	 local origin_new = Origin:new (dir .. "@" .. flavor)
-	 local pkgname_new = origin_new.pkg_new
-	 -- compare package names with version numbers stripped off
-	 if pkgname_base == pkgname_new.name_base_major then
-	    return origin_new
+	 -- try available flavors in search for a matching package name ignoring the version number (in case major version has been incremented)
+	 local pkgname_base = pkgname_old.name_base_major
+	 if pkgname_base == pkgname_new.name_base then
+	    return PkgDb.query {"%o", pkgname_old} -- is this correct ???
 	 end
-	 origin_new.pkg_new = nil
-      end
-      -- 
-      return Origin:new (origin_old:port_var {"PKGORIGIN"})
+	 -- <se> is this additional search loop required? Better to fail if no packages with same major version?
+	 local flavor = origin_new:flavor ()
+	 if flavor then flavors:insert (1) end
+	 for i, flavor in ipairs (flavors) do
+	    local origin_new = Origin:new (dir .. "@" .. flavor)
+	    local pkgname_new = origin_new.pkg_new
+	    -- compare package names with version numbers stripped off
+	    if pkgname_base == pkgname_new.name_base_major then
+	       return origin_new
+	    end
+	    origin_new.pkg_new = nil
+	 end
+	 -- 
+	 return Origin:new (origin_old:port_var {"PKGORIGIN"}) -- ???
       end
    end
    origin_new.pkg_new = nil
 end
 
+--[[ OBSOLETE ???
 -- try to find origin in list of moved or deleted ports, returns new origin or "" followed by reason text
 function origin_find_moved (origin_new)
    local origin = origin_new.name
@@ -763,6 +764,7 @@ function origin_from_dir (dir_glob)
    end
    return result
 end
+--]]
 
 -- return all origin@flavor for port(s) in relative or absolute directory "$dir" (<se> TOO EXPENSIVE!!!)
 function origin_old_from_port (port_glob)
@@ -782,6 +784,7 @@ function origin_old_from_port (port_glob)
    return result
 end
 
+--[[ OBSOLETE
 --## return old pkgname for given new origin@flavor
 --# function pkgnames_old_from_moved_to_origin ()
 --#	local origin="$1"
@@ -808,6 +811,7 @@ function origin_old_from_moved_to_origin (origin_new)
       return Origin:new (origin_old)
    end
 end
+--]]
 
 -- ----------------------------------------------------------------------------------
 -- split string on line boundaries and return as table
@@ -844,6 +848,7 @@ function dist_checksums_ok (origin)
 end
 --]]
 
+--[[
 -- <se> use "make flavors-package-names" to list all package names for all (relevant) flavors
 -- build_type: one of: auto, user, force, provide
 -- dep_type: one of: build, run, base
@@ -851,6 +856,7 @@ function choose_action (build_type, dep_type, origin_old, origin_new, pkgname_ol
    TRACE ("\n----\nCHOOSE_ACTION", build_type, dep_type, tostring (origin_old), origin_new, pkgname_old)
    return Action:new {build_type = build_type, dep_type = dep_type, origin_old = Origin:new (origin_old), origin_new = Origin:new (origin_new), pkg_old = Package:new (pkgname_old)}
 end
+--]]
 
 -- ----------------------------------------------------------------------------------
 -- extract and patch files, but do not try to fetch any missing dist files
@@ -1484,6 +1490,7 @@ function main ()
       Action.register_delete_build_only ()
       Action.execute ()
    else
+      -- ToDo: suppress if updates had been requested on the command line
       Msg.start (0, "No installations or upgrades required")
    end
    

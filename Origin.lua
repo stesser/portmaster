@@ -358,6 +358,7 @@ local function check_excluded (origin)
    return Excludes.check_port (origin.name)
 end
 
+--[[
 -- return corresponding package object
 local function pkg (origin, jailed)
    local p = origin.pkg_var
@@ -377,6 +378,7 @@ local function curr_pkg (origin)
    end
    return p
 end
+--]]
 
 -- -------------------------
 local MOVED_CACHE = nil -- table indexed by old origin (as text) and giving struct with new origin (as text), date and reason for move
@@ -552,10 +554,11 @@ local function check_conflicts (origin)
    return list
 end
 
+--[=[
 --
 local function load_default_versions (origin)
    local vars = {
-      { "apache", "^apache(%d)(%d)-", "apache=%d.%d" },
+      --{ "apache", "^apache(%d)(%d)-", "apache=%d.%d" },
       --[[
       --bdb = { "db(%d+)-", "bdb=%d" },
       --corosync = {},
@@ -603,11 +606,12 @@ local function load_default_versions (origin)
    for i, make_var in ipairs (vars) do
       make_args[i] = "DEFAULT_" .. string.upper (make_var)
    end
-   local T = origin:port_var { table = true, make_args }
+   local T = origin:port_var {table = true, make_args}
    for i, make_var in ipairs (vars) do
       DEFAULT_VERSIONS[make_var] = T[i]
    end
 end
+--]=]
 
 -- ----------------------------------------------------------------------------------
 -- create new Origins object or return existing one for given name
@@ -620,6 +624,7 @@ local function __newindex (origin, n, v)
    rawset (origin, n, v)
 end
 
+--[[
 local function origin_alias (origin)
    local default_flavor = origin.flavors and origin.flavors[1]
    TRACE ("ORIGIN_ALIAS", origin.name, default_flavor)
@@ -637,116 +642,102 @@ local function origin_alias (origin)
       end
    end
 end
+--]]
+
+--
+ORIGIN_ALIAS = {}
 
 local function __index (origin, k)
    local function __port_vars (origin, k)
-      local function check_default_flavor (origin)
+      local function check_origin_alias () -- origin is UPVALUE
+	 local function adjustname (new_name) -- origin is UPVALUE
+	    TRACE ("ORIGIN_SETALIAS", origin.name, new_name)
+	    ORIGIN_ALIAS[origin.name] = new_name
+	    local o = Origin.get (name)
+	    if o then -- origin with alias has already been seen, move fields over and continue with new table
+	       o.flavors = rawget (origin, "flavors")
+	       o.pkg_new = rawget (origin, "pkg_new")
+	       origin = o
+	    end
+	    ORIGINS_CACHE[origin.name] = false -- poison old value to cause error if accessed
+	    origin.name = new_name
+	    ORIGINS_CACHE[new_name] = origin
+	 end
+	 -- add missing default flavor, if applicable
 	 local default_flavor = origin.flavors and origin.flavors[1]
-	 if default_flavor and not string.match (origin.name, "@") then
-	    local flavored_name = origin.name .. "@" .. default_flavor
-	    TRACE ("ORIGIN_CACHE_ADD ", origin.name, flavored_name)
-	    if ORIGINS_CACHE[flavored_name] and ORIGINS_CACHE[flavored_name] ~= origin then
-	       -- DEBUGGING
-	       error ("Conflicting Origin objects for " .. origin.name .. " and " .. flavored_name)
-	       for k, v in pairs (origin) do
-		  v_old = rawget (ORIGINS_CACHE[flavored_name], k)
-		  if type (v) == "table" then
-		     v = table.concat (v, " ")
-		  end
-		  if type (v_old) == "table" then
-		     v_old = table.concat (v_old, " ")
-		  end
-		  if v_old ~= v then
-		     TRACE ("Conflict:", k, v_old, v)
-		  end
-	       end
-	       for k, v_old in pairs (ORIGINS_CACHE[flavored_name]) do
-		  v = rawget (origin, k)
-		  if v_old and not v then
-		     if type (v_old) == "table" then
-			v_old = table.concat (v_old, " ")
-		     end
-		     TRACE ("Conflict:", k, v_old, v)
-		  end
-	       end
-	       -- DEBUGGING END
-	       for k, v_old in pairs (ORIGINS_CACHE[flavored_name]) do
-		  v = rawget (origin, k)
-		  if v_old and not v then
-		     origin[k] = v_old
-		  end
-	       end
-	    end
-	    origin.name = flavored_name
-	    ORIGINS_CACHE[flavored_name] = origin
+	 local name = origin.name
+	 if default_flavor and not string.match (name, "@") then -- flavor and default_version do not mix !!! check required ???
+	    adjustname (name .. "@" .. default_flavor)
+	 end
+	 -- check for existing package cache entry and its origin
+	 local p = Package.get (origin.pkg_new)
+	 local o = p and p.origin -- MERGE !!!
+	 TRACE ("CHECK_ORIGIN_ALIAS", origin and origin.name or "<nil>", o and o.name or "<nil>", p and p.name or "<nil>")
+	 if o and o.name ~= origin.name then
+	    adjustname (o.name)
 	 end
       end
-      local v = rawget (origin, k)
-      TRACE ("RAW_GET(" .. origin.name .. ", " .. k ..")", v == nil and "<nil>" or v)
-      if not v then
-	 local function set_pkgname (origin, var, pkgname)
-	    if pkgname then
-	       origin[var] = Package:new (pkgname)
-	       TRACE ("PKG_NEW", origin.name, pkgname)
-	    end
+      local function set_pkgname (origin, var, pkgname)
+	 if pkgname then
+	    local p = Package:new (pkgname)
+	    TRACE ("PKG_NEW", pkgname, origin.name, p.origin and p.origin.name or "''")
+	    origin[var] = p
 	 end
-	 --local pkg = origin.pkg_old
-	 TRACE ("PORT_VAR")
-	 local t = origin:port_var {
-	    table = true,
-	    "DISTINFO_FILE",
-	    "BROKEN",
-	    "FORBIDDEN",
-	    "IGNORE",
-	    "IS_INTERACTIVE",
-	    "LICENSE",
-	    "FLAVORS",
-	    "FLAVOR",
-	    "ALL_OPTIONS",
-	    "NEW_OPTIONS",
-	    "PORT_OPTIONS",
-	    "CATEGORIES",
-	    "PKGNAME",
-	    "FETCH_DEPENDS",
-	    "EXTRACT_DEPENDS",
-	    "PATCH_DEPENDS",
-	    "BUILD_DEPENDS",
-	    "LIB_DEPENDS",
-	    "RUN_DEPENDS",
-	    "TEST_DEPENDS",
-	    "PKG_DEPENDS",
-	    "CONFLICTS_BUILD",
-	    "CONFLICTS_INSTALL",
-	    "CONFLICTS",
-	 } or {}
-	 TRACE ("PORT_VAR(" .. origin.name .. ", " .. k ..")", table.unpack (t))
-	 set_str (origin, "distinfo_file", t[1])
-	 set_bool (origin, "is_broken", t[2])
-	 set_bool (origin, "is_forbidden", t[3])
-	 set_bool (origin, "is_ignore", t[4])
-	 set_bool (origin, "is_interactive", t[5])
-	 set_table (origin, "license", t[6])
-	 set_table (origin, "flavors", t[7])
-	 set_str (origin, "flavor", t[8])
-	 set_table (origin, "all_options", t[9])
-	 set_table (origin, "new_options", t[10])
-	 set_table (origin, "port_options", t[11])
-	 set_table (origin, "categories", t[12])
-	 set_pkgname (origin, "pkg_new", t[13])
-	 set_table (origin, "fetch_depends_var", t[14])
-	 set_table (origin, "extract_depends_var", t[15])
-	 set_table (origin, "patch_depends_var", t[16])
-	 set_table (origin, "build_depends_var", t[17])
-	 set_table (origin, "lib_depends_var", t[18])
-	 set_table (origin, "run_depends_var", t[19])
-	 set_table (origin, "test_depends_var", t[20])
-	 set_table (origin, "pkg_depends_var", t[21])
-	 set_table (origin, "conflicts_build_var", t[22])
-	 set_table (origin, "conflicts_install_var", t[23])
-	 set_table (origin, "conflicts_var", t[24])
-	 check_default_flavor (origin)
-	 return rawget (origin, k)
       end
+      local t = origin:port_var {
+	 table = true,
+	 "PKGNAME",
+	 "FLAVOR",
+	 "FLAVORS",
+	 "DISTINFO_FILE",
+	 "BROKEN",
+	 "FORBIDDEN",
+	 "IGNORE",
+	 "IS_INTERACTIVE",
+	 "LICENSE",
+	 "ALL_OPTIONS",
+	 "NEW_OPTIONS",
+	 "PORT_OPTIONS",
+	 "CATEGORIES",
+	 "FETCH_DEPENDS",
+	 "EXTRACT_DEPENDS",
+	 "PATCH_DEPENDS",
+	 "BUILD_DEPENDS",
+	 "LIB_DEPENDS",
+	 "RUN_DEPENDS",
+	 "TEST_DEPENDS",
+	 "PKG_DEPENDS",
+	 "CONFLICTS_BUILD",
+	 "CONFLICTS_INSTALL",
+	 "CONFLICTS",
+      } or {}
+      TRACE ("PORT_VAR(" .. origin.name .. ", " .. k ..")", table.unpack (t))
+      set_pkgname (origin, "pkg_new", t[1])
+      set_str (origin, "flavor", t[2])
+      set_table (origin, "flavors", t[3])
+      check_origin_alias () ---- SEARCH FOR AND MERGE WITH POTENTIAL ALIAS
+      set_str (origin, "distinfo_file", t[4])
+      set_bool (origin, "is_broken", t[5])
+      set_bool (origin, "is_forbidden", t[6])
+      set_bool (origin, "is_ignore", t[7])
+      set_bool (origin, "is_interactive", t[8])
+      set_table (origin, "license", t[9])
+      set_table (origin, "all_options", t[10])
+      set_table (origin, "new_options", t[11])
+      set_table (origin, "port_options", t[12])
+      set_table (origin, "categories", t[13])
+      set_table (origin, "fetch_depends_var", t[14])
+      set_table (origin, "extract_depends_var", t[15])
+      set_table (origin, "patch_depends_var", t[16])
+      set_table (origin, "build_depends_var", t[17])
+      set_table (origin, "lib_depends_var", t[18])
+      set_table (origin, "run_depends_var", t[19])
+      set_table (origin, "test_depends_var", t[20])
+      set_table (origin, "pkg_depends_var", t[21])
+      set_table (origin, "conflicts_build_var", t[22])
+      set_table (origin, "conflicts_install_var", t[23])
+      set_table (origin, "conflicts_var", t[24])
+      return rawget (origin, k)
    end
    local function __port_depends (origin, k)
       local depends_table = {
@@ -824,7 +815,7 @@ local function __index (origin, k)
       categories = __port_vars,
       pkg_old = Package.packages_cache_load,
       pkg_new = __port_vars,
-      old_pkgs = PkgDb.pkgname_from_origin,
+      --old_pkgs = PkgDb.pkgname_from_origin,
       path = path,
       port = port,
       port_exists = check_port_exists,
@@ -872,10 +863,24 @@ local function __index (origin, k)
 end
 
 --
+local function get (name)
+   if name then
+      TRACE ("GET(o)", name)
+      local result = rawget (ORIGINS_CACHE, name)
+      if result == false then
+	 return get (ORIGIN_ALIAS[name])
+      end
+      TRACE ("GET(o)->", name, tostring(result))
+      return result
+   end
+end
+
+--
 local function new (origin, name)
    --local TRACE = print -- TESTING
    if name then
-      local O = ORIGINS_CACHE[name]
+      TRACE ("CHECK ORIGIN_ALIAS", name, ORIGIN_ALIAS[name])
+      local O = get (name)
       if not O then
 	 O = {name = name}
 	 O.__class = origin
@@ -900,7 +905,15 @@ end
 local function dump_cache ()
    local t = ORIGINS_CACHE
    for i, v in ipairs (table.keys (t)) do
-      TRACE ("ORIGINS_CACHE", v, table.unpack (table.keys (t[v])))
+      if t[v] then
+	 TRACE ("ORIGINS_CACHE", i, v, table.unpack (table.keys (t[v])))
+      else
+	 TRACE ("ORIGINS_CACHE", i, v, "ALIAS", ORIGIN_ALIAS[v])
+      end
+   end
+   local t = ORIGIN_ALIAS
+   for i, v in ipairs (table.keys (t)) do
+      TRACE ("ORIGIN_ALIAS", i, v, t[v])
    end
 end
 
@@ -908,6 +921,7 @@ end
 return {
    --name = false,
    new = new,
+   get = get,
    check_excluded = check_excluded,
    check_options = check_options,
    check_path = check_path,
@@ -916,7 +930,7 @@ return {
    depends = depends,
    port_make = port_make,
    port_var = port_var,
-   origin_alias = origin_alias,
+   --origin_alias = origin_alias,
    portdb_path = portdb_path,
    wait_checksum = wait_checksum,
    moved_cache_load = moved_cache_load,

@@ -91,7 +91,7 @@ local function fetch (origin)
 		  local port = string.sub (buffer, 1, pos - 1)
 		  buffer = string.sub (buffer, pos + 1, -1)
 		  if port ~= "" then
-		     origin = Origin:new (port)
+		     origin = Origin.get (port)
 		     local status = dist_fetch (origin)
 		     fetch_ack:write (status .. "\n")
 		     TRACE ("-->", status)

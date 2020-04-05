@@ -178,13 +178,12 @@ end
 local function origins_flavor_from_glob (param)
    local glob = dir_part (param)
    local flavor = flavor_part (param)
-   -- 	local pkgname matches
    local matches = {}
    for i, pkgname in PkgDb.query {table = true, glob = true, "%n-%v", glob} do
       if not flavor or PkgDb.flavor_check (pkgname, flavor) then
 	 local origin = pkgdb_origin_from_pkgname (pkgname)
 	 if origin then
-	    matches:insert (Origin:new (origin))
+	    matches:insert (Origin:new (origin)) -- Origin.get ???
 	 end
       end
    end

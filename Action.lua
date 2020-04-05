@@ -162,7 +162,7 @@ local function port_clean (action)
    table.insert (special_depends, origin_new.name)
    for i, origin_target in ipairs (special_depends) do
       local target = target_part (origin_target)
-      local origin = Origin:new (origin_target:gsub (":.*", ""))
+      local origin = Origin.get (origin_target:gsub (":.*", ""))
       if target ~= "fetch" and target ~= "checksum" then
 	 return origin:port_make {to_tty = true, jailed = true, "-D", "NO_CLEAN_DEPENDS", "clean"}
       end
@@ -859,7 +859,7 @@ local function origin_old_from_moved_to_origin (origin_new)
    end
    if lastline then
       local origin_old = string.match (lastline, "^([^|]+)|")
-      return Origin:new (origin_old)
+      return Origin.get (origin_old)
    end
 end
 
@@ -1214,7 +1214,7 @@ end
 local function perform_upgrades ()
    -- install or upgrade required packages
    for i, origin_new in ipairs (WORKLIST) do
-      origin_new = Origin:new (origin_new)
+      origin_new = Origin.get (origin_new)
       Msg.start (0)
       -- if Options.hide_build is set the buildlog will only be shown on errors
       if Options.hide_build and not origin_new:port_var {"IS_INTERACTIVE"} then
@@ -1405,13 +1405,13 @@ end
    local function derive_origin_old_from_pkgname_old (action)
 --]]
 --
-local function determine_pkg_old (self, k)
-   local pt = self.origin_old and self.origin_old.old_pkgs
+local function determine_pkg_old (action, k)
+   local pt = action.origin_old and action.origin_old.old_pkgs
    if pt then
-      local pkg_new = self.pkg_new
+      local pkg_new = action.pkg_new
       if pkg_new then
 	 local pkgnamebase = pkg_new.name_base
-	 for i, p in ipairs (pt) do
+	 for p, v in ipairs (pt) do
 	    if p.name_base == pkgnamebase then
 	       return p
 	    end
@@ -1421,12 +1421,12 @@ local function determine_pkg_old (self, k)
 end
 
 --
-local function determine_pkg_new (self, k)
-   local p = self.origin_new and self.origin_new.pkg_new
-   if not p and self.origin_old and self.pkg_old then
-      p = self.origin_old.pkg_new
+local function determine_pkg_new (action, k)
+   local p = action.origin_new and action.origin_new.pkg_new
+   if not p and action.origin_old and action.pkg_old then
+      p = action.origin_old.pkg_new
       --[[
-      if p and p.name_base_major ~= self.pkg_old.name_base_major then
+      if p and p.name_base_major ~= action.pkg_old.name_base_major then
 	 p = nil -- further tests required !!!
       end
       --]]
@@ -1435,18 +1435,18 @@ local function determine_pkg_new (self, k)
 end
 
 --
-local function determine_pkg_file (self, k)
-   local f = self.pkg_new and self.pkg_new.pkg_filename
+local function determine_pkg_file (action, k)
+   local f = action.pkg_new and action.pkg_new.pkg_filename
    if f and access (f, "r") then
       return f
    end
 end
 
 --
-local function determine_origin_old (self, k)
-   --print ("OO:", self.pkg_old, (rawget (self, "pkg_old") and (self.pkg_old).origin or "-"), self.pkg_new, (rawget (self, "pkg_new") and (self.pkg_new.origin or "-")))
-   local o = self.pkg_old and rawget (self.pkg_old, "origin")
-      or self.pkg_new and self.pkg_new.origin -- NOT EXACT
+local function determine_origin_old (action, k)
+   --print ("OO:", action.pkg_old, (rawget (action, "pkg_old") and (action.pkg_old).origin or "-"), action.pkg_new, (rawget (action, "pkg_new") and (action.pkg_new.origin or "-")))
+   local o = action.pkg_old and rawget (action.pkg_old, "origin")
+      or action.pkg_new and action.pkg_new.origin -- NOT EXACT
    return o
 end
 
@@ -1460,8 +1460,8 @@ local function verify_origin (o)
 end
 
 --
-local function determine_origin_new (self, k)
-   local o = self.pkg_old and self.pkg_old.origin
+local function determine_origin_new (action, k)
+   local o = action.pkg_old and action.pkg_old.origin
    if o then
       local mo = Origin.lookup_moved_origin (o)
       if mo and mo.reason or verify_origin (mo) then
@@ -1474,9 +1474,9 @@ local function determine_origin_new (self, k)
 end
 
 --
-local function compare_versions (self, k)
-   local p_o = self.pkg_old
-   local p_n = self.pkg_new
+local function compare_versions (action, k)
+   local p_o = action.pkg_old
+   local p_n = action.pkg_new
    if p_o and p_n then
       if p_o == p_n then
 	 return "="
@@ -1534,29 +1534,28 @@ end
 -- ----------------------------------------------------------------------------------
 local function __newindex (action, n, v)
    TRACE ("SET(a)", rawget (action, "pkg_new") and  action.pkg_new.name or
-	     rawget (action, "pkg_old") and  action.pkg_old.name or
-	     rawget (action, "origin") and action.origin.name, n, v)
-   if v and (n == "pkg_old" or n == "pkg_new" or n == "origin_new") then
-      ACTION_CACHE[v] = action
+	     rawget (action, "pkg_old") and  action.pkg_old.name, n, v)
+   if v and (n == "pkg_old" or n == "pkg_new") then
+      ACTION_CACHE[v.name] = action
    end
    rawset (action, n, v)
 end
 
-local function __index (self, k)
-   local function __depends (self, k)
-      local o_n = self.origin_new
+local function __index (action, k)
+   local function __depends (action, k)
+      local o_n = action.origin_new
       TRACE ("DEP_REF", k, o_n and table.unpack (o_n[k]) or nil)
       if o_n then
 	 return o_n[k]
 	 --k = string.match (k, "[^_]+")
-	 --return o_n.depends (self.origin_new, k)
+	 --return o_n.depends (action.origin_new, k)
       end
    end
-   local function __short_name (self, k)
-      return self.pkg_new and self.pkg_new.name or
-	 self.pkg_old and self.pkg_old.name or
-	 self.origin_new and self.origin_new.name or
-	 self.origin_old and self.origin_old.name or
+   local function __short_name (action, k)
+      return action.pkg_new and action.pkg_new.name or
+	 action.pkg_old and action.pkg_old.name or
+	 action.origin_new and action.origin_new.name or
+	 action.origin_old and action.origin_old.name or
 	 "<unknown>"
    end
    local dispatch = {
@@ -1573,14 +1572,14 @@ local function __index (self, k)
    }
 
    TRACE ("INDEX(a)", k)
-   local w = rawget (self.__class, k)
+   local w = rawget (action.__class, k)
    if w == nil then
-      rawset (self, k, false)
+      rawset (action, k, false)
       local f = dispatch[k]
       if f then
-	 w = f (self, k)
+	 w = f (action, k)
 	 if w then
-	    rawset (self, k, w)
+	    rawset (action, k, w)
 	 else
 	    w = false
 	 end
@@ -1620,7 +1619,7 @@ local function set_cached_action (action)
 	       TRACE ("SET_CACHED_ACTION_CONFLICT", describe (ACTION_CACHE[n]), describe (action))
 	    end
 	    ACTION_CACHE[n] = action
-	    TRACE ("SET_CACHED_ACTION")
+	    TRACE ("SET_CACHED_ACTION", field, n)
 	 else
 	    error ("Empty package name " .. field .. " " .. describe (action))
 	 end
@@ -1714,8 +1713,8 @@ end
 local function lookup_cached_action (args) -- args.pkg_new is a string not an object!!
    local action
    assert (args, "cached_action: called with nil argument")
-   action = args.pkg_new and ACTION_CACHE[args.pkg_new]
-      or args.pkg_old and ACTION_CACHE[args.pkg_old]
+   action = args.pkg_new and ACTION_CACHE[args.pkg_new.name]
+      or args.pkg_old and ACTION_CACHE[args.pkg_old.name]
    TRACE ("CACHED_ACTION", args.pkg_new, args.pkg_old, action and action.pkg_old and action.pkg_old.name, action and action.pkg_new and action.pkg_new.name, "END")
    return action
 end
@@ -1742,8 +1741,11 @@ local function check_used_default_version (action)
 	 local major, minor = string.match (name, pattern)
 	 if major then
 	    action.pkg_new = nil
-	    local default_version = prog .. "=" .. minor and major .. "." .. minor or major
-	    return Origin:new (action.origin_old.name .. "%" .. default_version)
+	    local default_version = prog .. "=" .. major
+	    if minor then
+	       default_version = default_version .. "." .. minor
+	    end
+	    return Origin.get (action.origin_old.name .. "%" .. default_version)
 	 end
       end
    else
@@ -1779,8 +1781,9 @@ local function action_enrich (action)
 	 end
       end
       return try_origin (action.origin_old) or
-	 try_origin (determine_origin_new (action)) or
-	 try_origin (check_used_default_version (action))
+	 try_origin (determine_origin_new (action))
+	 --or
+	 --try_origin (check_used_default_version (action))
    end
    --[[
    pkg_old (pkg_new)
@@ -1828,6 +1831,10 @@ local function action_enrich (action)
    if not rawget (action, "pkg_old") and action.pkg_new then
       try_get_pkg_old (action)
    end
+   --
+   if not rawget (action, "origin_new") and rawget (action, "pkg_old") then
+      try_get_origin_new (action)
+   end
 
    --[[
    origin_old (origin_new, pkg_new)
@@ -1873,7 +1880,8 @@ local function new (Action, args)
 	    if rawget (action, "origin_new") then
 	       assert (action.origin_new.name == args.origin_new.name, "Conflicting origin_new: " .. action.origin_new.name .. " vs. " .. args.origin_new.name)
 	    else
-	       action.origin_new = args.origin_new
+	       local p = args.origin_new.pkg_new
+	       action.origin_new = p.origin -- could be aliased origin and may need to be updated to canonical origin object
 	    end
 	 end
       else
@@ -1901,38 +1909,36 @@ local function add_missing_deps ()
       if a.pkg_new and rawget (a.pkg_new, "is_installed") then
 	 --print (a, "-- is already installed")
       else
-	 local text = "Adding build dependencies of " .. a.short_name
+	 local add_dep_hdr = "Add build dependencies of " .. a.short_name
 	 deps = a.build_depends or {}
 	 for j, dep in ipairs (deps) do
 	    local o = Origin:new (dep)
-	    if not rawget (o, "pkg_new") then
-	       local action = rawget (o, "action")
-	       if not action then
-		  --print ("Missing build dependency:", o.name)
-		  if text then
-		     Msg.start (2, text)
-		     text = nil
-		  end
-		  action = Action:new {build_type = "auto", dep_type = "build", origin_new = o}
-		  action.origin_new.action = action
+	    local p = o.pkg_new
+	    if not ACTION_CACHE[p.name] then
+	       if add_dep_hdr then
+		  Msg.start (2, add_dep_hdr)
+		  add_dep_hdr = nil
 	       end
+	       --local action = Action:new {build_type = "auto", dep_type = "build", origin_new = o}
+	       local action = Action:new {build_type = "auto", dep_type = "build", pkg_new = p, origin_new = o}
+	       --assert (not o.action)
+	       --o.action = action -- NOT UNIQUE!!!
 	    end
 	 end
-	 local text = "Adding run dependencies of " .. a.short_name
+	 add_dep_hdr = "Add run dependencies of " .. a.short_name
 	 deps = a.run_depends or {}
 	 for j, dep in ipairs (deps) do
 	    local o = Origin:new (dep)
-	    if not rawget (o, "pkg_new") then
-	       local action = rawget (o, "action")
-	       if not action then
-		  --print ("Missing run dependency:", o.name)
-		  if text then
-		     Msg.start (2, text)
-		     text = nil
-		  end
-		  action = Action:new {build_type = "auto", dep_type = "run", origin_new = o}
-		  action.origin_new.action = action
+	    local p = o.pkg_new
+	    if not ACTION_CACHE[p.name] then
+	       if add_dep_hdr then
+		  Msg.start (2, add_dep_hdr)
+		  add_dep_hdr = nil
 	       end
+	       --local action = Action:new {build_type = "auto", dep_type = "run", origin_new = o}
+	       local action = Action:new {build_type = "auto", dep_type = "run", pkg_new = p, origin_new = o}
+	       --assert (not o.action)
+	       --o.action = action -- NOT UNIQUE!!!
 	    end
 	 end
       end
@@ -1948,9 +1954,9 @@ local function sort_list ()
 	 local deps = rawget (action, "build_depends")
 	 if deps then
 	    for i, o in ipairs (deps) do
-	       local origin = Origin:new (o)
+	       local origin = Origin.get (o)
 	       local pkg_new = origin.pkg_new
-	       local a = rawget (ACTION_CACHE, pkg_new)
+	       local a = rawget (ACTION_CACHE, pkg_new.name)
 	       TRACE ("BUILD_DEP", a and rawget (a, "action"), origin.name, origin.pkg_new, origin.pkg_new and rawget (origin.pkg_new, "is_installed"))
 	       if a and not rawget (origin.pkg_new, "is_installed") and not rawget (a, "planned") then
 		  if a ~= action then
@@ -1971,9 +1977,9 @@ local function sort_list ()
 	 local deps = rawget (action, "run_depends")
 	 if deps then
 	    for i, o in ipairs (deps) do
-	       local origin = Origin:new (o)
+	       local origin = Origin.get (o)
 	       local pkg_new = origin.pkg_new
-	       local a = rawget (ACTION_CACHE, pkg_new)
+	       local a = rawget (ACTION_CACHE, pkg_new.name)
 	       TRACE ("RUN_DEP", a and rawget (a, "action"), origin.name, origin.pkg_new, origin.pkg_new and rawget (origin.pkg_new, "is_installed"))
 	       if a and not rawget (origin.pkg_new, "is_installed") and not rawget (a, "planned") then
 		  if a ~= action then

@@ -92,8 +92,7 @@ local function list (action, table)
 	    end
 	    pkgname_new = PKGNAME_NEW[origin_new]
 	    pkgfile = USEPACKAGE[origin_new]
-	    --[[
-	    -- TEMPORARY -- TESTING ???
+	    --[[ -- TEMPORARY -- TESTING ???
 	    purpose = ""
 	    if BUILDDEP[origin_new] then
 	       purpose = "build"

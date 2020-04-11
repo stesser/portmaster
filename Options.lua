@@ -52,7 +52,7 @@ end
 local function usage ()
    -- print_version ()
    -- print ()
-   io.stderr:write ("Usage: " .. PROGRAM .. "[option ...] [portorigin|packagename] ...\n\nOptions:\n")
+   io.stderr:write ("Usage: " .. PROGRAM .. " [option ...] [portorigin|packagename] ...\n\nOptions:\n")
    local options_descr = {}
    local maxlen = 0
    for i, longopt in pairs (print_longopts ()) do
@@ -297,7 +297,7 @@ VALID_OPTS = {
    thorough		= { "t", nil,	"check all dependencies and de_install unused automatic packages",	function (o, v) opt_set (o, v) end },
    verbose		= { "v", nil,	"increase verbosity level",						function (o, v) Msg.level = Msg.level + 1 end },
    save_shared		= { "w", nil,	"keep backups of upgraded shared libraries",				function (o, v) opt_set (o, v) end },
-   exclude		= { "x", "pattern", "add pattern to exclude list",					function (o, v) EXCLUDES[v] = true end },
+   exclude		= { "x", "pattern", "add pattern to exclude list",					function (o, v) Excludes.add (v) end },
    default_yes		= { "y", nil,	"assume answer 'yes'",							function (o, v) opt_set (o, v) opt_clear ("default_no", o) end },
    developer_mode	= { nil, nil,	"create log and trace files",						function (o, v) tracefd = io.open (TRACEFILE, "w") end },
 }

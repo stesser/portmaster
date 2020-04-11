@@ -30,8 +30,8 @@ SUCH DAMAGE.
 
 -- return package file name in PACKAGES/<dir>
 local function filename (basedir, pkgname, extension)
-   TRACE ("filename", basedir, pkgname, extension)
-   return basedir .. "/" .. pkgname .. "." .. extension
+   TRACE ("FILENAME", basedir, pkgname, extension, path_concat (basedir, pkgname .. "." .. extension))
+   return path_concat (basedir, pkgname .. "." .. extension)
 end
 
 -- 
@@ -76,16 +76,16 @@ end
 
 -- ----------------------------------------------------------------------------------
 -- deinstall named package (JAILED)
-local function deinstall (pkg, make_backup)
-   local pkgname = pkg.name
+local function deinstall (package, make_backup)
+   local pkgname = package.name
    if make_backup then
-      progress_show ("Create backup package for", pkgname)
+      Progress.show ("Create backup package for", pkgname)
       pkg {as_root = true, "create", "-q", "-o", PACKAGES_BACKUP, "-f", Options.backup_format, pkgname}
    end
    if Options.jailed and PHASE ~= "install" then
-      progress_show ("De-install", pkgname, "from build jail")
+      Progress.show ("De-install", pkgname, "from build jail")
    else
-      progress_show ("De-install", pkgname)
+      Progress.show ("De-install", pkgname)
    end
    return pkg {as_root = true, jailed = true, "delete", "-y", "-q", "-f", pkgname}
 end
@@ -94,23 +94,22 @@ end
 -- re-install package from backup after attempted installation of a new version failed
 local function recover (pkg)
    -- if not pkgname then return true end
-   local pkgname, automatic, pkgfile = pkg.name, pkg.automatic, pkg.pkgfile
+   local pkgname, pkgfile = pkg.name, pkg.pkgfile
    if not pkfile then
-      pkgfile = Exec.shell ("ls", {table = true, safe = true, "-1t", PACKAGES_BACKUP .. pkgname .. ".*"})[1]
+      pkgfile = Exec.shell ("ls", {table = true, safe = true, "-1t", PACKAGES_BACKUP .. pkgname .. ".*"})[1] -- XXX replace with glob and sort by modification time
    end
    if pkgfile and access (pkgfile, "r") then
       Msg.cont (0, "Re-installing previous version", pkgname)
-      if install (pkgfile, file_get_abi (pkgfile)) then
-	 if automatic == 1 then
-	    PkgDb.automatic_set (pkgname_old, true)
-	 end
-	 shlibs_backup_remove_stale (pkgname_old)
-	 Exec.run ("/bin/unlink", {as_root = true, PACKAGES_BACKUP .. pkgname_old .. ".t??"})
-	 return true
-      else
+      if not install (pkgfile, file_get_abi (pkgfile)) then
 	 Msg.cont (0, "Recovery from backup package failed")
 	 return false
       end
+      if pkg.is_automatic == 1 then
+	 automatic_set (pkg, true)
+      end
+      shlibs_backup_remove_stale (pkg)
+      Exec.run ("/bin/unlink", {as_root = true, PACKAGES_BACKUP .. pkgname_old .. ".t??"})
+      return true
    end
 end
 
@@ -135,11 +134,11 @@ end
 
 -- search package file
 local function file_search (pkg)
-   local filename
+   local name
    for d in ipairs ({"All", "package-backup"}) do
-      for f in glob (package_filename (PACKAGES .. d, pkg.name, ".t??")) do
+      for f in glob (filename (PACKAGES .. d, pkg.name, ".t??")) do
 	 if packagefile_valid_abi (f) then
-	    if not filename or stat (filename).modification < stat (f).modification then
+	    if not name or stat (filename).modification < stat (f).modification then
 	       filename = f
 	    end
 	 end
@@ -150,17 +149,23 @@ end
 
 -- delete backup package file
 local function backup_delete (pkg)
-   local backupfile = filename (PACKAGES_BACKUP, pkg.name, ".t??")
-   return Exec.run ("/bin/unlink", {as_root = true, backupfile})
+   local g = filename (PACKAGES_BACKUP, pkg.name, ".t??")
+   for i, backupfile in pairs (glob (g) or {}) do
+      TRACE ("BACKUP_DELETE", backupfile, PACKAGES .. "portmaster-backup/")
+      Exec.run ("/bin/unlink", {as_root = true, backupfile})
+   end
 end
 
 -- delete stale package file
 local function delete_old (pkg)
-   local pkgname_old = pkg.pkg_old.name
+   local pkgname_old = pkg.name
    local g = filename (PACKAGES .. "*", pkgname_old, "t??")
-   --print ("GLOB", g)
-   for pkgfile in glob (PACKAGES .. filename ("*", pkgname_old, "t??")) do
-      Exec.run ("unlink", {as_root = true, pkgfile})
+   TRACE ("DELETE_OLD", pkgname_old, g)
+   for i, pkgfile in pairs (glob (g) or {}) do
+      TRACE ("CHECK_BACKUP", pkgfile, PACKAGES .. "portmaster-backup/")
+      if not string.match (pkgfile, "^" .. PACKAGES .. "portmaster-backup/") then
+	 Exec.run ("/bin/unlink", {as_root = true, pkgfile})
+      end
    end
 end
 
@@ -234,19 +239,9 @@ end
 -- ----------------------------------------------------------------------------------
 -- return true (exit code 0) if named package is locked
 -- set package to auto-installed if automatic == 1, user-installed else
-local function automatic_set (pkg)
-   PkgDb.set ("-A", pkg.automatic, pkg.name)
-end
-
--- get auto-installed status
-local function automatic_get (pkg)
-   pkg.automatic = PkgDb.query {"%a", pkg.name}
-end
-
--- return true (exit code 0) if named package was only installed as a dependency
-local function automatic_check (pkg)
-   automatic_get (pkg)
-   return pkg.automatic == "1"
+local function automatic_set (pkg, automatic)
+   local value = automatic and "1" or "0"
+   PkgDb.set ("-A", value, pkg.name)
 end
 
 -- check whether package is on includes list
@@ -472,10 +467,10 @@ local function __index (pkg, k)
 	 return PkgDb.query {table = true, "%B", pkg.name}
       end,
       --]]
-      pkg_filename = function (pkg, k)
+      pkgfile = function (pkg, k)
 	 return pkg_filename {subdir = "All", pkg}
       end,
-      bak_filename = function (pkg, k)
+      bakfile = function (pkg, k)
 	 return pkg_filename {subdir = "portmaster-backup", extension = Options.backup_format, pkg}
       end,
       --[[
@@ -571,8 +566,6 @@ return {
    shlibs_backup = shlibs_backup,
    shlibs_backup_remove_stale = shlibs_backup_remove_stale,
    automatic_set = automatic_set,
-   automatic_get = automatic_get,
-   automatic_check = automatic_check,
    packages_cache_load = packages_cache_load,
    dump_cache = dump_cache,
 }

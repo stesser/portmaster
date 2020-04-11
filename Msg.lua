@@ -30,7 +30,7 @@ local Msg = {
    level = 0,
    at_start = true,
    empty_line = true,
-   prompt = false,
+   doprompt = false,
    sep1 = "# -----\t",
    sep2 = "#\t",
    sepabort = "# !!!!!\t",
@@ -58,7 +58,7 @@ local function cont (level, ...)
 	       end
 	    else
 	       Msg.empty_line = false
-	       if Msg.prompt then
+	       if Msg.doprompt then
 		  -- no newline after prompt
 		  stdout:write (Msg.sep, line)
 	       else
@@ -69,10 +69,10 @@ local function cont (level, ...)
 	    Msg.at_start = false
 	 end
 	 -- reset to default prefix after reading user input
-	 if Msg.prompt then
+	 if Msg.doprompt then
 	    Msg.sep = Msg.sep1
 	    Msg.at_start = true
-	    Msg.prompt = false
+	    Msg.doprompt = false
 	 end
       end
    end
@@ -103,11 +103,11 @@ end
 
 -- print a prompt to request user input
 local function prompt (...)
-   Msg.prompt = true
+   Msg.doprompt = true
    Msg.sep = Msg.sepprompt
    Msg.at_start = true
    cont (0, ...)
-   Msg.prompt = false
+   Msg.doprompt = false
    Msg.sep = Msg.sep2
 end
 
@@ -170,5 +170,6 @@ Msg.checking = checking
 Msg.title_set = title_set
 Msg.success_add = success_add
 Msg.display = display
+Msg.prompt = prompt
 
 return Msg

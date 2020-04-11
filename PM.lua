@@ -209,11 +209,6 @@ function set_table (self, field, v)
    self[field] = v ~= "" and split_words (v) or false
 end
 
--- return the sum of the numbers of required operations
-function tasks_count ()
-   return NUM.deletes + NUM.moves + NUM.renames + NUM.actions + NUM.delayed
-end
-
 -- ---------------------------------------------------------------------------------- (UTIL)
 -- test whether the second parameter is a prefix of the first parameter (UTIL)
 function strpfx (str, pattern)
@@ -305,11 +300,11 @@ end
 
 -- print $prompt and read checked user input
 function read_answer (prompt, default, choices)
+   TRACE ("READ_ANSWER", prompt, default, table.unpack (choices))
    local choice = ""
    local display = ""
    local display_default = ""
    local reply = default
-
    if Options.no_confirm and default and true then
       -- check whether stdout is connected to a terminal !!!
       Msg.start (0, "")
@@ -379,6 +374,7 @@ end
 function path_concat (result, ...)
    if result and result ~= "" then
       for i, v in ipairs ({...}) do
+	 TRACE ("V", i, "'" .. v .. "'")
 	 if v and v ~= "" then
 	    result = result .. (string.sub (result, -1) ~= "/" and "/" or "") .. v
 	 end
@@ -625,9 +621,6 @@ function messages_display ()
       Msg.start (0, "The following actions have been performed:")
       for i, line in ipairs (SUCCESS_MSGS) do
 	 Msg.cont (0, line)
-      end
-      if tasks_count () == 0 then
-	 Msg.start (0, "All requested actions have been completed")
       end
    end
    PKGMSG = nil -- required ???
@@ -1046,6 +1039,7 @@ function ports_add_multiple (args)
    ports_update {
       filter_match,
    }
+   --[[
    for i, name_glob in ipairs (args) do
       local filenames = glob (path_concat (PORTSDIR, name_glob, "Makefile"))
       if filenames then
@@ -1060,6 +1054,7 @@ function ports_add_multiple (args)
 	 error ("No ports match " .. name_glob)
       end
    end
+   --]]
 end
 
 -- process all outdated ports (may upgrade, install, change, or delete ports)
@@ -1072,7 +1067,7 @@ local function ports_add_all_outdated ()
    end
    local function filter_old_shared_libs (pkg)
       if pkg.shared_libs then
-	 for k, v in pairs (pkg.shared_libs) do
+	 for lib, v in pairs (pkg.shared_libs) do
 	    return not current_libs[lib], true
 	 end
       end
@@ -1462,39 +1457,18 @@ function main ()
    -- sort actions according to registered dependencies
    Action.sort_list ()
 
+   --[[
    -- DEBUGGING!!!
    Origin.dump_cache ()
    Package.dump_cache ()
    Action.dump_cache ()
-
-   -- 
---   Action.port_options ()
+   --]]
    
-   -- 
-   --Action.check_conflicts ("build_conflicts")
-   Action.check_conflicts ("install_conflicts")
-   
-   -- 
---   Action.check_licenses ()
-   
-   -- build list of packages to install after all ports have been built
-   Action.register_delayed_installs ()
-
    -- end of scan phase, all required actions are known at this point, builds may start
    PHASE = "build"
 
-   if tasks_count() > 0 then
-      -- all fetch distfiles tasks should have been requested by now
-      Distfile.fetch_finish ()
-      -- display list of actions planned
-      Action.register_delete_build_only ()
-      Action.execute ()
-   else
-      -- ToDo: suppress if updates had been requested on the command line
-      Msg.start (0, "No installations or upgrades required")
-   end
-   
-   Progress.clear ()
+   Action.execute ()
+
    -- ----------------------------------------------------------------------------------
    -- non-upgrade operations supported by portmaster - executed after upgrades if requested
    if Options.check_depends then

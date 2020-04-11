@@ -50,6 +50,15 @@ local function add_port (port)
    end
 end
 
+--
+local function add (port_or_pkg)
+   if string.match (port_or_pkg, "/") then
+      add_port (port_or_pkg)
+   else
+      add_pkg (port_or_pkg)
+   end
+end
+
 -- 
 local function check_pkg (pkg)
    local basename = pkg.name_base
@@ -97,6 +106,7 @@ end
 
 -- module interface
 return {
+   add = add,
    add_pkg = add_pkg,
    add_port = add_port,
    check_pkg = check_pkg,

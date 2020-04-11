@@ -273,38 +273,8 @@ local function configure (origin, force)
    return origin:port_make {to_tty = true, as_root = true, "-D", "NO_DEPENDS", "-D", "DISABLE_CONFLICTS", target}
 end
 
--- check config options and ask for confirmation if interactive
+-- check config options and ask for confirmation if interactive, return true if options changed
 local function check_options (origin)
-   if not Options.no_make_config then
-      if not origin:configure (Options.force_config) then
-	 return false
-      end -- fail "Port configuration failed" -- ??? retries are disconnected ???
-      cause = check_forbidden (origin)
-      if cause and origin:port_var {"OPTIONS"} then
-	 Msg.cont (0, "You may try to change the port options to allow this port to build")
-	 Msg.cont (0)
-	 read_nl ("Press the [Enter] or [Return] key to continue ")
-	 origin:configure (true)
-	 cause = check_forbidden (origin)
-      end
-      if cause then
-	 Msg.cont (0, "If you are sure you can build this port, remove the", cause, "line in the Makefile and try again.")
-	 return false
-      end
-      -- ask for confirmation if requested by a program option
-      if Options.interactive then
-	 if not read_yn ("Perform upgrade", "y") then
-	    Msg.cont (0, "Action will be skipped on user request")
-	    return true
-	 end
-      end
-      -- warn if port is interactive
-      if origin:port_var {"IS_INTERACTIVE"} then
-	 Msg.cont (0, "Warning:", origin.name, "is interactive, and will likely require attention during the build")
-	 read_nl ("Press the [Enter] or [Return] key to continue ")
-      end
-   end
-   return true
 end
 
 -- return false if special license required and denied
@@ -379,6 +349,11 @@ local function curr_pkg (origin)
    return p
 end
 --]]
+
+-- install newly built port
+local function install (origin)
+   return origin:port_make {to_tty = true, jailed = true, as_root = true, "install"}
+end
 
 -- -------------------------
 local MOVED_CACHE = nil -- table indexed by old origin (as text) and giving struct with new origin (as text), date and reason for move
@@ -613,6 +588,64 @@ local function load_default_versions (origin)
 end
 --]=]
 
+--
+local function check_config_allow (origin, recursive)
+   TRACE ("CHECK_CONFIG_ALLOW", origin.name, recursive)
+   function check_ignore (name, field)
+      TRACE ("CHECK_IGNORE", origin.name, name, field, rawget (origin, field))
+      if rawget (origin, field) then
+	 Msg.cont (0, origin.name, "will be skipped since it is marked", name .. ":", origin[field])
+	 Msg.cont (0, "If you are sure you can build this port, remove the", name, "line in the Makefile and try again")
+	 if not Options.no_confirm then
+            read_nl ("Press the [Enter] or [Return] key to continue ")
+	 end
+	 origin.skip = true
+      end
+   end
+   check_ignore ("BROKEN", "is_broken")
+   check_ignore ("IGNORE", "is_ignore")
+   if Options.no_make_config then
+      check_ignore ("FORBIDDEN", "is_forbidden")
+   end
+   if rawget (origin, "skip") then
+      return false
+   elseif not recursive then
+      local do_config
+      if origin.is_forbidden then
+	 Msg.cont (0, origin.name, "is marked FORBIDDEN:", origin.is_forbidden)
+	 if origin.all_options then
+	    Msg.cont (0, "You may try to change the port options to allow this port to build")
+	    Msg.cont (0)
+	    if read_yn ("Do you want to try again with changed port options") then
+	       do_config = true
+	    end
+	 end
+      elseif origin.new_options or Options.force_config then
+	 do_config = true
+      end
+      if do_config then
+	 TRACE ("NEW_OPTIONS", origin.new_options)
+	 origin:configure (true)
+	 return false
+      end
+   end
+   -- ask for confirmation if requested by a program option
+   if Options.interactive then
+      if not read_yn ("Perform upgrade", "y") then
+	 Msg.cont (0, "Action will be skipped on user request")
+	 origin.skip = true
+	 return false
+      end
+   end
+   -- warn if port is interactive
+   if origin.is_interactive then
+      Msg.cont (0, "Warning:", origin.name, "is interactive, and will likely require attention during the build")
+      if not Options.no_confirm then
+	 read_nl ("Press the [Enter] or [Return] key to continue ")
+      end
+   end
+end
+
 -- ----------------------------------------------------------------------------------
 -- create new Origins object or return existing one for given name
 -- the Origin class describes a port with optional flavor
@@ -648,7 +681,7 @@ end
 ORIGIN_ALIAS = {}
 
 local function __index (origin, k)
-   local function __port_vars (origin, k)
+   local function __port_vars (origin, k, recursive)
       local function check_origin_alias () -- origin is UPVALUE
 	 local function adjustname (new_name) -- origin is UPVALUE
 	    TRACE ("ORIGIN_SETALIAS", origin.name, new_name)
@@ -686,44 +719,45 @@ local function __index (origin, k)
       end
       local t = origin:port_var {
 	 table = true,
-	 "PKGNAME",
-	 "FLAVOR",
-	 "FLAVORS",
-	 "DISTINFO_FILE",
-	 "BROKEN",
-	 "FORBIDDEN",
-	 "IGNORE",
-	 "IS_INTERACTIVE",
-	 "LICENSE",
-	 "ALL_OPTIONS",
-	 "NEW_OPTIONS",
-	 "PORT_OPTIONS",
-	 "CATEGORIES",
-	 "FETCH_DEPENDS",
-	 "EXTRACT_DEPENDS",
-	 "PATCH_DEPENDS",
-	 "BUILD_DEPENDS",
-	 "LIB_DEPENDS",
-	 "RUN_DEPENDS",
-	 "TEST_DEPENDS",
-	 "PKG_DEPENDS",
-	 "CONFLICTS_BUILD",
-	 "CONFLICTS_INSTALL",
-	 "CONFLICTS",
+	 "PKGNAME",		--  1
+	 "FLAVOR",		--  2
+	 "FLAVORS",		--  3
+	 "DISTINFO_FILE",	--  4
+	 "BROKEN",		--  5
+	 "FORBIDDEN",		--  6
+	 "IGNORE",		--  7
+	 "IS_INTERACTIVE",	--  8
+	 "LICENSE",		--  9
+	 "ALL_OPTIONS",		-- 10
+	 "NEW_OPTIONS",		-- 11
+	 "PORT_OPTIONS",	-- 12
+	 "CATEGORIES",		-- 13
+	 "FETCH_DEPENDS",	-- 14
+	 "EXTRACT_DEPENDS",	-- 15
+	 "PATCH_DEPENDS",	-- 16
+	 "BUILD_DEPENDS",	-- 17
+	 "LIB_DEPENDS",		-- 18
+	 "RUN_DEPENDS",		-- 19
+	 "TEST_DEPENDS",	-- 20
+	 "PKG_DEPENDS",		-- 21
+	 "CONFLICTS_BUILD",	-- 22
+	 "CONFLICTS_INSTALL",	-- 23
+	 "CONFLICTS",		-- 24
       } or {}
       TRACE ("PORT_VAR(" .. origin.name .. ", " .. k ..")", table.unpack (t))
+      -- first check for and update port options since they might affect the package name
+      set_table (origin, "new_options", t[11])
+      set_str (origin, "is_broken", t[5])
+      set_str (origin, "is_forbidden", t[6])
+      set_str (origin, "is_ignore", t[7])
       set_pkgname (origin, "pkg_new", t[1])
       set_str (origin, "flavor", t[2])
       set_table (origin, "flavors", t[3])
       check_origin_alias () ---- SEARCH FOR AND MERGE WITH POTENTIAL ALIAS
       set_str (origin, "distinfo_file", t[4])
-      set_bool (origin, "is_broken", t[5])
-      set_bool (origin, "is_forbidden", t[6])
-      set_bool (origin, "is_ignore", t[7])
       set_bool (origin, "is_interactive", t[8])
       set_table (origin, "license", t[9])
       set_table (origin, "all_options", t[10])
-      set_table (origin, "new_options", t[11])
       set_table (origin, "port_options", t[12])
       set_table (origin, "categories", t[13])
       set_table (origin, "fetch_depends_var", t[14])
@@ -879,7 +913,6 @@ end
 local function new (origin, name)
    --local TRACE = print -- TESTING
    if name then
-      TRACE ("CHECK ORIGIN_ALIAS", name, ORIGIN_ALIAS[name])
       local O = get (name)
       if not O then
 	 O = {name = name}
@@ -899,6 +932,11 @@ local function new (origin, name)
       return O
    end
    return nil
+end
+
+--
+local function delete (origin)
+   ORIGINS_CACHE[origin.name] = nil
 end
 
 -- DEBUGGING: DUMP INSTANCES CACHE
@@ -923,11 +961,13 @@ return {
    new = new,
    get = get,
    check_excluded = check_excluded,
-   check_options = check_options,
    check_path = check_path,
+   check_config_allow = check_config_allow,
    checksum = checksum,
    configure = configure,
+   delete = delete,
    depends = depends,
+   install = install,
    port_make = port_make,
    port_var = port_var,
    --origin_alias = origin_alias,

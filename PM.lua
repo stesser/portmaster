@@ -57,6 +57,7 @@ setenv = P_SL.setenv
 P_SS = require ("posix.sys.stat")
 lstat = P_SS.lstat
 stat_isdir = P_SS.S_ISDIR
+stat_isreg = P_SS.S_ISREG
 
 P_SW = require ("posix.sys.wait")
 wait = P_SW.wait

@@ -28,19 +28,14 @@ SUCH DAMAGE.
 -- ----------------------------------------------------------------------------------
 -- the Package class describes a package with optional package file
 
--- return package file name in PACKAGES/<dir>
-local function filename (basedir, pkgname, extension)
-   TRACE ("FILENAME", basedir, pkgname, extension, path_concat (basedir, pkgname .. "." .. extension))
-   return path_concat (basedir, pkgname .. "." .. extension)
-end
-
 -- 
-local function pkg_filename (args)
-   local pkg = args[1]
+local function filename (pkg, args)
    local pkgname = pkg.name
+   local base = args.base or PACKAGES
    local subdir = args.subdir or "All"
    local extension = args.ext or Options.package_format
-   return path_concat (PACKAGES, subdir, pkgname .. "." .. extension)
+   TRACE ("FILENAME", base, subdir, pkgname, extension, path_concat (basedir, subdir, pkgname .. "." .. extension))
+   return path_concat (base, subdir, pkgname .. "." .. extension)
 end
 
 -- fetch ABI from package file
@@ -113,43 +108,26 @@ local function recover (pkg)
    end
 end
 
--- create category links and a lastest link
-local function category_links_create (pkg)
-   local pkgname = pkg.name
-   local extension = pkgname:gsub (".+%.", "")
-   local pkgname = pkgname:gsub (".*/(%S+)%.[^.]+", "%1")
-   local categories = PkgDb.query {table = true, "%C", pkgname}
-   table.insert (categories, "Latest")
-   for i, category in ipairs (categories) do
-      local destination = PACKAGES .. category
-      if not is_dir (destination) then
-	 Exec.run ("mkdir", {as_root = true, "-p", destination})
-      end
-      if category == "Latest" then
-	 destination = destination .. "/" .. pkgname:gsub ("(.*)-.*", "%1") .. "." .. extension
-      end
-      Exec.run ("ln", {as_root = true, "-sf", "../" .. filename ("All", pkgname, extension), destination})
-   end
-end
-
 -- search package file
 local function file_search (pkg)
-   local name
+   local filename
    for d in ipairs ({"All", "package-backup"}) do
-      for f in glob (filename (PACKAGES .. d, pkg.name, ".t??")) do
+      for f in glob (pkg:filename {subdir = d, ext = ".t??"}) do
 	 if packagefile_valid_abi (f) then
-	    if not name or stat (filename).modification < stat (f).modification then
+	    if not filename or stat (filename).modification < stat (f).modification then
 	       filename = f
 	    end
 	 end
       end
-      if filename then return filename end
+      if filename then
+	 return filename
+      end
    end
 end
 
 -- delete backup package file
 local function backup_delete (pkg)
-   local g = filename (PACKAGES_BACKUP, pkg.name, ".t??")
+   local g = pkg:filename {base = PACKAGES_BACKUP, ext = ".t??"}
    for i, backupfile in pairs (glob (g) or {}) do
       TRACE ("BACKUP_DELETE", backupfile, PACKAGES .. "portmaster-backup/")
       Exec.run ("/bin/unlink", {as_root = true, backupfile})
@@ -158,9 +136,8 @@ end
 
 -- delete stale package file
 local function delete_old (pkg)
-   local pkgname_old = pkg.name
-   local g = filename (PACKAGES .. "*", pkgname_old, "t??")
-   TRACE ("DELETE_OLD", pkgname_old, g)
+   local g = pkg:filename {subdir = "*", ext = "t??"}
+   TRACE ("DELETE_OLD", pkg.name, g)
    for i, pkgfile in pairs (glob (g) or {}) do
       TRACE ("CHECK_BACKUP", pkgfile, PACKAGES .. "portmaster-backup/")
       if not string.match (pkgfile, "^" .. PACKAGES .. "portmaster-backup/") then
@@ -173,19 +150,18 @@ end
 -- remove from shlib backup directory all shared libraries replaced by new versions
 -- preserve currently installed shared libraries // <se> check name of control variable
 function shlibs_backup (pkg)
-   local pkg_libs = PkgDb.query {table = true, "%Fp", pkg.name}
+   local pkg_libs = pkg.shared_libs
    if pkg_libs then
-      local ldconfig_lines = Exec.run (LDCONFIG_CMD, {table = true, safe = true, "-r"}) -- "RT?" ???
+      local ldconfig_lines = Exec.run (LDCONFIG_CMD, {table = true, safe = true, "-r"}) -- "RT?" ??? CACHE LDCONFIG OUTPUT???
       for i, line in ipairs (ldconfig_lines) do
-	 if line:match("^" .. LOCAL_LIB .. "/lib.*[.]so[.]") then
-	    local lib = line:match (" => (%S+)")
-	    if lib then
+	 local libpath, lib = string.match (line, " => (" .. LOCAL_LIB .. "*(lib.*%.so%..*))")
+	 if lib then
+	    if stat_isreg (lstat (libpath).st_mode) then
 	       for i, l in ipairs (pkg_libs) do
-		  if l:match ("^" .. LOCAL_LIB_COMPAT) and l == lib then
-		     local backup_lib = LOCAL_LIB_COMPAT .. "/" .. lib:gsub(".*/", "")
-		     if Exec.run ("/bin/unlink", {as_root = true, to_tty = true, backup_lib}) then
-			Exec.run ("/bin/cp", {as_root = true, lib, backup_lib})
-		     end
+		  if l == lib then
+		     local backup_lib = LOCAL_LIB_COMPAT .. lib
+		     Exec.run ("/bin/unlink", {as_root = true, to_tty = true, backup_lib})
+		     Exec.run ("/bin/cp", {as_root = true, libpath, backup_lib})
 		  end
 	       end
 	    end
@@ -196,7 +172,7 @@ end
 
 -- remove from shlib backup directory all shared libraries replaced by new versions
 local function shlibs_backup_remove_stale (pkg)
-   local pkg_libs = PkgDb.query {table = true, "%Fp", pkg.name}
+   local pkg_libs = pkg.shared_libs
    if not pkg_libs then
       return nil
    end
@@ -232,8 +208,26 @@ end
 
 -- install package from passed filename in jail
 local function install_jailed (pkg)
-   local pkgfile = pkg.pkg_filename
+   local pkgfile = pkg.filename
    return pkg {jailed = true, "add", "-M", pkgfile}
+end
+
+-- create category links and a lastest link
+local function category_links_create (pkg_new, categories)
+   local source = pkg_new:filename {base = "..", ext = extension}
+   local pkgname = pkg_new.name
+   local extension = Options.package_format
+   table.insert (categories, "Latest")
+   for i, category in ipairs (categories) do
+      local destination = PACKAGES .. category
+      if not is_dir (destination) then
+	 Exec.run ("mkdir", {as_root = true, "-p", destination})
+      end
+      if category == "Latest" then
+	 destination = destination .. "/" .. pkg_new.name_base .. "." .. extension
+      end
+      Exec.run ("ln", {as_root = true, "-sf", source, destination})
+   end
 end
 
 -- ----------------------------------------------------------------------------------
@@ -357,14 +351,14 @@ end
 --
 SHARED_LIBS_CACHE_LOADED = false
 
-local function shared_libs_cache_load ()
+local function shared_libs_cache_load (pkg, k)
    if not SHARED_LIBS_CACHE_LOADED then
       packages_cache_load ()
-      Msg.start (2, "Load list of required shared libraries")
+      Msg.start (2, "Load list of provided shared libraries")
       local p = {}
-      local lines = PkgDb.query {table = true, "%n-%v %B"}
+      local lines = PkgDb.query {table = true, "%n-%v %b"}
       for i, line in ipairs (lines) do
-	 local pkgname, lib = string.match (line, "^(%S+) (%S+%.so.%d+)$")
+	 local pkgname, lib = string.match (line, "^(%S+) (%S+%.so%..*)")
 	 if pkgname then
 	    if pkgname ~= rawget (p, "name") then
 	       p = Package:new (pkgname) -- fetch cached package record
@@ -373,10 +367,37 @@ local function shared_libs_cache_load ()
 	    table.insert (p.shared_libs, lib)
 	 end
       end
-      Msg.cont (2, "The list of required shared libraries has been loaded")
+      Msg.cont (2, "The list of provided shared libraries has been loaded")
       Msg.start (2)
       SHARED_LIBS_CACHE_LOADED = true
    end
+   return rawget (pkg, k)
+end
+
+--
+REQ_SHARED_LIBS_CACHE_LOADED = false
+
+local function req_shared_libs_cache_load (pkg, k)
+   if not REQ_SHARED_LIBS_CACHE_LOADED then
+      packages_cache_load ()
+      Msg.start (2, "Load list of required shared libraries")
+      local p = {}
+      local lines = PkgDb.query {table = true, "%n-%v %B"}
+      for i, line in ipairs (lines) do
+	 local pkgname, lib = string.match (line, "^(%S+) (%S+%.so%..*)")
+	 if pkgname then
+	    if pkgname ~= rawget (p, "name") then
+	       p = Package:new (pkgname) -- fetch cached package record
+	       p.req_shared_libs = {}
+	    end
+	    table.insert (p.req_shared_libs, lib)
+	 end
+      end
+      Msg.cont (2, "The list of required shared libraries has been loaded")
+      Msg.start (2)
+      REQ_SHARED_LIBS_CACHE_LOADED = true
+   end
+   return rawget (pkg, k)
 end
 
 -- 
@@ -450,17 +471,17 @@ local function __index (pkg, k)
       version = pkg_version,
       dep_pkgs = dep_pkgs_cache_load,
       shared_libs = shared_libs_cache_load,
+      req_shared_libs = req_shared_libs_cache_load,
       is_installed = function (pkg, k)
 	 return false -- always explicitly set when found or during installation
       end,
       --[[
+      files = function (pkg, k)
+	 return PkgDb.query {table = true, "%Fp", pkg.name}
+      end,
       categories = function (pkg, k)
 	 error ("should be cached")
 	 return PkgDb.query {table = true, "%C", pkg.name}
-      end,
-      files = function (pkg, k)
-	 error ("should be cached")
-	 return PkgDb.query {table = true, "%Fp", pkg.name}
       end,
       shlibs = function (pkg, k)
 	 error ("should be cached")
@@ -468,10 +489,10 @@ local function __index (pkg, k)
       end,
       --]]
       pkgfile = function (pkg, k)
-	 return pkg_filename {subdir = "All", pkg}
+	 return pkg:filename {subdir = "All"}
       end,
       bakfile = function (pkg, k)
-	 return pkg_filename {subdir = "portmaster-backup", extension = Options.backup_format, pkg}
+	 return pkg:filename {subdir = "portmaster-backup", ext = Options.backup_format}
       end,
       --[[
       origin = function (pkg, k)
@@ -556,6 +577,7 @@ return {
    recover = recover,
    category_links_create = category_links_create,
    file_search = file_search,
+   filename = filename,
    --file_get_abi = file_get_abi,
    file_valid_abi = file_valid_abi,
    check_use_package = check_use_package,

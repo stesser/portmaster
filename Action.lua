@@ -151,7 +151,7 @@ local function package_create (action)
 	 end -- >&4
       end
       assert (Options.dry_run or access (pkgfile, "r"), "Package file has not been created")
-      Package.category_links_create (action.pkg_new)
+      action.pkg_new:category_links_create (origin_new.categories)
       Msg.cont (0, "Package saved to", pkgfile)
    end
    return true
@@ -963,7 +963,7 @@ local function perform_installation (action)
 	 local create_backup = pkgname_old ~= pkgname_new or not pkgfile or not Package.file_valid_abi (pkgfile)
 	 -- preserve currently installed shared libraries
 	 if Options.save_shared then
-	    shlibs_backup (pkgname_old) -- OUTPUT
+	    p_o:shlibs_backup () -- OUTPUT
 	 end
 	 -- preserve pkg-static even when deleting the "pkg" package
 	 if action.origin_new == "ports-mgmt/pkg" then
@@ -1013,13 +1013,13 @@ local function perform_installation (action)
       Package.automatic_set (action.pkg_new, true)
    end
    -- register package name if package message changed
-   local pkg_msg_new = PkgDb.get_pkgmessage (action.pkgname_new)
+   local pkg_msg_new = PkgDb.get_pkgmessage (action.pkg_new.name)
    if pkg_msg_old ~= pkg_msg_new then
       action.pkgmsg = pkg_msg_new -- package message returned as field in action record ???
    end
    -- remove all shared libraries replaced by new versions from shlib backup directory
    if Options.save_shared then
-      shlibs_backup_remove_stale (pkgname_new) -- use action as argument???
+      p_o:shlibs_backup_remove_stale () -- use action as argument???
    end
    -- delete stale package files
    if pkgname_old then

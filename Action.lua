@@ -717,7 +717,7 @@ local function collect_action_params (action)
       --# set_contains PKGSEEN "$pkgname_old" && return 0
       --# set_add PKGSEEN "$pkgname_old"
       -- check for locked or excluded ports
-      if check_locked (action.pkg_old.name) then
+      if action.pkg_old.is_locked then
 	 return true -- true or false ???
       end
       if action.pkg_old:check_excluded () then
@@ -1124,13 +1124,12 @@ local function fetch_port (action)
    local origin = action.origin
    Msg.start (0, "Checking distfiles for", origin.name)
    assert (origin:wait_checksum ())
-   action.done = true
-   --Msg.cont (0, status)
 end
 
 local function perform_fetch_only ()
    for i, action in ipairs (WORKLIST) do
       action:fetch_port ()
+      action.done = true
    end
 end
 
@@ -1766,10 +1765,9 @@ end
 -- 
 local function lookup_cached_action (args) -- args.pkg_new is a string not an object!!
    local action
-   assert (args, "cached_action: called with nil argument")
    action = args.pkg_new and ACTION_CACHE[args.pkg_new.name]
       or args.pkg_old and ACTION_CACHE[args.pkg_old.name]
-   TRACE ("CACHED_ACTION", args.pkg_new, args.pkg_old, action and action.pkg_old and action.pkg_old.name, action and action.pkg_new and action.pkg_new.name, "END")
+   TRACE ("CACHED_ACTION", args.pkg_new, args.pkg_old, action and action.pkg_new and action.pkg_new.name, action and action.pkg_old and action.pkg_old.name, "END")
    return action
 end
 
@@ -1971,7 +1969,7 @@ local function new (Action, args)
 	 return new (Action, args)
       end
       if action.action == "upgrade" then
---	 action.origin_new:checksum ()
+	 action.origin_new:checksum ()
       end
       return cache_add (action)
    else

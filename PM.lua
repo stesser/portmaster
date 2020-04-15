@@ -295,7 +295,7 @@ JAILBASE = nil -- GLOBAL
 -- ----------------------------------------------------------------------------------
 -- wait for new-line, ignore any input given
 function read_nl (prompt)
-   stdout:write (prompt)
+   Msg.prompt (prompt)
    stdin:read("*l")
 end
 

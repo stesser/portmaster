@@ -403,7 +403,7 @@ local function moved_cache_load (filename)
       MOVED_CACHE = {}
       MOVED_CACHE_REV = {}
       local filename = PORTSDIR .. "MOVED" -- allow override with configuration parameter ???
-      Msg.start (2, "Load list of renamed of removed ports from " .. filename)
+      Msg.start (2, "Load list of renamed or removed ports from " .. filename)
       local movedfile = io.open (filename, "r")
       if movedfile then
 	 for line in movedfile:lines () do

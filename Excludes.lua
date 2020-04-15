@@ -34,6 +34,7 @@ local EXCLUDED_PORT_PREFIX = {}
 
 -- 
 local function add_pkg (pkg)
+   TRACE ("EXCLUDES_ADD_PKG", pkg)
    if (string.match (pkg, "%*$")) then
       table.insert (EXCLUDED_PKG_PREFIX, string.sub (pkg, 1, -2))
    else
@@ -43,6 +44,7 @@ end
 
 -- 
 local function add_port (port)
+   TRACE ("EXCLUDES_ADD_PORT", port)
    if (string.match (port, "%*$")) then
       table.insert (EXCLUDED_PORT_PREFIX, string.sub (port, 1, -2))
    else
@@ -52,6 +54,7 @@ end
 
 --
 local function add (port_or_pkg)
+   TRACE ("EXCLUDES_ADD", port_or_pkg)
    if string.match (port_or_pkg, "/") then
       add_port (port_or_pkg)
    else
@@ -61,6 +64,7 @@ end
 
 -- 
 local function check_pkg (pkg)
+   TRACE ("EXCLUDES_CHK_PKG", pkg)
    local basename = pkg.name_base
    for i, v in ipairs (EXCLUDED_PKG) do
       if basename == v then
@@ -76,6 +80,7 @@ end
 
 -- 
 local function check_port (port)
+   TRACE ("EXCLUDES_CHK_PORT", port)
    for i, v in ipairs (EXCLUDED_PORT) do
       if port == v then
 	 return true
@@ -101,6 +106,7 @@ local function list ()
    for i, v in ipairs (EXCLUDED_PORT_PREFIX) do
       table.insert (result, v .. "*")
    end
+   TRACE ("EXCLUDES_LIST", table.unpack (result))
    return result
 end
 

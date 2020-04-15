@@ -160,7 +160,9 @@ function shlibs_backup (pkg)
 	       for i, l in ipairs (pkg_libs) do
 		  if l == lib then
 		     local backup_lib = LOCAL_LIB_COMPAT .. lib
-		     Exec.run ("/bin/unlink", {as_root = true, to_tty = true, backup_lib})
+		     if access (backup_lib, "r") then
+			Exec.run ("/bin/unlink", {as_root = true, to_tty = true, backup_lib})
+		     end
 		     Exec.run ("/bin/cp", {as_root = true, libpath, backup_lib})
 		  end
 	       end
@@ -173,21 +175,20 @@ end
 -- remove from shlib backup directory all shared libraries replaced by new versions
 local function shlibs_backup_remove_stale (pkg)
    local pkg_libs = pkg.shared_libs
-   if not pkg_libs then
-      return nil
-   end
-   local deletes = {}
-   for i, lib in ipairs (pkg_libs) do
-      local backup_lib = LOCAL_LIB_COMPAT .. "/" .. lib:gsub(".*/", "")
-      if access (backup_lib, "r") then
-	 table.insert (deletes, backup_lib)
+   if pkg_libs then
+      local deletes = {}
+      for i, lib in ipairs (pkg_libs) do
+	 local backup_lib = LOCAL_LIB_COMPAT .. lib
+	 if access (backup_lib, "r") then
+	    table.insert (deletes, backup_lib)
+	 end
       end
+      if #deletes > 0 then
+	 Exec.run ("/bin/rm", {as_root = true, "-f", table.unpack (deletes)})
+	 Exec.run (LDCONFIG_CMD, {as_root = true , "-R"})
+      end
+      return true
    end
-   if #deletes > 0 then
-      Exec.run ("/bin/rm", {as_root = true, "-f", table.unpack (deletes)})
-      Exec.run (LDCONFIG_CMD, {as_root = true , "-R"})
-   end
-   return true
 end
 
 -- ----------------------------------------------------------------------------------
@@ -275,6 +276,42 @@ local PACKAGES_CACHE = {} -- should be local with iterator ...
 local PACKAGES_CACHE_LOADED = false -- should be local with iterator ...
 --setmetatable (PACKAGES_CACHE, {__mode = "v"})
 
+local function shared_libs_cache_load ()
+   Msg.start (2, "Load list of provided shared libraries")
+   local p = {}
+   local lines = PkgDb.query {table = true, "%n-%v %b"}
+   for i, line in ipairs (lines) do
+      local pkgname, lib = string.match (line, "^(%S+) (%S+%.so%..*)")
+      if pkgname then
+	 if pkgname ~= rawget (p, "name") then
+	    p = Package:get (pkgname) -- fetch cached package record
+	    p.shared_libs = {}
+	 end
+	 table.insert (p.shared_libs, lib)
+      end
+   end
+   Msg.cont (2, "The list of provided shared libraries has been loaded")
+   Msg.start (2)
+end
+
+local function req_shared_libs_cache_load ()
+   Msg.start (2, "Load list of required shared libraries")
+   local p = {}
+   local lines = PkgDb.query {table = true, "%n-%v %B"}
+   for i, line in ipairs (lines) do
+      local pkgname, lib = string.match (line, "^(%S+) (%S+%.so%..*)")
+      if pkgname then
+	 if pkgname ~= rawget (p, "name") then
+	    p = Package:get (pkgname) -- fetch cached package record
+	    p.req_shared_libs = {}
+	 end
+	 table.insert (p.req_shared_libs, lib)
+      end
+   end
+   Msg.cont (2, "The list of required shared libraries has been loaded")
+   Msg.start (2)
+end
+
 -- load a list of of origins with flavor for currently installed flavored packages
 local function packages_cache_load ()
    if PACKAGES_CACHE_LOADED then
@@ -328,7 +365,7 @@ local function packages_cache_load ()
    for i, line in ipairs (lines) do
       local pkgname, dep_pkg = string.match (line, "(%S+) (%S+)")
       if pkgname ~= rawget (p, "name") then
-	 p = Package:new (pkgname) -- fetch cached package record
+	 p = Package:get (pkgname) -- fetch cached package record
 	 p.dep_pkgs = {}
       end
       p.num_depending = p.num_depending + 1
@@ -336,72 +373,23 @@ local function packages_cache_load ()
    end
    Msg.cont (2, "Package dependencies have been loaded")
    Msg.start (2)
+   shared_libs_cache_load ()
+   req_shared_libs_cache_load ()
    PACKAGES_CACHE_LOADED = true
 end
 
 -- add reverse dependency information (who depends on me?)
 DEP_PKGS_CACHE_LOADED = false
 
-local function dep_pkgs_cache_load ()
+local function dep_pkgs_cache_load (pkg, k)
    if not DEP_PKGS_CACHE_LOADED then
       DEP_PKGS_CACHE_LOADED = true
-   end
-end
-
---
-SHARED_LIBS_CACHE_LOADED = false
-
-local function shared_libs_cache_load (pkg, k)
-   if not SHARED_LIBS_CACHE_LOADED then
-      packages_cache_load ()
-      Msg.start (2, "Load list of provided shared libraries")
-      local p = {}
-      local lines = PkgDb.query {table = true, "%n-%v %b"}
-      for i, line in ipairs (lines) do
-	 local pkgname, lib = string.match (line, "^(%S+) (%S+%.so%..*)")
-	 if pkgname then
-	    if pkgname ~= rawget (p, "name") then
-	       p = Package:new (pkgname) -- fetch cached package record
-	       p.shared_libs = {}
-	    end
-	    table.insert (p.shared_libs, lib)
-	 end
-      end
-      Msg.cont (2, "The list of provided shared libraries has been loaded")
-      Msg.start (2)
-      SHARED_LIBS_CACHE_LOADED = true
-   end
-   return rawget (pkg, k)
-end
-
---
-REQ_SHARED_LIBS_CACHE_LOADED = false
-
-local function req_shared_libs_cache_load (pkg, k)
-   if not REQ_SHARED_LIBS_CACHE_LOADED then
-      packages_cache_load ()
-      Msg.start (2, "Load list of required shared libraries")
-      local p = {}
-      local lines = PkgDb.query {table = true, "%n-%v %B"}
-      for i, line in ipairs (lines) do
-	 local pkgname, lib = string.match (line, "^(%S+) (%S+%.so%..*)")
-	 if pkgname then
-	    if pkgname ~= rawget (p, "name") then
-	       p = Package:new (pkgname) -- fetch cached package record
-	       p.req_shared_libs = {}
-	    end
-	    table.insert (p.req_shared_libs, lib)
-	 end
-      end
-      Msg.cont (2, "The list of required shared libraries has been loaded")
-      Msg.start (2)
-      REQ_SHARED_LIBS_CACHE_LOADED = true
    end
    return rawget (pkg, k)
 end
 
 -- 
-local function get (name)
+local function get (pkg, name)
    return PACKAGES_CACHE[name]
 end
 
@@ -470,8 +458,12 @@ local function __index (pkg, k)
       name_base_major = pkg_strip_minor,
       version = pkg_version,
       dep_pkgs = dep_pkgs_cache_load,
-      shared_libs = shared_libs_cache_load,
-      req_shared_libs = req_shared_libs_cache_load,
+      shared_libs = function (pkg, k)
+	 return PkgDb.query {table = true, "%b", pkg.name}
+      end,
+      req_shared_libs = function (pkg, k)
+	 return PkgDb.query {table = true, "%B", pkg.name}
+      end,
       is_installed = function (pkg, k)
 	 return false -- always explicitly set when found or during installation
       end,

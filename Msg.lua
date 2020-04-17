@@ -120,6 +120,7 @@ end
 
 -- add line to success message to display at the end
 local SUCCESS_MSGS = {} -- GLOBAL
+local PKGMSG = {}
 
 local function success_add (text, seconds)
    if Options.dry_run then

@@ -51,6 +51,8 @@ local function describe (action)
 	 else
 	    return string.format ("Change origin of port %s to %s for package %s", o_o.name, o_n.name, p_n.name)
 	 end
+      elseif a == "exclude" then
+	 return string.format ("Skip excluded package %s installed from %s", p_o.name, o_o.name)
       elseif a == "upgrade" then
 	 local from = ""
 	 if p_n and action.pkg_file then
@@ -1887,7 +1889,15 @@ local function action_enrich (action)
    if not rawget (action, "origin_new") and rawget (action, "pkg_old") then
       try_get_origin_new (action)
    end
-
+   -- 
+   if action.origin_old and action.origin_old:check_excluded () or
+      action.origin_new and action.origin_new:check_excluded () or
+      action.pkg_new and action.pkg_new:check_excluded ()
+   then
+      action.action = "exclude"
+      return action
+   end
+   -- 
    local origin = action.origin_new
    if origin then
       origin:check_config_allow (rawget (action, "recursive"))
@@ -1911,14 +1921,6 @@ local function action_enrich (action)
    - the old origin might have been the same as the provided new origin (and in general will be ...)
    --]]
 
-   if action.action and action.action ~= "exclude" then
-      if not rawget (action, "listpos") then
-	 table.insert (ACTION_LIST, action)
-	 action.listpos = #ACTION_LIST
-	 local descr = "[" .. tostring (action.listpos) .. "]	" .. tostring (action)
-	 Msg.cont (0, descr)
-      end
-   end
    return action -- NYI
 end
 
@@ -1933,10 +1935,12 @@ local function new (Action, args)
 	 action.force = rawget (action, "force") or args.force -- copy over some flags
 	 if args.pkg_old then
 	    if rawget (action, "pkg_old") then
-	       assert (action.pkg_old.name == args.pkg_old.name, "Conflicting pkg_old: " .. action.pkg_old.name .. " vs. " .. args.pkg_old.name)
-	    else
-	       action.pkg_old = args.pkg_old
+	       --assert (action.pkg_old.name == args.pkg_old.name, "Conflicting pkg_old: " .. action.pkg_old.name .. " vs. " .. args.pkg_old.name)
+	       action.action = "delete"
+	       args.pkg_new = nil
+	       args.origin_new = nil
 	    end
+	    action.pkg_old = args.pkg_old
 	 end
 	 if args.pkg_new then
 	    if rawget (action, "pkg_new") then
@@ -1962,14 +1966,24 @@ local function new (Action, args)
 	 setmetatable (action, Action)
       end
       if not action_enrich (action) then
-	 if action.origin_new then
-	    action.origin_new:delete ()
+	 if action.action == "exclude" then
+	    if action.origin_new then
+	       action.origin_new:delete () -- remove this origin from ORIGIN_CACHE
+	    end
+	    args.recursive = true -- prevent endless config loop
+	    return new (Action, args)
 	 end
-	 args.recursive = true -- prevent endless config loop
-	 return new (Action, args)
       end
-      if action.action == "upgrade" then
-	 action.origin_new:checksum ()
+      if action.action and action.action ~= "exclude" then
+	 if not rawget (action, "listpos") then
+	    table.insert (ACTION_LIST, action)
+	    action.listpos = #ACTION_LIST
+	    local descr = "[" .. tostring (action.listpos) .. "]	" .. tostring (action)
+	    Msg.cont (0, descr)
+	 end
+	 if action.action == "upgrade" then
+	    action.origin_new:checksum ()
+	 end
       end
       return cache_add (action)
    else
@@ -2032,7 +2046,8 @@ local function sort_list ()
 	       local pkg_new = origin.pkg_new
 	       local a = rawget (ACTION_CACHE, pkg_new.name)
 	       TRACE ("BUILD_DEP", a and rawget (a, "action"), origin.name, origin.pkg_new, origin.pkg_new and rawget (origin.pkg_new, "is_installed"))
-	       if a and not rawget (origin.pkg_new, "is_installed") and not rawget (a, "planned") then
+	       --if a and not rawget (a, "planned") then
+	       if a and not rawget (a, "planned") and not rawget (origin.pkg_new, "is_installed") then
 		  add_action (a)
 	       end
 	    end
@@ -2050,7 +2065,8 @@ local function sort_list ()
 	       local pkg_new = origin.pkg_new
 	       local a = rawget (ACTION_CACHE, pkg_new.name)
 	       TRACE ("RUN_DEP", a and rawget (a, "action"), origin.name, origin.pkg_new, origin.pkg_new and rawget (origin.pkg_new, "is_installed"))
-	       if a and not rawget (origin.pkg_new, "is_installed") and not rawget (a, "planned") then
+	       --if a and not rawget (a, "planned") then
+	       if a and not rawget (a, "planned") and not rawget (origin.pkg_new, "is_installed") then
 		  add_action (a)
 	       end
 	    end

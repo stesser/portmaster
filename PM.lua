@@ -129,9 +129,6 @@ NUM = { -- GLOBAL
 -- clean up when script execution ends
 function exit_cleanup (exit_code)
    exit_code = exit_code or 0
-   if tracefd then
-      io.close (tracefd)
-   end
    -- echo EXIT_CLEANUP PID=$$ MASTER_PID=$PID >&3
    --  "$$" = "$PID" ] || exit 0
    Progress.clear ()
@@ -139,7 +136,10 @@ function exit_cleanup (exit_code)
    tempfile_delete ("FETCH_ACK")
    tempfile_delete ("BUILD_LOG")
    Options.save ()
-   messages_display ()
+   Msg.display ()
+   if tracefd then
+      io.close (tracefd)
+   end
    os.exit (exit_code)
    -- not reached
 end
@@ -587,6 +587,7 @@ end
 
 -- add line to success message to display at the end
 SUCCESS_MSGS = {} -- GLOBAL
+PKGMSG = {}
 
 function message_success_add (text, seconds)
    if Options.dry_run then

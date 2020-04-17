@@ -106,6 +106,7 @@ local function port_var (origin, args)
       local dbginfo = debug.getinfo (2, "ln")
       table.insert (args, "LOC=" .. dbginfo.name .. ":" .. dbginfo.currentline)
    end
+   table.insert (args, "-DBUILD_ALL_PYTHON_FLAVORS") -- required for make -V FLAVORS to get the full list :X
    return port_make (origin, args)
 end
 
@@ -325,7 +326,7 @@ end
 
 -- check wether port is on the excludes list
 local function check_excluded (origin)
-   return Excludes.check_port (origin.name)
+   return Excludes.check_port (origin)
 end
 
 --[[
@@ -600,16 +601,16 @@ local function check_config_allow (origin, recursive)
             read_nl ("Press the [Enter] or [Return] key to continue ")
 	 end
 	 origin.skip = true
+	 return true
       end
    end
-   check_ignore ("BROKEN", "is_broken")
-   check_ignore ("IGNORE", "is_ignore")
-   if Options.no_make_config then
-      check_ignore ("FORBIDDEN", "is_forbidden")
-   end
-   if rawget (origin, "skip") then
+   if check_ignore ("BROKEN", "is_broken") or
+      check_ignore ("IGNORE", "is_ignore") or
+      Options.no_make_config and check_ignore ("FORBIDDEN", "is_forbidden")
+   then
       return false
-   elseif not recursive then
+   end
+   if not recursive then
       local do_config
       if origin.is_forbidden then
 	 Msg.cont (0, origin.name, "is marked FORBIDDEN:", origin.is_forbidden)

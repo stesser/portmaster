@@ -241,7 +241,7 @@ end
 
 -- check whether package is on includes list
 local function check_excluded (pkg)
-   return Excludes.check_pkg (pkg.name)
+   return Excludes.check_pkg (pkg)
 end
 
 -- check package name for possibly used default version parameter
@@ -249,7 +249,7 @@ local function check_default_version (origin_name, pkgname)
    local T = {
       apache = "^apache(%d)(%d)-",
       llvm= "^llvm(%d%d)-",
-      lua = "^lua(%d)(%d)-",
+      --lua = "^lua(%d)(%d)-",
       mysql = "^mysql(%d)(%d)-",
       pgsql = "^postgresql(9)(%d)-",
       pgsql1 = "^postgresql1(%d)-",
@@ -569,7 +569,7 @@ return {
    recover = recover,
    category_links_create = category_links_create,
    file_search = file_search,
-   filename = filename,
+   pkg_filename = pkg_filename,
    --file_get_abi = file_get_abi,
    file_valid_abi = file_valid_abi,
    check_use_package = check_use_package,

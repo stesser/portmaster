@@ -268,34 +268,34 @@ VALID_OPTS = {
    skip_recreate_pkg	= { nil, nil,	"do not overwrite existing package files",				function (o, v) opt_set (o, v) end },
    su_cmd		= { nil, "cmd",	"command and options that grant root privileges (e.g.: sudo)",		function (o, v) opt_set (o, v) end },
    try_broken		= { nil, nil,	"try to build ports marked as broken",					function (o, v) opt_set (o, v) end },
-   no_backup		= { "B", nil,	"do not create backups of de_installed packages",			function (o, v) opt_clear ("backup", o) end },
+   no_backup		= { "B", nil,	"do not create backups of de-installed packages",			function (o, v) opt_clear ("backup", o) end },
    no_pre_clean		= { "C", nil,	"do not clean before building the ports",				function (o, v) opt_set (o, v) end },
    no_scrub_distfiles	= { "D", nil,	"do not delete stale distfiles",					function (o, v) opt_set (o, v) opt_clear ("scrub_distfiles", o) end },
    fetch_only		= { "F", nil,	"fetch only",								function (o, v) opt_set (o, v) end },
    no_make_config	= { "G", nil,	"do not configure ports",						function (o, v) opt_set (o, v) opt_clear ("force_config", o) end },
    hide_build		= { "H", nil,	"hide port build messages",						function (o, v) opt_set (o, v) end },
    no_post_clean	= { "K", nil,	"do not clean after building the ports",				function (o, v) opt_set (o, v) end },
-   list_plus		= { "L", nil,	"print verbose listing of installed ports",				function (o, v) opt_set ("list", "verbose") end },
+   list_plus		= { "L", false,	"print verbose listing of installed ports",				function (o, v) opt_set ("list", "verbose") end },
    dry_run		= { "N", nil,	"print but do not actually execute commands",				function (o, v) opt_set (o, v) end },
    packages		= { "P", nil,	"use packages if available",						function (o, v) opt_set (o, v) end },
-   restart		= { "R", nil,	"restart build",							function (o, v) restart_file_load () end }, -- MAN
-   version		= { "V", nil,	"print program version",						function (o, v) print_version () end },
+   restart		= { "R", false,	"restart build",							function (o, v) restart_file_load () end }, -- MAN
+   version		= { "V", false,	"print program version",						function (o, v) print_version () end },
    all			= { "a", nil,	"operate on all installed ports",					function (o, v) opt_set (o, v) end },
-   backup		= { "b", nil,	"create backups of de_installed packages",				function (o, v) opt_set (o, v) end },
+   backup		= { "b", nil,	"create backups of de-installed packages",				function (o, v) opt_set (o, v) end },
    scrub_distfiles	= { "d", nil,	"delete stale distfiles",						function (o, v) opt_set (o, v) opt_clear ("no_scrub_distfiles", o) end },
 -- expunge		= { "e", "package", "delete one port passed as argument and its distfiles",		function (o, v) opt_add (o, v) end },
    force		= { "f", nil,	"force action",								function (o, v) opt_set (o, v) end },
    create_package	= { "g", nil,	"create package files for all installed ports", 			function (o, v) opt_set (o, v) end },
-   help			= { "h", nil,	"show usage",								function (o, v) usage () end },
+   help			= { "h", false,	"show usage",								function (o, v) usage () end },
    interactive		= { "i", nil,	"interactive mode",							function (o, v) opt_set (o, v) end },
-   list			= { "l", nil,	"list installed ports",							function (o, v) opt_set ("list", "short") end },
+   list			= { "l", false,	"list installed ports",							function (o, v) opt_set ("list", "short") end },
    make_args		= { "m", "arg",	"pass option to make processes",					function (o, v) opt_add (o, v) end },
    default_no		= { "n", nil,	"assume answer 'no'",							function (o, v) opt_set (o, v) opt_clear ("default_yes", o) end },
    origin		= { "o", "origin",	"install from specified origin",				function (o, v) opt_set ("replace_origin", v) end },
    recursive		= { "r", "port", "force building of dependent ports",					function (o, v) ports_add_recursive (v, Options.replace_origin) opt_clear ("replace_origin") end },
    clean_stale		= { "s", nil,	"deinstall unused packages that were installed as dependency",		function (o, v) opt_set (o, v) opt_set ("thorough", "yes") end },
    thorough		= { "t", nil,	"check all dependencies and de_install unused automatic packages",	function (o, v) opt_set (o, v) end },
-   verbose		= { "v", nil,	"increase verbosity level",						function (o, v) Msg.level = Msg.level + 1 end },
+   verbose		= { "v", false,	"increase verbosity level",						function (o, v) Msg.level = Msg.level + 1 end },
    save_shared		= { "w", nil,	"keep backups of upgraded shared libraries",				function (o, v) opt_set (o, v) end },
    exclude		= { "x", "pattern", "add pattern to exclude list",					function (o, v) Excludes.add (v) end },
    default_yes		= { "y", nil,	"assume answer 'yes'",							function (o, v) opt_set (o, v) opt_clear ("default_no", o) end },
@@ -517,7 +517,7 @@ local function save ()
    tmpf = io.open (tmp_filename, "w+")
 
    if PHASE == "scan" then
-      for k, v in ipairs (EXCLUDES) do -- excludes:list()
+      for k, v in ipairs (Excludes.list()) do
 	 w ("EXCLUDE=%s", v)
       end
    else
@@ -526,19 +526,25 @@ local function save ()
       Options.all_options_change = nil
    end
 
-   tmpf:write (opt_state_rc ("all", "all_old_abi", "all_options_change", "backup", "clean_packages",
-			     "clean_stale_libraries", "create_package", "deinstall_unused", "default_no",
-			     "default_yes", "delay_installation", "delete_build_only", "dry_run", "fetch_only",
-			     "hide_build", "interactive", "jailed", "no_confirm", "no_post_clean", "no_pre_clean",
-			     "no_scrub_distfiles", "no_term_title", "packages", "packages_build", "repo_mode",
-			     "save_shared", "scrub_distfiles", "show_work", "skip_recreate_pkg", "thorough"))
-
-   tmpf:write (opt_value_rc ("backup_format", "package_format", "make_args", "local_packagedir", "logfile"))
+   local opts = table.keys (VALID_OPTS)
+   table.sort (opts)
+   for i, k in ipairs (opts) do
+      local t = VALID_OPTS[k]
+      local takes_arg = t[2] -- parameter name as string, nil if none, false to skip
+      if takes_arg ~= false then
+	 if takes_arg then
+	    tmpf:write (opt_value_rc (k))
+	 else
+	    tmpf:write (opt_state_rc (k))
+	 end
+      end
+   end
 
    for i = 1, Msg.level do
       tmpf:write ("verbose=yes\n")
    end
    w ("")
+   --[[
    for i, pkgname_old in ipairs (DELETES) do
       w ("#: Delete - - %s", pkgname_old)
    end
@@ -562,6 +568,7 @@ local function save ()
    for i, origin_new in ipairs (DELAYED_INSTALL_LIST) do
       tmpf:write (restart_file_print_upgrade ("pkg", origin_new))
    end
+   --]]
 
    filename = restart_file_name ()
    os.remove (filename)

@@ -64,15 +64,19 @@ end
 
 -- 
 local function check_pkg (pkg)
-   TRACE ("EXCLUDES_CHK_PKG", pkg)
+   TRACE ("EXCLUDES_CHK_PKG", pkg.name)
    local basename = pkg.name_base
    for i, v in ipairs (EXCLUDED_PKG) do
+      TRACE ("EXCLUDE_CHK", v, pkg.name)
       if basename == v then
+	 TRACE ("EXCLUDED", v, pkg.name)
 	 return true
       end
    end
    for i, v in ipairs (EXCLUDED_PKG_PREFIX) do
+      TRACE ("EXCLUDE_CHK", v, pkg.name)
       if string.sub (pkg, 1, #v) == v then
+	 TRACE ("EXCLUDED", v, pkg.name)
 	 return true
       end
    end
@@ -80,14 +84,18 @@ end
 
 -- 
 local function check_port (port)
-   TRACE ("EXCLUDES_CHK_PORT", port)
+   TRACE ("EXCLUDES_CHK_PORT", port.name)
    for i, v in ipairs (EXCLUDED_PORT) do
+      TRACE ("EXCLUDE_CHK", v, port.name)
       if port == v then
+	 TRACE ("EXCLUDED", v, port.name)
 	 return true
       end
    end
    for i, v in ipairs (EXCLUDED_PORT_PREFIX) do
+      TRACE ("EXCLUDE_CHK", v, port.name)
       if string.sub (port, 1, #v) == v then
+	 TRACE ("EXCLUDED", v, port.name)
 	 return true
       end
    end

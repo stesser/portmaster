@@ -29,7 +29,8 @@ SUCH DAMAGE.
 -- the Package class describes a package with optional package file
 
 -- 
-local function filename (pkg, args)
+local function filename (args)
+   local pkg = args[1]
    local pkgname = pkg.name
    local base = args.base or PACKAGES
    local subdir = args.subdir or "All"
@@ -110,24 +111,24 @@ end
 
 -- search package file
 local function file_search (pkg)
-   local filename
    for d in ipairs ({"All", "package-backup"}) do
-      for f in glob (pkg:filename {subdir = d, ext = ".t??"}) do
+      local file
+      for f in glob (filename {subdir = d, ext = ".t??", pkg}) do
 	 if packagefile_valid_abi (f) then
-	    if not filename or stat (filename).modification < stat (f).modification then
-	       filename = f
+	    if not filen or stat (file).modification < stat (f).modification then
+	       file = f
 	    end
 	 end
       end
-      if filename then
-	 return filename
+      if file then
+	 return file
       end
    end
 end
 
 -- delete backup package file
 local function backup_delete (pkg)
-   local g = pkg:filename {base = PACKAGES_BACKUP, ext = ".t??"}
+   local g = filename {base = PACKAGES_BACKUP, ext = ".t??", pkg}
    for i, backupfile in pairs (glob (g) or {}) do
       TRACE ("BACKUP_DELETE", backupfile, PACKAGES .. "portmaster-backup/")
       Exec.run {as_root = true, "/bin/unlink", backupfile}
@@ -136,7 +137,7 @@ end
 
 -- delete stale package file
 local function delete_old (pkg)
-   local g = pkg:filename {subdir = "*", ext = "t??"}
+   local g = filename {subdir = "*", ext = "t??", pkg}
    TRACE ("DELETE_OLD", pkg.name, g)
    for i, pkgfile in pairs (glob (g) or {}) do
       TRACE ("CHECK_BACKUP", pkgfile, PACKAGES .. "portmaster-backup/")
@@ -209,13 +210,13 @@ end
 
 -- install package from passed filename in jail
 local function install_jailed (pkg)
-   local pkgfile = pkg.filename
+   local pkgfile = filename {pkg}
    return pkg {jailed = true, "add", "-M", pkgfile}
 end
 
 -- create category links and a lastest link
 local function category_links_create (pkg_new, categories)
-   local source = pkg_new:filename {base = "..", ext = extension}
+   local source = filename {base = "..", ext = extension, pkg_new}
    local pkgname = pkg_new.name
    local extension = Options.package_format
    table.insert (categories, "Latest")
@@ -481,10 +482,10 @@ local function __index (pkg, k)
       end,
       --]]
       pkgfile = function (pkg, k)
-	 return pkg:pkg_filename {subdir = "All"}
+	 return filename {subdir = "All", pkg}
       end,
       bakfile = function (pkg, k)
-	 return pkg:pkg_filename {subdir = "portmaster-backup", ext = Options.backup_format}
+	 return filename {subdir = "portmaster-backup", ext = Options.backup_format, pkg}
       end,
       --[[
       origin = function (pkg, k)
@@ -569,7 +570,6 @@ return {
    recover = recover,
    category_links_create = category_links_create,
    file_search = file_search,
-   pkg_filename = pkg_filename,
    --file_get_abi = file_get_abi,
    file_valid_abi = file_valid_abi,
    check_use_package = check_use_package,
@@ -589,8 +589,8 @@ return {
    - abi = abi of package as currently installed
    - categories = table of registered categories of this package
    - files = table of installed files of this package
-   - pkg_filename = name of the package file
-   - bak_filename = name of the backup file
+--   - pkg_filename = name of the package file
+--   - bak_filename = name of the backup file
    - shlibs = table of installed shared libraries of this package
    - is_automatic = boolean value whether this package has been automaticly installed
    - is_locked = boolean value whether this package is locked

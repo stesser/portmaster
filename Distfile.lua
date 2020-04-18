@@ -220,7 +220,8 @@ local function clean_stale ()
 end
 
 return {
-   fetch = fetch,
+   --fetch = fetch,
+   fetch = dist_fetch,
    fetch_finish = fetch_finish,
    update_list = update_list,
    clean_stale = clean_stale,

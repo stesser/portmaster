@@ -294,7 +294,7 @@ end
 
 --
 local function checksum (origin)
-   Distfile.fetch (origin.name)
+   Distfile.fetch (origin)
 end
 
 -- # wait for a line stating success or failure fetching all distfiles for some port origin and return status

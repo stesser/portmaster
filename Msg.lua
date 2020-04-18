@@ -75,6 +75,7 @@ local function cont (level, ...)
 	    Msg.doprompt = false
 	 end
       end
+      stdout:flush ()
    end
 end
 
@@ -114,7 +115,9 @@ end
 -- set window title 
 local function title_set (title)
    if not Options.no_term_title then
+      stdout:flush ()
       stdout:write ("\x1b]2;" .. title .. "\x07")
+      stdout:flush ()
    end
 end
 

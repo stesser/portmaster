@@ -143,6 +143,7 @@ end
 -- increment counter and print a header line for new task
 local function show_task (...)
    incr ()
+   TRACE ("SHOW_TASK", ...)
    Msg.cont (0, PROGRESS.state, ...) -- or better msg_start () ???
    Msg.title_set (PROGRESS.state, ...)
 end

@@ -375,7 +375,6 @@ end
 function path_concat (result, ...)
    if result and result ~= "" then
       for i, v in ipairs ({...}) do
-	 TRACE ("V", i, "'" .. v .. "'")
 	 if v and v ~= "" then
 	    result = result .. (string.sub (result, -1) ~= "/" and "/" or "") .. v
 	 end

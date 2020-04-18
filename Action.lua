@@ -1020,7 +1020,7 @@ local function perform_installation (action)
       action.pkgmsg = pkg_msg_new -- package message returned as field in action record ???
    end
    -- remove all shared libraries replaced by new versions from shlib backup directory
-   if Options.save_shared then
+   if p_o and Options.save_shared then
       p_o:shlibs_backup_remove_stale () -- use action as argument???
    end
    -- delete stale package files

@@ -481,10 +481,10 @@ local function __index (pkg, k)
       end,
       --]]
       pkgfile = function (pkg, k)
-	 return pkg:filename {subdir = "All"}
+	 return pkg:pkg_filename {subdir = "All"}
       end,
       bakfile = function (pkg, k)
-	 return pkg:filename {subdir = "portmaster-backup", ext = Options.backup_format}
+	 return pkg:pkg_filename {subdir = "portmaster-backup", ext = Options.backup_format}
       end,
       --[[
       origin = function (pkg, k)

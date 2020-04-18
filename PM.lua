@@ -101,6 +101,7 @@ VERSION = "4.0.0a1" -- GLOBAL
 -- ----------------------------------------------------------------------------------
 stdin = io.stdin
 stdout = io.stdout
+stderr = io.stderr
 tracefd = nil
 
 -- ----------------------------------------------------------------------------------
@@ -537,7 +538,8 @@ function init_environment ()
       setenv (var, ports_var {var})
    end
    --
-   local env_lines = Exec.run {table = true, safe = true, env = {SCRIPTSDIR = PORTSDIR .. "Mk/Scripts", PORTSDIR = PORTSDIR, MAKE = "make"}, "/bin/sh", "-c", PORTSDIR .. "Mk/Scripts/ports_env.sh"}
+   --local env_lines = Exec.shell {table = true, safe = true, "env", "SCRIPTSDIR=" .. PORTSDIR ..  "Mk/Scripts", "PORTSDIR=" .. PORTSDIR, "MAKE=make", "/bin/sh", PORTSDIR .. "Mk/Scripts/ports_env.sh"}
+   local env_lines = Exec.run {table = true, safe = true, "env", "SCRIPTSDIR=" .. PORTSDIR ..  "Mk/Scripts", "PORTSDIR=" .. PORTSDIR, "MAKE=make", "/bin/sh", PORTSDIR .. "Mk/Scripts/ports_env.sh"}
    TRACE ("ENVLINES", table.unpack (env_lines))
    for i, line in ipairs (env_lines) do
       local var, value = line:match ("^export ([%w_]+)=(.+)")
@@ -1426,7 +1428,7 @@ function main ()
    end
 
    -- disable setting the terminal title if output goes to a pipe or file (fd=3 is remapped from STDOUT)
-   if not ttyname (1) then
+   if not ttyname (2) then
       Options.no_term_title = true
    end
    -- initialize environment variables based on globals set in prior functions

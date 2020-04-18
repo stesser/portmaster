@@ -27,7 +27,11 @@ SUCH DAMAGE.
 
 -- perform "make checksum", analyse status message and write success status to file (meant to be executed in a background task)
 local function dist_fetch (origin)
---   Msg.cont (3, "Fetch distfiles for '" .. port .. "'")
+   --   Msg.cont (3, "Fetch distfiles for '" .. port .. "'")
+   TRACE ("DIST_FETCH", origin and origin.name or "<nil>")
+   if not origin then
+      return
+   end
    local port = origin.port
    local result = ""
    local lines = origin:port_make {table = true, safe = true, "-D", "NO_DEPENDS", "-D", "DISABLE_CONFLICTS", "-D", "DISABLE_LICENSES", "DEV_WARNING_WAIT=0", "checksum"}
@@ -92,6 +96,7 @@ local function fetch (origin)
 		  buffer = string.sub (buffer, pos + 1, -1)
 		  if port ~= "" then
 		     origin = Origin.get (port)
+		     assert (origin, "No origin known for " .. port)
 		     local status = dist_fetch (origin)
 		     fetch_ack:write (status .. "\n")
 		     TRACE ("-->", status)

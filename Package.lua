@@ -460,9 +460,11 @@ local function __index (pkg, k)
       version = pkg_version,
       dep_pkgs = dep_pkgs_cache_load,
       shared_libs = function (pkg, k)
+	 --return PkgDb.query {table = true, no_tty = true, "%b", pkg.name}
 	 return PkgDb.query {table = true, "%b", pkg.name}
       end,
       req_shared_libs = function (pkg, k)
+	 --return PkgDb.query {table = true, no_tty = true, "%B", pkg.name}
 	 return PkgDb.query {table = true, "%B", pkg.name}
       end,
       is_installed = function (pkg, k)

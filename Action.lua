@@ -256,7 +256,7 @@ local function register_moved (action)
    action.action = "move"
    if not Options.fetch_only then
       Progress.num_incr ("moves")
-      Progress.show_task (tostring (action))
+      Progress.show_task (describe (action))
    end
    return true
 end
@@ -270,7 +270,7 @@ local function register_pkgname_chg (action)
 	 return false
       end
       Progress.num_incr ("renames")
-      Progress.show_task (tostring (action))
+      Progress.show_task (describe (action))
    end
    return true
 end
@@ -330,12 +330,12 @@ local function register_upgrade (action)
    --
    if action.pkgfile then
       if not Options.jailed or action.build_type == "provide" then
-	 Progress.show_task (tostring (action))
+	 Progress.show_task (describe (action))
       end
       -- installing a package or a package dependency requires pre-installation of run dependencies
       assert (register_depends (action, origin_new, build_type, "run"), "A required run dependency could not be provided")
    else
-      Progress.show_task (tostring (action))
+      Progress.show_task (describe (action))
       -- make config if building from a port
       if not action.origin_new:check_options () then
 	 return false
@@ -365,7 +365,7 @@ end
 local function register_delete (action)
    action.action = "delete"
    if not Options.fetch_only then
-      Progress.show_task (tostring (action))
+      Progress.show_task (describe (action))
       Progress.num_incr ("deletes")
    end
    return true
@@ -786,7 +786,7 @@ local function strategy (action)
 	 end
       end
    end
-   Progress.show_task (tostring (action))
+   Progress.show_task (describe (action))
    mark_seen (action.origin_new)
    if Options.thorough then
       register_depends (action, action.origin_new, "auto", "build") -- CHECK VALUE OF ACTION
@@ -1041,7 +1041,7 @@ local function perform_install_or_upgrade (action)
    -- has a package been identified to be used instead of building the port?
    local pkgfile = rawget (action, "pkgfile")
    local skip_install = (Options.skip_install or Options.jailed) -- NYI: and BUILDDEP[origin_new]
-   local taskmsg = tostring (action)
+   local taskmsg = describe (action)
    Progress.show_task (taskmsg)
    -- if not installing from a package file ...
    local seconds
@@ -1114,7 +1114,7 @@ end
 -- peform delayed installation of ports not required as build dependencies after all ports have been built
 local function perform_delayed_installation (action)
    action.pkgfile = Package.filename (PACKAGES .. "All", pkgname_new, Options.package_format)
-   local taskmsg = tostring (action)
+   local taskmsg = describe (action)
    Progress.show_task (taskmsg)
    assert (perform_installation (action), "Installation of " .. pkgname_new .. " from " .. pkgfile .. " failed")
    Msg.success_add (taskmsg)
@@ -1978,8 +1978,7 @@ local function new (Action, args)
 	 if not rawget (action, "listpos") then
 	    table.insert (ACTION_LIST, action)
 	    action.listpos = #ACTION_LIST
-	    local descr = "[" .. tostring (action.listpos) .. "]	" .. tostring (action)
-	    Msg.cont (0, descr)
+	    Progress.show_task (describe (action))
 	 end
 	 if action.action == "upgrade" then
 	    action.origin_new:checksum ()

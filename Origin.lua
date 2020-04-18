@@ -85,6 +85,7 @@ local function port_make (origin, args)
       TRACE ("DEFAULT_VERSIONS", pf)
    end
    table.insert (args, 1 , MAKE_CMD)
+   --local result = Exec.shell (args)
    local result = Exec.run (args)
    if result then
       if args.split then

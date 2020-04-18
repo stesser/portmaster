@@ -113,11 +113,9 @@ local function prompt (...)
 end
 
 -- set window title 
-local function title_set (title)
+local function title_set (...)
    if not Options.no_term_title then
-      stdout:flush ()
-      stdout:write ("\x1b]2;" .. title .. "\x07")
-      stdout:flush ()
+      stderr:write ("\x1b]2;" .. table.concat ({...}, " ") .. "\x07")
    end
 end
 

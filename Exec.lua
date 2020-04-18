@@ -214,6 +214,7 @@ function pkg (args)
       table.insert (args, 1, "--debug")
    end
    table.insert (args, 1, PKG_CMD)
+   --return shell (args)
    return run (args)
 end
 

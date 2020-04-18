@@ -447,7 +447,8 @@ function ports_var (args)
       table.move (Options.make_args, 1, -1, #args + 1, args)
    end
    args.safe = true
-   result = Exec.shell (MAKE_CMD, args)
+   table.insert (args, 1, MAKE_CMD)
+   result = Exec.shell (args)
    --if result and strpfx (result, "make: ") then return nil end
    if args.table then
       return result
@@ -504,7 +505,7 @@ function init_globals ()
    Options.backup_format = BACKUP_FORMAT or "tar"
 
    -- some important global variables
-   ABI = chomp (Exec.shell (PKG_CMD, {safe = true, "config", "abi"}))
+   ABI = chomp (Exec.shell {safe = true, PKG_CMD, "config", "abi"})
    ABI_NOARCH = string.match (ABI, "^[^:]+:[^:]+:") .. "*"
 
    -- global variables for use by the distinfo cache and distfile names file (for ports to be built)
@@ -532,12 +533,14 @@ function init_environment ()
    -- reset PATH to a sane default
    setenv ("PATH", "/bin:/sbin:/usr/bin:/usr/sbin:" .. LOCALBASE .. "bin:" .. LOCALBASE .. "sbin") -- DUPLICATE ???
    -- cache some build variables in the environment (cannot use ports_var due to its use of "-D BEFOREPORTMK")
-   local env_param = Exec.shell ("make", {"-f", "/usr/ports/Mk/bsd.port.mk", "-V", "PORTS_ENV_VARS", safe = true}) -- || fail "$output"
+   local env_param = Exec.shell {safe = true, "make", "-f", "/usr/ports/Mk/bsd.port.mk", "-V", "PORTS_ENV_VARS"} -- || fail "$output" -- convert to port_var with extra parameter for the -f option argument XXX
    for i, var in ipairs (split_words (env_param)) do
       setenv (var, ports_var {var})
    end
    --
-   for line in Exec.shell_pipe ("env", "SCRIPTSDIR=" .. PORTSDIR .. "Mk/Scripts", "PORTSDIR=" .. PORTSDIR, "MAKE=make", "/bin/sh", PORTSDIR .. "Mk/Scripts/ports_env.sh") do
+   local env_lines = Exec.run {table = true, safe = true, env = {SCRIPTSDIR = PORTSDIR .. "Mk/Scripts", PORTSDIR = PORTSDIR, MAKE = "make"}, "/bin/sh", "-c", PORTSDIR .. "Mk/Scripts/ports_env.sh"}
+   TRACE ("ENVLINES", table.unpack (env_lines))
+   for i, line in ipairs (env_lines) do
       local var, value = line:match ("^export ([%w_]+)=(.+)")
       if string.sub(value, 1, 1) == '"' and string.sub (value, -1) == '"' then
 	 value = string.sub (value, 2, -2)
@@ -1115,7 +1118,7 @@ function ask_and_delete (prompt, ...)
 	    Msg.cont (msg_level, "Deleting", prompt .. ":", file)
 	 end
 	 if not Options.dry_run then
-	    Exec.run ("/bin/unlink", {as_root = true, file})
+	    Exec.run {as_root = true, "/bin/unlink", file}
 	 end
       elseif answer == "q" or answer == "n" then
 	 if Options.default_no or answer == "q"  then
@@ -1149,9 +1152,9 @@ function ask_and_delete_directory (prompt, ...)
 	 if not Options.dry_run then
 	    if is_dir (directory) then
 	       for i, file in ipairs (glob (directory .. "/*")) do
-		  Exec.run ("/bin/unlink", {as_root = true, file})
+		  Exec.run {as_root = true, "/bin/unlink", file}
 	       end
-	       Exec.run ("/bin/rmdir", {as_root = true, directory})
+	       Exec.run {as_root = true, "/bin/rmdir", directory}
 	    end
 	 end
       elseif answer == "q" or answer == "n" then
@@ -1260,7 +1263,8 @@ function list_stale_libraries ()
    end
    -- list all active shared libraries in some compat directory
    local compatlibs = {}
-   for line in Exec.shell_pipe ("ldconfig -r") do
+   local ldconfig_lines = Exec.shell {table = true, safe = true, "ldconfig", "-r"} -- safe flag required ???
+   for i, line in ipairs (ldconfig_lines) do
       local lib = line:match (" => " .. LOCALBASE .. "lib/compat/pkg/(.*)")
       if lib and not activelibs[lib] then
 	 compatlibs[lib] = true
@@ -1474,7 +1478,7 @@ function main ()
    -- ----------------------------------------------------------------------------------
    -- non-upgrade operations supported by portmaster - executed after upgrades if requested
    if Options.check_depends then
-      Exec.shell ("pkg", {"check", "-dn", to_tty = true})
+      Exec.shell {to_tty = true, "pkg", "check", "-dn"}
    end
    if Options.list then
       list_ports (Options.list)

@@ -84,7 +84,8 @@ local function port_make (origin, args)
       table.insert (args, 1, "DEFAULT_VERSIONS='" .. pf .. "'")
       TRACE ("DEFAULT_VERSIONS", pf)
    end
-   local result = Exec.run (MAKE_CMD, args)
+   table.insert (args, 1 , MAKE_CMD)
+   local result = Exec.run (args)
    if result then
       if args.split then
 	 result = split_words (result)

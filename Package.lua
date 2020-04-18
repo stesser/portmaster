@@ -91,7 +91,7 @@ local function recover (pkg)
    -- if not pkgname then return true end
    local pkgname, pkgfile = pkg.name, pkg.pkgfile
    if not pkfile then
-      pkgfile = Exec.shell ("ls", {table = true, safe = true, "-1t", PACKAGES_BACKUP .. pkgname .. ".*"})[1] -- XXX replace with glob and sort by modification time
+      pkgfile = Exec.shell {table = true, safe = true, "ls", "-1t", PACKAGES_BACKUP .. pkgname .. ".*"}[1] -- XXX replace with glob and sort by modification time
    end
    if pkgfile and access (pkgfile, "r") then
       Msg.cont (0, "Re-installing previous version", pkgname)
@@ -103,7 +103,7 @@ local function recover (pkg)
 	 automatic_set (pkg, true)
       end
       shlibs_backup_remove_stale (pkg)
-      Exec.run ("/bin/unlink", {as_root = true, PACKAGES_BACKUP .. pkgname_old .. ".t??"})
+      Exec.run {as_root = true, "/bin/unlink", PACKAGES_BACKUP .. pkgname_old .. ".t??"}
       return true
    end
 end
@@ -130,7 +130,7 @@ local function backup_delete (pkg)
    local g = pkg:filename {base = PACKAGES_BACKUP, ext = ".t??"}
    for i, backupfile in pairs (glob (g) or {}) do
       TRACE ("BACKUP_DELETE", backupfile, PACKAGES .. "portmaster-backup/")
-      Exec.run ("/bin/unlink", {as_root = true, backupfile})
+      Exec.run {as_root = true, "/bin/unlink", backupfile}
    end
 end
 
@@ -141,7 +141,7 @@ local function delete_old (pkg)
    for i, pkgfile in pairs (glob (g) or {}) do
       TRACE ("CHECK_BACKUP", pkgfile, PACKAGES .. "portmaster-backup/")
       if not string.match (pkgfile, "^" .. PACKAGES .. "portmaster-backup/") then
-	 Exec.run ("/bin/unlink", {as_root = true, pkgfile})
+	 Exec.run {as_root = true, "/bin/unlink", pkgfile}
       end
    end
 end
@@ -152,7 +152,7 @@ end
 function shlibs_backup (pkg)
    local pkg_libs = pkg.shared_libs
    if pkg_libs then
-      local ldconfig_lines = Exec.run (LDCONFIG_CMD, {table = true, safe = true, "-r"}) -- "RT?" ??? CACHE LDCONFIG OUTPUT???
+      local ldconfig_lines = Exec.run {table = true, safe = true, LDCONFIG_CMD, "-r"} -- "RT?" ??? CACHE LDCONFIG OUTPUT???
       for i, line in ipairs (ldconfig_lines) do
 	 local libpath, lib = string.match (line, " => (" .. LOCAL_LIB .. "*(lib.*%.so%..*))")
 	 if lib then
@@ -161,9 +161,9 @@ function shlibs_backup (pkg)
 		  if l == lib then
 		     local backup_lib = LOCAL_LIB_COMPAT .. lib
 		     if access (backup_lib, "r") then
-			Exec.run ("/bin/unlink", {as_root = true, to_tty = true, backup_lib})
+			Exec.run {as_root = true, to_tty = true, "/bin/unlink", backup_lib}
 		     end
-		     Exec.run ("/bin/cp", {as_root = true, libpath, backup_lib})
+		     Exec.run {as_root = true, "/bin/cp", libpath, backup_lib}
 		  end
 	       end
 	    end
@@ -184,8 +184,8 @@ local function shlibs_backup_remove_stale (pkg)
 	 end
       end
       if #deletes > 0 then
-	 Exec.run ("/bin/rm", {as_root = true, "-f", table.unpack (deletes)})
-	 Exec.run (LDCONFIG_CMD, {as_root = true , "-R"})
+	 Exec.run {as_root = true, "/bin/rm", "-f", table.unpack (deletes)}
+	 Exec.run {as_root = true , LDCONFIG_CMD, "-R"}
       end
       return true
    end
@@ -198,7 +198,7 @@ local function install (pkg)
    local args = {"add", "-M", pkgfile, as_root = true, to_tty = true}
    if pkgfile:match (".*/pkg-[^/]+$") then -- ports/pkg
       if not access (PKG_CMD, "x") then
-	 Exec.run ("/usr/sbin/pkg", {as_root = true, to_tty = true, env = {"ASSUME_ALWAYS_YES=yes"}, "-v"})
+	 Exec.run {as_root = true, to_tty = true, env = {"ASSUME_ALWAYS_YES=yes"}, "/usr/sbin/pkg", "-v"}
       end
       args.env = {SIGNATURE_TYPE = "none"}
    elseif abi then
@@ -222,12 +222,12 @@ local function category_links_create (pkg_new, categories)
    for i, category in ipairs (categories) do
       local destination = PACKAGES .. category
       if not is_dir (destination) then
-	 Exec.run ("mkdir", {as_root = true, "-p", destination})
+	 Exec.run {as_root = true, "mkdir", "-p", destination}
       end
       if category == "Latest" then
 	 destination = destination .. "/" .. pkg_new.name_base .. "." .. extension
       end
-      Exec.run ("ln", {as_root = true, "-sf", source, destination})
+      Exec.run {as_root = true, "ln", "-sf", source, destination}
    end
 end
 

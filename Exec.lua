@@ -44,10 +44,10 @@ end
 
 -- return an iterator usable in for loops that returns shell command result lines
 -- usage: for line in shell_pipe (<shell cmd>) do ... end
-local function shell_pipe (...)
+local function shell_pipe (args)
 
    local function pp (cmd)
-      local r = io.popen (cmd, "r")
+      local r = io.popen (cmd, "r") --  should take argument vector and environment table
       repeat
 	 local line = r:read ()
 	 if line then
@@ -66,15 +66,14 @@ local function shell_pipe (...)
       end
    end
 
-   local cmd = table.concat ({...}, " ")
+   local cmd = table.concat (args, " ")
    TRACE (cmd)
    return (p (cmd))
 end
 
 -- execute shell command and return its standard output (UTIL)
 -- the return value is a list with one entry per line without the trailing new-line
-local function shell (cmd, args)
-   table.insert (args, 1, cmd)
+local function shell (args)
    local fd1r, fd1w
    local fd2r, fd2w
    if args.jailed and JAILBASE then
@@ -167,10 +166,10 @@ local function shell (cmd, args)
 end
 
 -- execute command according to passed flags argument
-local function run (cmd, args)
+local function run (args)
    local log_level = args.safe and 2 or 0
    --TRACE ("run", table.concat (table.keys (args), ","), cmd, table.unpack (args))
-   log (log_level, cmd, table.unpack (args))
+   log (log_level, table.unpack (args))
    if not Options.dry_run or args.safe then
       if args.table then
 	 local result = {}
@@ -179,7 +178,7 @@ local function run (cmd, args)
 	       args[i] = "'" .. v .. "'"
 	    end
 	 end
-	 local cmdline = cmd .. " " .. table.concat (args, " ")
+	 local cmdline = table.concat (args, " ")
 	 --print ("CMD", cmdline)
 	 local inp = io.popen (cmdline, "r")
 	 if inp then
@@ -195,7 +194,7 @@ local function run (cmd, args)
 	    return nil, "command failed: cmdline"
 	 end
       else
-	 return shell (cmd, args)
+	 return shell (args)
       end
    else
       return "" -- dummy return value for --dry-run
@@ -214,7 +213,8 @@ function pkg (args)
    if Options.developer_mode then
       table.insert (args, 1, "--debug")
    end
-   return run (PKG_CMD, args)
+   table.insert (args, 1, PKG_CMD)
+   return run (args)
 end
 
 --

@@ -1043,9 +1043,16 @@ function ports_add_multiple (args)
 	 end
       end
    end
+   TRACE ("PORTS_ADD_MULTIPLE-<", table.unpack (args))
+   TRACE ("PORTS_ADD_MULTIPLE->", table.unpack (pattern_table))
    ports_update {
       filter_match,
    }
+   for i, v in ipairs (args) do
+      if string.match (v, "/") and access (path_concat (PORTSDIR, v, "Makefile"), "r") then
+	 Action:new {build_type = "user", dep_type = "run", force = force, origin_new = Origin:new (v)}
+      end
+   end
    --[[
    for i, name_glob in ipairs (args) do
       local filenames = glob (path_concat (PORTSDIR, name_glob, "Makefile"))

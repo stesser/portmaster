@@ -201,6 +201,22 @@ local function run (args)
    end
 end
 
+-- run make command
+local function make (args)
+   table.insert (args, 1 , MAKE_CMD)
+   --local result = shell (args)
+   local result = run (args)
+   if result then
+      if args.split then
+	 result = split_words (result)
+      end
+      if result == "" then
+	 result = nil
+      end
+   end
+   return result
+end
+
 -- execute and log a package command that does not modify any state (JAILED)
 function pkg (args)
    if args.jailed then
@@ -220,6 +236,7 @@ end
 
 --
 return {
+   make = make,
    pkg = pkg,
    run = run,
    shell = shell,

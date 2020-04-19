@@ -84,18 +84,7 @@ local function port_make (origin, args)
       table.insert (args, 1, "DEFAULT_VERSIONS='" .. pf .. "'")
       TRACE ("DEFAULT_VERSIONS", pf)
    end
-   table.insert (args, 1 , MAKE_CMD)
-   --local result = Exec.shell (args)
-   local result = Exec.run (args)
-   if result then
-      if args.split then
-	 result = split_words (result)
-      end
-      if result == "" then
-	 result = nil
-      end
-   end
-   return result
+   return Exec.make (args)
 end
 
 -- return the Makefile variable named "$var" for port "$origin" (with optional flavor)

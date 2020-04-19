@@ -87,18 +87,25 @@ local function port_make (origin, args)
    return Exec.make (args)
 end
 
--- return the Makefile variable named "$var" for port "$origin" (with optional flavor)
-local function port_var (origin, args)
-   for i = #args, 1, -1 do
-      table.insert (args, i, "-V")
+-- return Makefile variables for port (with optional flavor)
+local function port_var (origin, vars)
+   local args = { saafe = true, table = vars.table }
+   for i = 1, #vars do
+      args[i] = "-V" .. vars[i]
    end
-   args.safe = true
    if args.trace then
       local dbginfo = debug.getinfo (2, "ln")
       table.insert (args, "LOC=" .. dbginfo.name .. ":" .. dbginfo.currentline)
    end
    table.insert (args, "-DBUILD_ALL_PYTHON_FLAVORS") -- required for make -V FLAVORS to get the full list :X
-   return port_make (origin, args)
+   local result = port_make (origin, args)
+   if result and args.table then
+      for i = 1, #vars do
+	 local value = result[i]
+	 result[vars[i]] = value ~= "" and value or false
+      end
+   end
+   return result
 end
 
 -- check whether port is marked BROKEN, IGNORE, or FORBIDDEN

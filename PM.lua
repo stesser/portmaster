@@ -161,7 +161,7 @@ function TRACE (...)
       local tracemsg = ""
       local t = {...}
       for i = 1, #t do
-	 v = t[i] or "<nil>"
+	 v = t[i] or "<" .. tostring (t[i]) .. ">"
 	 v = tostring (v)
 	 if v == "" or string.find (v, " ") then
 	    v = "'" .. v .. "'"

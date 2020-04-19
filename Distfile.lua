@@ -27,7 +27,7 @@ SUCH DAMAGE.
 
 -- perform "make checksum", analyse status message and write success status to file (meant to be executed in a background task)
 local function dist_fetch (origin)
-   --   Msg.cont (3, "Fetch distfiles for '" .. port .. "'")
+   --   Msg.show {level = 3, "Fetch distfiles for '" .. port .. "'"}
    TRACE ("DIST_FETCH", origin and origin.name or "<nil>")
    if not origin then
       return
@@ -44,8 +44,8 @@ local function dist_fetch (origin)
       end
    end
    if result ~= "" then
-      Msg.cont (3, "Fetching distfiles for '" .. port .. "' failed:" .. result)
-      return "NOTOK " .. port .. " missing/wrong checksum:" .. result
+      Msg.show {level = 3, "Fetching distfiles for '" .. port .. "' failed:", result}
+      return "NOTOK " .. port .. " missing/wrong checksum: " .. result
    end
    return "OK " .. port .. " "
 end
@@ -180,7 +180,7 @@ end
 
 -- preserve file names and hashes of distfiles from new port
 function distinfo_cache_update (origin_new, pkgname_new)
-   Msg.cont (2, "NYI: distinfo_cache_update", origin_new, pkgname_new)
+   Msg.show {level = 2, "NYI: distinfo_cache_update", origin_new, pkgname_new}
 --   error("NYI")
 end
 
@@ -200,7 +200,7 @@ end
 -- offer to delete old distfiles that are no longer required by any port
 local function clean_stale ()
    if chdir (DISTDIR) then
-      Msg.start (0, "Gathering list of distribution files for installed ports ...")
+      Msg.show {start = true, "Gathering list of distribution files for installed ports ..."}
       -- create list of current distfiles for installed ports
       local act_distfiles = Distfile.update_list ()
       -- query user whether distfiles are to be deleted
@@ -217,7 +217,7 @@ local function clean_stale ()
 	    -- table.sort (stale_distfiles) -- already in ascending order ...
 	    ask_and_delete ("stale file", stale_distfiles)
 	 else
-	    Msg.cont (0, "No stale distfiles found")
+	    Msg.show {"No stale distfiles found"}
 	 end
       end
       shell ("find", {"-x", DISTDIR, "-type", "d", "-empty", "-delete"})

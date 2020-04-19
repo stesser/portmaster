@@ -136,7 +136,7 @@ end
 	 
 -- print a progress message and display it in the terminal window
 local function show (...)
-   Msg.cont (0, ...)
+   Msg.show {...}
    -- title_set (PROGRESS.state, ...)
 end
 
@@ -144,7 +144,7 @@ end
 local function show_task (...)
    incr ()
    TRACE ("SHOW_TASK", ...)
-   Msg.cont (0, PROGRESS.state, ...) -- or better msg_start () ???
+   Msg.show {PROGRESS.state, ...} -- or better msg_start () ???
    Msg.title_set (PROGRESS.state, ...)
 end
 

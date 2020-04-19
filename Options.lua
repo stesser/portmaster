@@ -186,7 +186,7 @@ end
 local function opt_clear (opt, cause)
    if Options[opt] then
       if cause then
-	 Msg.cont (2, "Option", opt, "overridden by option", cause)
+	 Msg.show {level = 2, "Option", opt, "overridden by option", cause}
       end
       Options[opt] = nil
    end
@@ -198,7 +198,7 @@ local function opt_set_if (test_opt, ...)
       if Options[test_opt] then
 	 for i, opt in ipairs ({...}) do
 	    if not Options[opt] then
-	       Msg.cont (2, "Option", opt, "added due to option", test_opt)
+	       Msg.show {level = 2, "Option", opt, "added due to option", test_opt}
 	       Options[opt] = true
 	    end
 	 end
@@ -212,7 +212,7 @@ local function opt_clear_if (test_opt, ...)
       if Options[test_opt] then
 	 for i, opt in ipairs ({...}) do
 	    if Options[opt] then
-	       Msg.cont (2, "Option", opt, "cleared due to option", test_opt)
+	       Msg.show {level = 2, "Option", opt, "cleared due to option", test_opt}
 	       Options[opt] = false
 	    end
 	 end
@@ -382,7 +382,7 @@ OLD_RC_COMPAT = {
 
 -- print program name and version
 local function print_version ()
-   Msg.start (0, PROGRAM, "version", VERSION)
+   Msg.show {start = true, PROGRAM, "version", VERSION}
 end
 
 -- convert option to rc file form (upper case and dash instead of underscore)
@@ -511,7 +511,7 @@ local function save ()
       return
    end
    -- trap "" INT -- NYI
-   Msg.cont (0, "Writing restart file for", tasks, "actions ...")
+   Msg.show {"Writing restart file for", tasks, "actions ..."}
 
    local tmp_filename = tempfile_create ("RESTART")
    tmpf = io.open (tmp_filename, "w+")
@@ -573,7 +573,7 @@ local function save ()
    filename = restart_file_name ()
    os.remove (filename)
    os.rename (tmp_filename, filename)
-   Msg.cont (0, "Restart information has been written to", filename)
+   Msg.show {"Restart information has been written to", filename}
 end
 
 -- register upgrade in the restart case where no dependency checks have been performed
@@ -659,7 +659,7 @@ local function restart_file_load (filename)
    filename = filename or restart_file_name ()
    -- assert restart file exists with length > 0
    assert (access (filename, "r"), "cannot read restart file " .. filename)
-   Msg.cont (0, "Loading restart information from file", filename, "...")
+   Msg.show {"Loading restart information from file", filename, "..."}
    rcfile_tryload (filename)
    local rcfile = io.open (filename, "r")
    for line in rcfile:lines() do

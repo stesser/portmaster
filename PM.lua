@@ -147,8 +147,8 @@ end
 
 -- abort script execution with an error message
 function fail (...)
-   Msg.start (0, "ERROR:", ...)
-   Msg.cont (0, "Aborting update")
+   Msg.show {start = true, "ERROR:", ...}
+   Msg.show {"Aborting update"}
    exit_cleanup (1)
    -- not reached
 end
@@ -182,8 +182,8 @@ end
 
 -- abort script execution with an internal error message on unexpected error
 function fail_bug (...)
-   Msg.start (0, "INTERNAL ERROR:", ...)
-   Msg.cont (0, "Aborting update")
+   Msg.show {"INTERNAL ERROR:", ...}
+   Msg.show {"Aborting update"}
    exit_cleanup (10)
    -- not reached
 end
@@ -296,7 +296,7 @@ JAILBASE = nil -- GLOBAL
 -- ----------------------------------------------------------------------------------
 -- wait for new-line, ignore any input given
 function read_nl (prompt)
-   Msg.prompt (prompt)
+   Msg.show {prompt = true, prompt}
    stdin:read("*l")
 end
 
@@ -309,7 +309,7 @@ function read_answer (prompt, default, choices)
    local reply = default
    if Options.no_confirm and default and true then
       -- check whether stdout is connected to a terminal !!!
-      Msg.start (0, "")
+      Msg.show {start = true}
       return reply
    else
       for i = 1, #choices do
@@ -326,18 +326,18 @@ function read_answer (prompt, default, choices)
 	 display_default = "(" .. default .. ")"
       end
       while true do
-	 Msg.prompt (prompt, display, display_default .. ": ")
+	 Msg.show {prompt = true, prompt, display, display_default .. ": "}
 	 reply = stdin:read ()
 	 if not reply or #reply == 0 then
 	    reply = default
 	 end
 	 for i = 1, #choices do
 	    if reply == choices[i] then
-	       Msg.start (0, "")
+	       Msg.show {start = true}
 	       return reply
 	    end
 	 end
-	 Msg.cont (0, "Invalid input '" .. reply .. "' ignored - please enter one of " .. display)
+	 Msg.show {"Invalid input '" .. reply .. "' ignored - please enter one of", display}
       end
    end
 end
@@ -603,7 +603,7 @@ function message_success_add (text, seconds)
 	 seconds = "in " .. seconds .. " seconds"
       end
       Progress.show (text, "successfully completed", seconds)
-      Msg.cont (0)
+      Msg.show {} -- or is Msg.show {""} required ???
    end
 end
 
@@ -618,15 +618,16 @@ function messages_display ()
       for i, pkgname in ipairs (packages) do
 	 local pkgmsg = PkgDb.query {table = true, "%M", pkgname} -- tail +2
 	 if pkgmsg then
-	    Msg.start (0)
-	    Msg.cont (0, "Post-install message for", pkgname .. ":")
-	    Msg.cont (0)
-	    Msg.verbatim (0, table.concat (pkgmsg, "\n", 2))
+
+	    Msg.show {start = true}
+	    Msg.show {"Post-install message for", pkgname .. ":"}
+	    Msg.show {}
+	    Msg.show {verbatim = true, table.concat (pkgmsg, "\n", 2)}
 	 end
       end
-      Msg.start (0, "The following actions have been performed:")
+      Msg.show {start = true, "The following actions have been performed:"}
       for i, line in ipairs (SUCCESS_MSGS) do
-	 Msg.cont (0, line)
+	 Msg.show {line}
       end
    end
    PKGMSG = nil -- required ???
@@ -896,7 +897,7 @@ function add_with_globbing (args)
    local origin_glob = args[1]
    local dir_glob = dir_part (origin_glob)
    local flavor = flavor_part (origin_glob)
-   Msg.start (1, "Checking upgrades for", origin_glob, "and ports it depends on ...")
+   Msg.show {level = 1, start = true, "Checking upgrades for", origin_glob, "and ports it depends on ..."}
    -- first try to find installed packages matching the glob pattern
    local matches = PkgDb.query {table = true, glob = true, "%n-%v", dir_glob}
    if matches then
@@ -922,7 +923,7 @@ function ports_add_changed_origin (build_type, name, origin_new) -- 3d´rd arg i
    if Options.force then
       build_type = "force"
    end
-   Msg.start (1, "Checking upgrades for", name, "and ports it depends on ...")
+   Msg.show {level = 1, start = true, "Checking upgrades for", name, "and ports it depends on ..."}
    origins = PkgDb.origins_flavor_from_glob (name or PkgDb.origins_flavor_from_glob (name .. "*") or origin_old_from_port (name))
    assert (origins, "Could not find package or port matching " .. name)
    for i, origin_old in ipairs (origins) do
@@ -967,7 +968,7 @@ function ports_add_recursive (name, origin_new) -- 2nd parameter is optional
 -- 	local pkgnames pkgname pkgname_dep origin_old origin_old2 origin_new2
 -- 
    Package.package_cache_load () -- initialize ORIGIN_OLD (with flavor) and PKGNAME_OLD
-   Msg.start (1, "Rebuilding", name, "and ports that depend on it, and upgrading ports they depend on ...")
+   Msg.show {level = 1, start = true, "Rebuilding", name, "and ports that depend on it, and upgrading ports they depend on ..."}
    local pkgnames = PkgDb.query {table = true, "%n-%v", name} or PkgDb.query {table = true, glob = true, "%n-%v", name .. "*"}
    assert (pkgnames, "Could not find package or port matching " .. name)
    --
@@ -1116,14 +1117,14 @@ function ask_and_delete (prompt, ...)
       --
       if answer == "a" or answer == "y" then
 	 if Options.default_yes or answer == "a" then
-	    Msg.cont (msg_level, "Deleting", prompt .. ":", file)
+	    Msg.show {level = msg_level, "Deleting", prompt .. ":", file}
 	 end
 	 if not Options.dry_run then
 	    Exec.run {as_root = true, "/bin/unlink", file}
 	 end
       elseif answer == "q" or answer == "n" then
 	 if Options.default_no or answer == "q"  then
-	    Msg.cont (1, "Not deleting", prompt .. ":", file)
+	    Msg.show {level = 1, "Not deleting", prompt .. ":", file}
 	 end
       end
    end
@@ -1148,7 +1149,7 @@ function ask_and_delete_directory (prompt, ...)
       --
       if answer == "a" or answer == "y" then
 	 if Options.default_yes or answer == "a" then
-	    Msg.cont (msg_level, "Deleting", prompt .. ":", directory)
+	    Msg.show {level = msg_level, "Deleting", prompt .. ":", directory}
 	 end
 	 if not Options.dry_run then
 	    if is_dir (directory) then
@@ -1160,7 +1161,7 @@ function ask_and_delete_directory (prompt, ...)
 	 end
       elseif answer == "q" or answer == "n" then
 	 if Options.default_no or answer == "q"  then
-	    Msg.cont (1, "Not deleting", prompt .. ":", directory)
+	    Msg.show {level = 1, "Not deleting", prompt .. ":", directory}
 	 end
       end
    end
@@ -1276,20 +1277,20 @@ end
 
 -- delete stale compat libraries (i.e. those no longer required by any installed port)
 function shlibs_purge ()
-   Msg.start (0, "Scanning for stale shared library backups ...")
+   Msg.show {start = true, "Scanning for stale shared library backups ..."}
    local stale_compat_libs = list_stale_libraries ()
    if #stale_compat_libs then
       table.sort (stale_compat_libs)
       ask_and_delete ("stale shared library backup", stale_compat_libs)
    else
-      Msg.cont (0, "No stale shared library backups found.")
+      Msg.show {"No stale shared library backups found."}
    end
 end
 
 -- ----------------------------------------------------------------------------------
 -- delete stale options files
 function portdb_purge ()
-   Msg.start (0, "Scanning", PORT_DBDIR, "for stale cached options:")
+   Msg.show {start = true, "Scanning", PORT_DBDIR, "for stale cached options:"}
    local origins = {}
    local origin_list = PkgDb.query {table = true, "%o"}
    for i, origin in ipairs (origin_list) do
@@ -1306,7 +1307,7 @@ function portdb_purge ()
    if #stale_origins then
       ask_and_delete_directory ("stale port options file for", stale_origins)
    else
-      Msg.cont (0, "No stale entries found in", PORT_DBDIR)
+      Msg.show {"No stale entries found in", PORT_DBDIR}
    end
    chdir ("/")
 end
@@ -1348,7 +1349,7 @@ function list_ports (mode)
 
    local pkg_list = Package:installed_pkgs ()
    table.sort (pkg_list, function (a, b) return a.name > b.name end)
-   Msg.start (0, "List of installed packages by category:")
+   Msg.show {start = true, "List of installed packages by category:"}
    for i, f in ipairs (filter) do
       local descr = f[1]
       local test = f[2]
@@ -1390,10 +1391,10 @@ function list_ports (mode)
 		  end
 	       end
 	       if first then
-		  Msg.start (0, count, descr)
+		  Msg.show {start = true, count, descr}
 		  first = false
 	       end
-	       Msg.cont (0, line)
+	       Msg.show {line}
 	    else
 	       table.insert (rest, pkg_old)
 	    end

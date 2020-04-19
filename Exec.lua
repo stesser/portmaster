@@ -28,16 +28,16 @@ SUCH DAMAGE.
 -- ----------------------------------------------------------------------------------
 -- print command if at least one of dry-run or show-work is set
 local function log (level, ...)
-   local args = {...}
-   for i = 1, #args do
-      args[i] = tostring(args[i])
-   end
-   local text = table.concat (args, " ")
-   if level <= Msg.level then
+   if Options.dry_run or Options.show_work then
+      local args = {level = level}
+      for i, v in ipairs ({...}) do
+	 args[i] = tostring(v)
+      end
       if Options.dry_run then
-	 stdout:write("\t" .. text .. "\n")
-      elseif Options.show_work then
-	 Msg.cont (0, text)
+	 local text = table.concat (args, " ")
+	 Msg.show {verbatim = true, "\t" .. text .. "\n"}
+      else -- show work
+	 msg (args)
       end
    end
 end

@@ -138,9 +138,9 @@ local function package_create (action)
    local pkgfile = action.pkg_new.pkgfile -- (PACKAGES .. "All", pkgname, Options.package_format)
    TRACE ("PACKAGE_CREATE", origin_new, pkgname, pkgfile)
    if Options.skip_recreate_pkg and access (pkgfile, "r") then
-      Msg.cont (0, "A package file for", pkgname, "does already exist and will not be overwritten")
+      Msg.show {"A package file for", pkgname, "does already exist and will not be overwritten"}
    else
-      Msg.cont (0, "Create a package for new version", pkgname)
+      Msg.show {"Create a package for new version", pkgname}
       if Options.jailed then
 	 if not origin_new:port_make {to_tty = true, "-D", "_OPTIONS_OK", "PACKAGES=/tmp", "PKG_SUFX=." .. PACKAGE_FORMAT, "package"} then
 	    return false
@@ -154,7 +154,7 @@ local function package_create (action)
       end
       assert (Options.dry_run or access (pkgfile, "r"), "Package file has not been created")
       action.pkg_new:category_links_create (origin_new.categories)
-      Msg.cont (0, "Package saved to", pkgfile)
+      Msg.show {"Package saved to", pkgfile}
    end
    return true
 end
@@ -182,7 +182,7 @@ local function special_builddep_add (origin_new, dep_origin_target)
    table.insert (SPECIAL_DEPENDS[origin_new.name], dep_origin_target)
    local dep_origin = dep_origin_target:match (":.*", "")
    Distfile.fetch (dep_origin)
-   Msg.cont (1, "Building port", origin_new.name, "depends on 'make", target_part (dep_origin_target), "of port", dep_origin.name)
+   Msg.show {level = 1, "Building port", origin_new.name, "depends on 'make", target_part (dep_origin_target), "of port", dep_origin.name}
 end
 
 -- ----------------------------------------------------------------------------
@@ -206,7 +206,7 @@ local RECURSIVE_MSG = ""
 local function print_checking (action)
    local origin = action.origin_new or action.origin_old
    Msg.title_set ("Check " .. origin.name)
-   Msg.cont (1, "Check", origin.name .. RECURSIVE_MSG)
+   Msg.show {level = 1, "Check", origin.name .. RECURSIVE_MSG}
 end
 
 local function register_depends (action, origin, build_type, dep_type, target)
@@ -243,7 +243,7 @@ local function register_depends (action, origin, build_type, dep_type, target)
       -- if UPGRADES[dep_origin] then depends_list2:insert (dep_origin) end
       -- for i, dep_origin in ipairs (depend_list2) do
       if Options.jailed or Options.delete_build_only then
-	 Msg.cont (2, "Register dependency:", origin, "needs", dep_origin.name, "(" .. build_type .. "/" .. dep_type .. ")")
+	 Msg.show {level = 2, "Register dependency:", origin, "needs", dep_origin.name, "(" .. build_type .. "/" .. dep_type .. ")"}
 	 BUILD_DEPS[dep_origin.name] = origin.name
       end
       -- end
@@ -495,7 +495,7 @@ local function conflicts_adjust (action)
 	 action.origin_old = PkgDb.origin_from_pkgname (action.pkg_old)
 	 if conflict_type then
 	    -- keep conflicting package that appears to be preferred by the user
-	    Msg.cont (1, "The dependency for", action.origin_new.name, "seems to be handled by", conflicting_pkg, "built from", action.origin_old.name) -- origin_old or origin_new ???
+	    Msg.show {level = 1, "The dependency for", action.origin_new.name, "seems to be handled by", conflicting_pkg, "built from", action.origin_old.name} -- origin_old or origin_new ???
 	    TRACE ("ON1", action.origin_new.name)
 	    action.origin_new = origin_new_from_old (action.origin_old, action.pkg_old)
 	    TRACE ("ON2", action.origin_new.name)
@@ -506,8 +506,8 @@ local function conflicts_adjust (action)
 	    end
 	 else
 	    -- replace automatically installed package by new dependency
-	    Msg.cont (0, conflicting_pkg, " will be deinstalled")
-	    Msg.cont (0, action.origin_new.name, " will replace this conflicting package installed from ", origin_old.name)
+	    Msg.show {conflicting_pkg, " will be deinstalled"}
+	    Msg.show {action.origin_new.name, " will replace this conflicting package installed from ", origin_old.name}
 	    -- <se> check build_type if delete-build-only is set - set_add BUILD_ONLY / set_rm BUILD_ONLY $origin_new ???
 	    --#[ -n "$Options.delete_build_only" ] && record_dep_type "$build_type, dep_type, origin_old"
 	    -- prevent further update checks for origin_old
@@ -674,7 +674,7 @@ local function collect_action_params (action)
       action.dep_type = "build"
    end
    -- 
-   Msg.start (0, "")
+   Msg.show {start = true}
    --
    derive_origin_old_from_pkgname_old (action) -- if an old package name has been given then we can find the old origin
    derive_pkgname_new_from_origin_new (action) -- if a currently valid origin has been passed in the new package name is determined too
@@ -735,8 +735,8 @@ local function strategy (action)
       register_delete (action)
       local count = PkgDb.query {"%#r", action.pkg_old}
       if count > 0 then
-	 Msg.cont (1, "It was only required for", count, "now stale ports:")
-	 Msg.cont (1, PkgDb.query {'%rn-%rv', action.pkg_old})
+	 Msg.show {level = 1, "It was only required for", count, "now stale ports:"}
+	 Msg.show {level = 1, PkgDb.query {'%rn-%rv', action.pkg_old}}
       end
       return true
    end
@@ -811,7 +811,7 @@ end
 -- 
 local function register_delete_build_only (action)
 -- 	local origin build_deps has_build_deps has_run_deps dep_origin package dep_package
-   Msg.start (2, "")
+   Msg.show {level = 2, start = true}
    local has_run_deps = false
    local has_build_deps = false
    for i, origin in ipairs (table.keys (BUILD_DEPS)) do
@@ -827,27 +827,27 @@ local function register_delete_build_only (action)
 	    DEP_DEL_AFTER_RUN[dep_origin] = {}
 	 end
 	 table.insert (DEP_DEL_AFTER_RUN[dep_origin], origin)
-	 Msg.cont (2, "Last run dependency of", origin, "is", dep_origin)
+	 Msg.show {level = 2, "Last run dependency of", origin, "is", dep_origin}
 	 has_run_deps = true
       else
 	 if not DEP_DEL_AFTER_BUILD[dep_origin] then
 	    DEP_DEL_AFTER_BUILD[dep_origin] = {}
 	 end
 	 table.insert (DEP_DEL_AFTER_BUILD[dep_origin], origin)
-	 Msg.cont (2, "Last build dependency of", origin, "is", dep_origin)
+	 Msg.show {level = 2, "Last build dependency of", origin, "is", dep_origin}
 	 has_build_deps = true
       end
    end
    if has_build_deps then
-      Msg.start (2, "Delete build deps after build has completed:")
+      Msg.show {level = 2, start = true, "Delete build deps after build has completed:"}
       for i, origin in ipairs (table.keys (DEP_DEL_AFTER_BUILD)) do
-	 Msg.cont (2, origin, "built ==> deinstall", table.concat(DEP_DEL_AFTER_BUILD[origin], ", "))
+	 Msg.show {level = 2, origin, "built ==> deinstall", table.concat(DEP_DEL_AFTER_BUILD[origin], ", ")}
       end
    end
    if has_run_deps then
-      Msg.start (2, "Delete run deps after package has been deinstalled:")
+      Msg.show {level = 2, start = true, "Delete run deps after package has been deinstalled:"}
       for i, package in ipairs (table.keys (DEP_DEL_AFTER_RUN)) do -- ??? package vs. origin
-	 Msg.cont (2, package, "deleted ==> deinstall", table.concat(DEP_DEL_AFTER_RUN[package]))
+	 Msg.show {level = 2, package, "deleted ==> deinstall", table.concat(DEP_DEL_AFTER_RUN[package])}
       end
    end
 end
@@ -920,7 +920,7 @@ local function perform_portbuild (action)
    for i, pkg in ipairs (conflicts) do
       if pkg == pkgname_old then
 	 -- ??? pkgname_old is NOT DEFINED
-	 Msg.cont (0, "Build of", origin_new.name, "conflicts with installed package", pkg .. ", deleting old package")
+	 Msg.show {"Build of", origin_new.name, "conflicts with installed package", pkg .. ", deleting old package"}
 	 automatic = PkgDb.automatic_get (pkg)
 	 table.insert (deleted, pkg)
 	 perform_pkg_deinstall (pkg)
@@ -941,7 +941,7 @@ end
 
 -- de-install (possibly partially installed) port after installation failure
 local function deinstall_failed (action)
-   Msg.cont (0, "Installation of", action.pkg_new.name, "failed, deleting partially installed package")
+   Msg.show {"Installation of", action.pkg_new.name, "failed, deleting partially installed package"}
    return action.origin_new:port_make {to_tty = true, jailed = true, as_root = true, "deinstall"}
 end
 
@@ -1055,7 +1055,7 @@ local function perform_install_or_upgrade (action)
 	 -- create package file from staging area
 	 if true or Options.create_package then
 	    if not package_create (action) then
-	       Msg.cont (0, "Could not write package file for", pkgname_new)
+	       Msg.show {"Could not write package file for", pkgname_new}
 	       return false
 	    end
 	 end
@@ -1124,7 +1124,7 @@ end
 -- perform all fetch and check operations
 local function fetch_port (action)
    local origin = action.origin
-   Msg.start (0, "Checking distfiles for", origin.name)
+   Msg.show {start = true, "Checking distfiles for", origin.name}
    assert (origin:wait_checksum ())
 end
 
@@ -1152,8 +1152,8 @@ local function package_deinstall_unused (action)
 	 return true
       elseif strpfx (status, "0-0-") then
 	 DELAYED_DELETES[origin] = true
-	 Msg.cont (0, "Defer de-installation of", origin, "due to the following dependencies:")
-	 Msg.cont (0, "\t" .. table.concat (PkgDb.query {jailed = true, "%rn-%rv", package}, "/n\t"))
+	 Msg.show {"Defer de-installation of", origin, "due to the following dependencies:"}
+	 Msg.show {"\t" .. table.concat (PkgDb.query {jailed = true, "%rn-%rv", package}, "/n\t")}
       end
    end
    return false
@@ -1210,7 +1210,7 @@ BUILDLOG = nil
 local function perform_upgrades ()
    -- install or upgrade required packages
    for i, action in ipairs (ACTION_LIST) do
-      Msg.start (0)
+      Msg.show {start = true}
       -- if Options.hide_build is set the buildlog will only be shown on errors
       local origin_new = rawget (action, "origin_new")
       local is_interactive = origin_new and origin_new.is_interactive
@@ -1248,7 +1248,7 @@ end
 -- update repository database after creation of new packages
 local function perform_repo_update ()
    -- create repository database
-   Msg.start (0, "Create local package repository database ...")
+   Msg.show {start = true, "Create local package repository database ..."}
    pkg {as_root = true, "repo", PACKAGES .. "All"}
 end
 
@@ -1320,7 +1320,7 @@ end
 
 -- display actions that will be performed
 local function show_tasks ()
-   Msg.start (0, "The following actions are required to perform the requested upgrade:")
+   Msg.show {start = true, "The following actions are required to perform the requested upgrade:"}
    Progress.set_max (num_actions)
    Progress.list ("delete", DELETES)
    Progress.list ("move", MOVES)
@@ -1377,22 +1377,22 @@ local function show_statistics ()
    num_tasks = tasks_count ()
    if num_tasks > 0 then
       count_actions (ACTION_LIST)
-      Msg.start (0, "Statistic of planned actions:")
+      Msg.show {start = true, "Statistic of planned actions:"}
       local txt = format_install_msg (NUM.deletes, "will be deleted")
-      if txt then Msg.cont (0, txt) end
+      if txt then Msg.show {txt} end
       txt = format_install_msg (NUM.moves, "will be changed in the package registry")
-      if txt then Msg.cont (0, txt) end
+      if txt then Msg.show {txt} end
       --Msg.cont (0, format_install_msg (NUM.provides, "will be loaded as build dependencies"))
       --if txt then Msg.cont (0, txt) end
       --Msg.cont (0, format_install_msg (NUM.builds, "will be built"))
       --if txt then Msg.cont (0, txt) end
       txt = format_install_msg (NUM.reinstalls, "will be " .. reinstalled_txt)
-      if txt then Msg.cont (0, txt) end
+      if txt then Msg.show {txt} end
       txt = format_install_msg (NUM.installs, "will be " .. installed_txt)
-      if txt then Msg.cont (0, txt) end
+      if txt then Msg.show {txt} end
       txt = format_install_msg (NUM.upgrades, "will be upgraded")
-      if txt then Msg.cont (0, txt) end
-      Msg.start (0)
+      if txt then Msg.show {txt} end
+      Msg.show {start = true}
    end
 end
 
@@ -1400,7 +1400,7 @@ end
 local function execute ()
    if tasks_count () == 0 then
       -- ToDo: suppress if updates had been requested on the command line
-      Msg.start (0, "No installations or upgrades required")
+      Msg.show {start = true, "No installations or upgrades required"}
    else
       -- all fetch distfiles tasks should have been requested by now
       Distfile.fetch_finish ()
@@ -1417,7 +1417,7 @@ local function execute ()
 	 Progress.clear ()
 	 if read_yn ("Perform these upgrades now?", "y") then
 	    -- perform the planned tasks in the order recorded in ACTION_LIST
-	    Msg.start (0)
+	    Msg.show {start = true}
 	    Progress.set_max (tasks_count ())
 	    --
 	    if Options.jailed then
@@ -1441,7 +1441,7 @@ local function execute ()
 	    end
 	 end
 	 if tasks_count () == 0 then
-	    Msg.start (0, "All requested actions have been completed")
+	    Msg.show {start = true, "All requested actions have been completed"}
 	 end
 	 Progress.clear ()
 	 PHASE = ""
@@ -2003,7 +2003,7 @@ local function add_missing_deps ()
 	    local p = o.pkg_new
 	    if not ACTION_CACHE[p.name] then
 	       if add_dep_hdr then
-		  Msg.start (2, add_dep_hdr)
+		  Msg.show {level = 2, start = true, add_dep_hdr}
 		  add_dep_hdr = nil
 	       end
 	       --local action = Action:new {build_type = "auto", dep_type = "build", origin_new = o}
@@ -2019,7 +2019,7 @@ local function add_missing_deps ()
 	    local p = o.pkg_new
 	    if not ACTION_CACHE[p.name] then
 	       if add_dep_hdr then
-		  Msg.start (2, add_dep_hdr)
+		  Msg.show {level = 2, start = true, add_dep_hdr}
 		  add_dep_hdr = nil
 	       end
 	       --local action = Action:new {build_type = "auto", dep_type = "run", origin_new = o}
@@ -2055,7 +2055,7 @@ local function sort_list ()
 	 table.insert (sorted_list, action)
 	 action.listpos = #sorted_list
 	 action.planned = true
-	 Msg.cont (0, "[" .. tostring (#sorted_list) .. "/" .. max_str .. "]", tostring (action))
+	 Msg.show {"[" .. tostring (#sorted_list) .. "/" .. max_str .. "]", tostring (action)}
 	 --
 	 local deps = rawget (action, "run_depends")
 	 if deps then
@@ -2073,9 +2073,9 @@ local function sort_list ()
       end
    end
 
-   Msg.start (0, "Sort", #ACTION_LIST, "actions")
+   Msg.show {start = true, "Sort", #ACTION_LIST, "actions"}
    for i, a in ipairs (ACTION_LIST) do
-      Msg.start (0)
+      Msg.show {start = true}
       add_action (a)
    end
    assert (#ACTION_LIST == #sorted_list, "ACTION_LIST items have been lost: " .. #ACTION_LIST .. " vs. " .. #sorted_list)
@@ -2092,12 +2092,12 @@ local function check_licenses ()
    local function set_accepted (licenses)
       -- LICENSES_ACCEPTED="L1 L2 L3"
    end
-   Msg.start (0)
+   Msg.show {start = true}
    for i, a in ipairs (ACTION_LIST) do
       local o = rawget (a, "origin_new")
       if o and rawget (o, "license") then
 	 if not check_accepted (o.license) then
-	    Msg.cont (0, "Check license for", o.name, table.unpack (o.license))
+	    Msg.show {"Check license for", o.name, table.unpack (o.license)}
 	    --o:port_make {"-DDEFER_CONFLICTS_CHECK", "-DDISABLE_CONFLICTS", "extract", "ask-license", accepted_opt}
 	    --o:port_make {"clean"}
 	    set_accepted (o.license)
@@ -2108,20 +2108,20 @@ end
 
 --
 local function port_options ()
-   Msg.start (2, "Check for new port options")
+   Msg.show {level = 2, start = true, "Check for new port options"}
    for i, a in ipairs (ACTION_LIST) do
       local o = rawget (a, "origin_new")
       --if o then print ("O", o, o.new_options) end
       if o and rawget (o, "new_options") then
-	 Msg.cont (0, "Set port options for", rawget (o, "name"), table.unpack (rawget (o, "new_options")))
+	 Msg.show {"Set port options for", rawget (o, "name"), table.unpack (rawget (o, "new_options"))}
       end
    end
-   Msg.start (2, "Check for new port options has completed")
+   Msg.show {level = 2, start = true, "Check for new port options has completed"}
 end
 
 --
 local function check_conflicts (mode)
-   Msg.start (2, "Check for conflicts between requested updates and installed packages")
+   Msg.show {level = 2, start = true, "Check for conflicts between requested updates and installed packages"}
    for i, action in ipairs (ACTION_LIST) do
       local o_n = rawget (action, "origin_new")
       if o_n and o_n[mode] then
@@ -2131,11 +2131,11 @@ local function check_conflicts (mode)
 	    for i, pkg in ipairs (conflicts_table) do
 	       text = text .. " " .. pkg.name
 	    end
-	    Msg.cont (0, "Conflicting packages for", o_n.name, text)
+	    Msg.show {"Conflicting packages for", o_n.name, text}
 	 end
       end
    end
-   Msg.start (2, "Check for conflicts has been completed")
+   Msg.show {level = 2, start = true, "Check for conflicts has been completed"}
 end
 
 -- DEBUGGING: DUMP INSTANCES CACHE

@@ -79,37 +79,11 @@ local function cont (level, ...)
    end
 end
 
--- print message with separator for new message section
-local function start (level, ...)
-   if level <= Msg.level then
-      Msg.at_start = true
-      Msg.sep = Msg.sep1
-      cont (level, ...)
-   end
-end
-
 -- print abort message at level 0
 local function abort (...)
    Msg.at_start = true
    Msg.sep = "\n" .. Msg.sepabort
    cont (0, ...)
-end
-
--- print message without indentation or other changes
-local function verbatim (level, ...)
-   if level <= Msg.level then
-      stdout.write (...)
-   end
-end
-
--- print a prompt to request user input
-local function prompt (...)
-   Msg.doprompt = true
-   Msg.sep = Msg.sepprompt
-   Msg.at_start = true
-   cont (0, ...)
-   Msg.doprompt = false
-   Msg.sep = Msg.sep2
 end
 
 -- set window title 
@@ -123,6 +97,65 @@ end
 local SUCCESS_MSGS = {} -- GLOBAL
 local PKGMSG = {}
 
+--
+function show (args)
+   --TRACE ("MSG_SHOW", table.unpack (table.keys (args)), table.unpack (args))
+   local level = args.level or 0
+   if level <= Msg.level then
+      if args.start then
+	 -- print message with separator for new message section
+	 Msg.at_start = true
+	 Msg.sep = Msg.sep1
+      end
+      if args.verbatim then
+	 -- print message with separator for new message section
+	 stdout:write (table.unpack (args))
+      else
+	 if args.prompt then
+	    -- print a prompt to request user input
+	    Msg.doprompt = true
+	    Msg.sep = Msg.sepprompt
+	    Msg.at_start = true
+	 end
+	 -- print arguments
+	 local lines = split_lines (table.concat (args, " "))
+	 if lines then
+	    -- extra blank line if not a continuation and not following a blank line anyway
+	    if not (Msg.empty_line or not Msg.at_start) then
+	       stdout:write ("\n")
+	       Msg.empty_line = true
+	    end
+	    -- print lines prefixed with SEP
+	    local line
+	    for i, line in ipairs (lines) do
+	       if not line or line == "" then
+		  if not Msg.empty_line then
+		     stdout:write ("\n")
+		     Msg.empty_line = true
+		  end
+	       else
+		  Msg.empty_line = false
+		  if Msg.doprompt then
+		     -- no newline after prompt
+		     stdout:write (Msg.sep, line)
+		  else
+		     stdout:write (Msg.sep, line, "\n")
+		     Msg.sep = Msg.sep2
+		  end
+	       end
+	       Msg.at_start = false
+	    end
+	    -- reset to default prefix after reading user input
+	    if Msg.doprompt then
+	       Msg.sep = Msg.sep2 -- sep1 ???
+	       Msg.at_start = true
+	       Msg.doprompt = false
+	    end
+	 end
+      end
+   end
+end
+
 local function success_add (text, seconds)
    if Options.dry_run then
       return
@@ -133,7 +166,7 @@ local function success_add (text, seconds)
 	 seconds = "in " .. seconds .. " seconds"
       end
       Progress.show (text, "successfully completed", seconds)
-      Msg.cont (0)
+      Msg.show {}
    end
 end
 
@@ -148,44 +181,33 @@ local function display ()
       for i, pkgname in ipairs (packages) do
 	 local pkgmsg = PkgDb.query {table = true, "%M", pkgname} -- tail +2
 	 if pkgmsg then
-	    Msg.start (0)
-	    Msg.cont (0, "Post-install message for", pkgname .. ":")
-	    Msg.cont (0)
-	    Msg.verbatim (0, table.concat (pkgmsg, "\n", 2))
+	    Msg.show {start = true}
+	    Msg.show {"Post-install message for", pkgname .. ":"}
+	    Msg.show {}
+	    Msg.show {verbatim = true, table.concat (pkgmsg, "\n", 2)}
 	 end
       end
-      Msg.start (0, "The following actions have been performed:")
+      Msg.show {"The following actions have been performed:"}
       for i, line in ipairs (SUCCESS_MSGS) do
-	 Msg.cont (0, line)
+	 Msg.show {line}
       end
       if tasks_count () == 0 then
-	 Msg.start (0, "All requested actions have been completed")
+	 Msg.show {start = true, "All requested actions have been completed"}
       end
    end
    PKGMSG = nil -- required ???
 end
 
---
-function msg (args)
-   local level = args.level or 0
-   if args.verbatim then
-      verbatim (level, table.unpack (args))
-   elseif args.start then
-      start (level, table.unpack (args))
-   elseif args.prompt then
-      prompt (level, table.unpack (args))
-   else
-      cont (level, table.unpack (args))
-   end
-end
-
 -- ----------------------------------------------------------------------------------
-Msg.start = start
-Msg.cont = cont
+
+--Msg.start = start
+--Msg.cont = cont
+--Msg.prompt = prompt
+Msg.show = show
 Msg.checking = checking
 Msg.title_set = title_set
 Msg.success_add = success_add
 Msg.display = display
-Msg.prompt = prompt
+--]]
 
 return Msg

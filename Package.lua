@@ -249,7 +249,7 @@ end
 local function check_default_version (origin_name, pkgname)
    local T = {
       apache = "^apache(%d)(%d)-",
-      llvm= "^llvm(%d%d)-",
+      --llvm= "^llvm(%d%d)-",
       --lua = "^lua(%d)(%d)-",
       mysql = "^mysql(%d)(%d)-",
       pgsql = "^postgresql(9)(%d)-",

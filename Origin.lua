@@ -621,7 +621,7 @@ local function check_config_allow (origin, recursive)
 	 end
       elseif origin.new_options or Options.force_config then
 	 do_config = true
-      elseif not access (origin.options_file, "r") then
+      elseif origin.options_file and not access (origin.options_file, "r") then
 	 TRACE ("NO_OPTIONS_FILE", origin.options_file)
 	 do_config = true
       end

@@ -52,7 +52,7 @@ local function describe (action)
 	    return string.format ("Change origin of port %s to %s for package %s", o_o.name, o_n.name, p_n.name)
 	 end
       elseif a == "exclude" then
-	 return string.format ("Skip excluded package %s installed from %s", p_o.name, o_o.name)
+	 return string.format ("Skip excluded package %s installed from %s", tostring (p_o), tostring (o_o))
       elseif a == "upgrade" then
 	 local from = ""
 	 if p_n and action.pkg_file then

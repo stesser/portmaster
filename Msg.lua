@@ -165,6 +165,20 @@ local function display ()
    PKGMSG = nil -- required ???
 end
 
+--
+function msg (args)
+   local level = args.level or 0
+   if args.verbatim then
+      verbatim (level, table.unpack (args))
+   elseif args.start then
+      start (level, table.unpack (args))
+   elseif args.prompt then
+      prompt (level, table.unpack (args))
+   else
+      cont (level, table.unpack (args))
+   end
+end
+
 -- ----------------------------------------------------------------------------------
 Msg.start = start
 Msg.cont = cont

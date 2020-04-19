@@ -621,10 +621,13 @@ local function check_config_allow (origin, recursive)
 	 end
       elseif origin.new_options or Options.force_config then
 	 do_config = true
+      elseif not access (origin.options_file, "r") then
+	 TRACE ("NO_OPTIONS_FILE", origin.options_file)
+	 do_config = true
       end
       if do_config then
 	 TRACE ("NEW_OPTIONS", origin.new_options)
-	 origin:configure (true)
+	 origin:configure (recursive)
 	 return false
       end
    end
@@ -742,6 +745,7 @@ local function __index (origin, k)
 	 "CONFLICTS_BUILD",	-- 22
 	 "CONFLICTS_INSTALL",	-- 23
 	 "CONFLICTS",		-- 24
+	 "OPTIONS_FILE",	-- 25
       } or {}
       TRACE ("PORT_VAR(" .. origin.name .. ", " .. k ..")", table.unpack (t))
       -- first check for and update port options since they might affect the package name
@@ -770,6 +774,7 @@ local function __index (origin, k)
       set_table (origin, "conflicts_build_var", t.CONFLICTS_BUILD)
       set_table (origin, "conflicts_install_var", t.CONFLICTS_INSTALL)
       set_table (origin, "conflicts_var", t.CONFLICTS)
+      origin.options_file = t.OPTIONS_FILE
       return rawget (origin, k)
    end
    local function __port_depends (origin, k)

@@ -1825,7 +1825,7 @@ local function action_enrich (action)
       local function try_origin (origin)
 	 if origin and verify_origin (origin) then
 	    local p_n = origin.pkg_new
-	    TRACE ("P_N", origin.name, p_n.name)
+	    TRACE ("P_N", origin.name, p_n)
 	    if p_n and p_n.name_base == action.pkg_old.name_base then
 	       action.pkg_new = p_n
 	       action.origin_new = origin

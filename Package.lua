@@ -95,9 +95,9 @@ local function recover (pkg)
       pkgfile = Exec.shell {table = true, safe = true, "ls", "-1t", PACKAGES_BACKUP .. pkgname .. ".*"}[1] -- XXX replace with glob and sort by modification time
    end
    if pkgfile and access (pkgfile, "r") then
-      msg {"Re-installing previous version", pkgname}
+      Msg.show {"Re-installing previous version", pkgname}
       if not install (pkgfile, file_get_abi (pkgfile)) then
-	 msg {"Recovery from backup package failed"}
+	 Msg.show {"Recovery from backup package failed"}
 	 return false
       end
       if pkg.is_automatic == 1 then
@@ -278,7 +278,7 @@ local PACKAGES_CACHE_LOADED = false -- should be local with iterator ...
 --setmetatable (PACKAGES_CACHE, {__mode = "v"})
 
 local function shared_libs_cache_load ()
-   msg {level = 2, start = true, "Load list of provided shared libraries"}
+   Msg.show {level = 2, start = true, "Load list of provided shared libraries"}
    local p = {}
    local lines = PkgDb.query {table = true, "%n-%v %b"}
    for i, line in ipairs (lines) do
@@ -291,12 +291,12 @@ local function shared_libs_cache_load ()
 	 table.insert (p.shared_libs, lib)
       end
    end
-   msg {level = 2, "The list of provided shared libraries has been loaded"}
-   msg {level = 2, start = true}
+   Msg.show {level = 2, "The list of provided shared libraries has been loaded"}
+   Msg.show {level = 2, start = true}
 end
 
 local function req_shared_libs_cache_load ()
-   msg {level = 2, start = true, "Load list of required shared libraries"}
+   Msg.show {level = 2, start = true, "Load list of required shared libraries"}
    local p = {}
    local lines = PkgDb.query {table = true, "%n-%v %B"}
    for i, line in ipairs (lines) do
@@ -309,8 +309,8 @@ local function req_shared_libs_cache_load ()
 	 table.insert (p.req_shared_libs, lib)
       end
    end
-   msg {level = 2, "The list of required shared libraries has been loaded"}
-   msg {level = 2, start = true}
+   Msg.show {level = 2, "The list of required shared libraries has been loaded"}
+   Msg.show {level = 2, start = true}
 end
 
 -- load a list of of origins with flavor for currently installed flavored packages
@@ -320,7 +320,7 @@ local function packages_cache_load ()
    end
    local pkg_flavor = {}
    local pkg_fbsd_version = {}
-   msg {level = 2, start = true, "Load list of installed packages ..."}
+   Msg.show {level = 2, start = true, "Load list of installed packages ..."}
    local lines = PkgDb.query {table = true, "%At %Av %n-%v"}
    if lines then
       for i, line in pairs (lines) do
@@ -359,8 +359,8 @@ local function packages_cache_load ()
       p.fbsd_version = pkg_fbsd_version[pkgname]
       pkg_count = pkg_count + 1
    end
-   msg {level = 2, "The list of installed packages has been loaded (" .. pkg_count .. " packages)"}
-   msg {level = 2, start = true, "Load package dependencies"}
+   Msg.show {level = 2, "The list of installed packages has been loaded (" .. pkg_count .. " packages)"}
+   Msg.show {level = 2, start = true, "Load package dependencies"}
    local p = {}
    local lines = PkgDb.query {table = true, "%n-%v %rn-%rv"}
    for i, line in ipairs (lines) do
@@ -372,8 +372,8 @@ local function packages_cache_load ()
       p.num_depending = p.num_depending + 1
       table.insert (p.dep_pkgs, dep_pkg)
    end
-   msg {level = 2, "Package dependencies have been loaded"}
-   msg {level = 2, start = true}
+   Msg.show {level = 2, "Package dependencies have been loaded"}
+   Msg.show {level = 2, start = true}
    shared_libs_cache_load ()
    req_shared_libs_cache_load ()
    PACKAGES_CACHE_LOADED = true
@@ -436,14 +436,14 @@ local function __index (pkg, k)
       return pkg[k]
    end
    function load_num_dependencies (pkg, k)
-      msg {level = 2, start = true, "Load dependency counts"}
+      Msg.show {level = 2, start = true, "Load dependency counts"}
       local t = PkgDb.query {table = true, "%#d %n-%v"}
       for i, line in ipairs (t) do
 	 local num_dependencies, pkgname = string.match (line, "(%d+) (%S+)")
 	 PACKAGES_CACHE[pkgname].num_dependencies = tonumber (num_dependencies)
       end
-      msg {level = 2, "Dependency counts have been loaded"}
-      msg {level = 2, start = true}
+      Msg.show {level = 2, "Dependency counts have been loaded"}
+      Msg.show {level = 2, start = true}
       return pkg[k]
    end
 

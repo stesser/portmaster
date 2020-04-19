@@ -35,10 +35,9 @@ local function log (level, ...)
       end
       if Options.dry_run then
 	 local text = table.concat (args, " ")
-	 Msg.show {verbatim = true, "\t" .. text .. "\n"}
-      else -- show work
-	 msg (args)
+	 args = {verbatim = true, "\t" .. text .. "\n"}
       end
+      Msg.show (args)
    end
 end
 

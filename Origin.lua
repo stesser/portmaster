@@ -120,8 +120,8 @@ local function check_forbidden (origin)
 	 local reason = origin:port_var {table = true, "BROKEN", "FORBIDDEN", "IGNORE"}
 	 for i, ignore_type in ipairs ({"BROKEN", "FORBIDDEN", "IGNORE"}) do
 	    if reason[i] then
-	       Msg.cont (1, "This port is marked", ignore_type)
-	       Msg.cont (1, reason[i])
+	       msg {level = 1, "This port is marked", ignore_type}
+	       msg {level = 1, reason[i]}
 	       return true
 	    end
 	 end
@@ -207,15 +207,15 @@ local function origin_new_from_old (origin_old, pkgname_old)
       -- return passed in origin if no entry in MOVED applied
       if origin_new.name ~= origin_old.name then
 	 if not reason then
-	    Msg.cont (0, "The origin of", pkgname_old.name, "in the ports system cannot be found.")
+	    msg {"The origin of", pkgname_old.name, "in the ports system cannot be found."}
 	 else
 	    -- empty origin_new means that the port has been removed
 	    local text = "removed"
 	    if origin_new.name then
 	       text = "moved to " .. origin_new.name
 	    end
-	    Msg.cont (1, "The", origin_old.name, "port has been", text)
-	    Msg.cont (1, "Reason:", reason)
+	    msg {level = 1, "The", origin_old.name, "port has been", text}
+	    msg {level = 1, "Reason:", reason}
 	 end
       end
    end
@@ -307,7 +307,7 @@ local function wait_checksum (origin)
       if not status then
 	 sleep (1)
 	 repeat
-	    Msg.cont (0, "Waiting for download of all distfiles for", dir, "to complete")
+	    msg {"Waiting for download of all distfiles for", dir, "to complete"}
 	    status = shell (GREP_CMD, {safe = true, "-m", "1", "OK " .. dir .. " ", TMPFILE_FETCH_ACK})
 	    if not status then
 	       sleep (3)
@@ -402,7 +402,7 @@ local function moved_cache_load (filename)
       MOVED_CACHE = {}
       MOVED_CACHE_REV = {}
       local filename = PORTSDIR .. "MOVED" -- allow override with configuration parameter ???
-      Msg.start (2, "Load list of renamed or removed ports from " .. filename)
+      msg {level = 2, start = true, "Load list of renamed or removed ports from", filename}
       local movedfile = io.open (filename, "r")
       if movedfile then
 	 for line in movedfile:lines () do
@@ -410,8 +410,8 @@ local function moved_cache_load (filename)
 	 end
 	 io.close (movedfile)
       end
-      Msg.cont (2, "The list of renamed of removed ports has been loaded")
-      Msg.start (2)
+      msg {level = 2, "The list of renamed of removed ports has been loaded"}
+      msg {level = 2, start = true}
    end
 end
 
@@ -593,8 +593,8 @@ local function check_config_allow (origin, recursive)
    function check_ignore (name, field)
       TRACE ("CHECK_IGNORE", origin.name, name, field, rawget (origin, field))
       if rawget (origin, field) then
-	 Msg.cont (0, origin.name, "will be skipped since it is marked", name .. ":", origin[field])
-	 Msg.cont (0, "If you are sure you can build this port, remove the", name, "line in the Makefile and try again")
+	 msg {origin.name, "will be skipped since it is marked", name .. ":", origin[field]}
+	 msg {"If you are sure you can build this port, remove the", name, "line in the Makefile and try again"}
 	 if not Options.no_confirm then
             read_nl ("Press the [Enter] or [Return] key to continue ")
 	 end
@@ -611,10 +611,10 @@ local function check_config_allow (origin, recursive)
    if not recursive then
       local do_config
       if origin.is_forbidden then
-	 Msg.cont (0, origin.name, "is marked FORBIDDEN:", origin.is_forbidden)
+	 msg {origin.name, "is marked FORBIDDEN:", origin.is_forbidden}
 	 if origin.all_options then
-	    Msg.cont (0, "You may try to change the port options to allow this port to build")
-	    Msg.cont (0)
+	    msg {"You may try to change the port options to allow this port to build"}
+	    msg {}
 	    if read_yn ("Do you want to try again with changed port options") then
 	       do_config = true
 	    end
@@ -631,14 +631,14 @@ local function check_config_allow (origin, recursive)
    -- ask for confirmation if requested by a program option
    if Options.interactive then
       if not read_yn ("Perform upgrade", "y") then
-	 Msg.cont (0, "Action will be skipped on user request")
+	 msg {"Action will be skipped on user request"}
 	 origin.skip = true
 	 return false
       end
    end
    -- warn if port is interactive
    if origin.is_interactive then
-      Msg.cont (0, "Warning:", origin.name, "is interactive, and will likely require attention during the build")
+      msg {"Warning:", origin.name, "is interactive, and will likely require attention during the build"}
       if not Options.no_confirm then
 	 read_nl ("Press the [Enter] or [Return] key to continue ")
       end

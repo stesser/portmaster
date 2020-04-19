@@ -893,7 +893,7 @@ local function perform_portbuild (action)
    local automatic
    local origin_new = action.origin_new
    local pkgname_new = action.pkg_new.name
-   local special_depends = action.special_depends
+   local special_depends = origin_new.special_depends
    TRACE ("perform_portbuild", origin_new.name, pkgname_new, table.unpack (special_depends or {}))
    if not Options.no_pre_clean then
       port_clean (action)
@@ -1901,6 +1901,15 @@ local function action_enrich (action)
    local origin = action.origin_new
    if origin then
       origin:check_config_allow (rawget (action, "recursive"))
+   end
+
+   TRACE ("CHECK_PKG_OLD_ORIGIN_OLD", action.origin_old, action.pkg_old, action.origin_new, action.pkg_new)
+   if not action.pkg_old and action.origin_old and action.pkg_new then
+      local pkg_name = chomp (PkgDb.query {"%n-%v", action.pkg_new.name_base})
+      TRACE ("PKG_NAME", pkg_name)
+      if pkg_name then
+	 action.pkg_old = Package:new (pkg_name)
+      end
    end
 
    --[[

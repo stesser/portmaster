@@ -95,7 +95,7 @@ end
 local function install (pkg)
    local pkgfile = pkg.pkgfile
    local abi = pkg.pkgfile_abi
-   local args = {as_root = true, to_tty = true, env = {IGNORE_OSVERSION = yes}, "add", "-M", pkgfile}
+   local args = {as_root = true, to_tty = true, env = {IGNORE_OSVERSION = "yes"}, "add", "-M", pkgfile}
    TRACE ("INSTALL", abi, pkgfile)
    if pkgfile:match (".*/pkg-[^/]+$") then -- pkg command itself
       if not access (PKG_CMD, "x") then

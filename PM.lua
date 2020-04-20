@@ -55,6 +55,7 @@ P_SL = require ("posix.stdlib")
 setenv = P_SL.setenv
 
 P_SS = require ("posix.sys.stat")
+stat = P_SS.stat
 lstat = P_SS.lstat
 stat_isdir = P_SS.S_ISDIR
 stat_isreg = P_SS.S_ISREG
@@ -380,6 +381,7 @@ function path_concat (result, ...)
 	    result = result .. (string.sub (result, -1) ~= "/" and "/" or "") .. v
 	 end
       end
+      TRACE ("PATH_CONCAT", result, ...)
       return result
    end
 end

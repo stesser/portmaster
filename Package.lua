@@ -35,19 +35,23 @@ local function filename (args)
    local base = args.base or PACKAGES
    local subdir = args.subdir or "All"
    local extension = args.ext or Options.package_format
-   TRACE ("FILENAME", base, subdir, pkgname, extension, path_concat (basedir, subdir, pkgname .. "." .. extension))
-   return path_concat (base, subdir, pkgname .. "." .. extension)
+   if string.sub (extension, 1, 1) ~= "." then
+      extension = "." .. extension
+   end
+   local result = path_concat (base, subdir, pkgname .. extension)
+   TRACE ("FILENAME", base, subdir, pkgname, extension, result)
+   return result
 end
 
 -- fetch ABI from package file
-local function file_get_abi (pkg)
-   pkg.abi = PkgDb.query {pkgfile = pkg.pkgfile, "%q"} -- <se> %q vs. %Q ???
+local function file_get_abi (filename)
+   return PkgDb.query {pkgfile = filename, "%q"} -- <se> %q vs. %Q ???
 end
 
--- check whether ABI of package file matches current system
-local function file_valid_abi (pkg)
-   file_get_abi (pkg)
-   return pkg.abi == ABI or pkg.abi == ABI_NOARCH
+-- check whether ABI of package file matches current system ABI
+local function file_valid_abi (file)
+   local abi = file_get_abi (file)
+   return abi == ABI or abi == ABI_NOARCH
 end
 
 -- return package version
@@ -86,36 +90,77 @@ local function deinstall (package, make_backup)
    return pkg {as_root = true, jailed = true, "delete", "-y", "-q", "-f", pkgname}
 end
 
+-- ----------------------------------------------------------------------------------
+-- install package from passed pkg filename
+local function install (pkg)
+   local pkgfile = pkg.pkgfile
+   local abi = pkg.pkgfile_abi
+   local args = {as_root = true, to_tty = true, env = {IGNORE_OSVERSION = yes}, "add", "-M", pkgfile}
+   TRACE ("INSTALL", abi, pkgfile)
+   if pkgfile:match (".*/pkg-[^/]+$") then -- pkg command itself
+      if not access (PKG_CMD, "x") then
+	 Exec.run {as_root = true, to_tty = true, env = {"ASSUME_ALWAYS_YES=yes"}, "/usr/sbin/pkg", "-v"}
+      end
+      args.env = {SIGNATURE_TYPE = "none"}
+   elseif abi then
+      args.env = {ABI = abi}
+   end
+   return Exec.pkg (args)
+end
+
+-- install package from passed pkg filename in jail
+local function install_jailed (pkg)
+   return pkg {jailed = true, "add", "-M", pkg.pkgfile}
+end
+
+-- create category links and a lastest link
+local function category_links_create (pkg_new, categories)
+   local source = filename {base = "..", ext = extension, pkg_new}
+   local pkgname = pkg_new.name
+   local extension = Options.package_format
+   table.insert (categories, "Latest")
+   for i, category in ipairs (categories) do
+      local destination = PACKAGES .. category
+      if not is_dir (destination) then
+	 Exec.run {as_root = true, "mkdir", "-p", destination}
+      end
+      if category == "Latest" then
+	 destination = destination .. "/" .. pkg_new.name_base .. "." .. extension
+      end
+      Exec.run {as_root = true, "ln", "-sf", source, destination}
+   end
+end
+
 -- 
 -- re-install package from backup after attempted installation of a new version failed
 local function recover (pkg)
    -- if not pkgname then return true end
-   local pkgname, pkgfile = pkg.name, pkg.pkgfile
-   if not pkfile then
-      pkgfile = Exec.shell {table = true, safe = true, "ls", "-1t", PACKAGES_BACKUP .. pkgname .. ".*"}[1] -- XXX replace with glob and sort by modification time
+   local pkgname = pkg.name
+   local pkgfile = pkg.pkgfile
+   if not pkgfile then
+      pkgfile = Exec.shell {table = true, safe = true, "ls", "-1t", PACKAGES_BACKUP .. pkgname .. ".*"}[1] -- XXX replace with glob and sort by modification time ==> pkg.bakfile
    end
    if pkgfile and access (pkgfile, "r") then
       Msg.show {"Re-installing previous version", pkgname}
-      if not install (pkgfile, file_get_abi (pkgfile)) then
-	 Msg.show {"Recovery from backup package failed"}
-	 return false
+      if install (pkgfile, pkg.pkgfile_abi) then
+	 if pkg.is_automatic == 1 then
+	    pkg:automatic_set (true)
+	 end
+	 shlibs_backup_remove_stale (pkg)
+	 Exec.run {as_root = true, "/bin/unlink", PACKAGES_BACKUP .. pkgname_old .. ".t??"} -- required ???
+	 return true
       end
-      if pkg.is_automatic == 1 then
-	 automatic_set (pkg, true)
-      end
-      shlibs_backup_remove_stale (pkg)
-      Exec.run {as_root = true, "/bin/unlink", PACKAGES_BACKUP .. pkgname_old .. ".t??"}
-      return true
    end
+   Msg.show {"Recovery from backup package failed"}
 end
 
 -- search package file
 local function file_search (pkg)
    for d in ipairs ({"All", "package-backup"}) do
       local file
-      for f in glob (filename {subdir = d, ext = ".t??", pkg}) do
-	 if packagefile_valid_abi (f) then
-	    if not filen or stat (file).modification < stat (f).modification then
+      for i, f in ipairs (glob (filename {subdir = d, ext = ".t??", pkg}) or {}) do
+	 if file_valid_abi (f) then
+	    if not file or stat (file).modification < stat (f).modification then
 	       file = f
 	    end
 	 end
@@ -126,22 +171,37 @@ local function file_search (pkg)
    end
 end
 
+-- lookup package file
+local function pkg_lookup (pkg, k)
+   local subdir = k == "pkgfile" and "All" or "portmaster-backup"
+   local file
+   for i, f in ipairs (glob (filename {subdir = subdir, ext = ".t??", pkg}, GLOB_ERR) or {}) do
+      if file_valid_abi (f) then
+	 if not file or stat (file).st_mtime < stat (f).st_mtime then
+	    file = f
+	 end
+      end
+   end
+   return file
+end
+
 -- delete backup package file
 local function backup_delete (pkg)
-   local g = filename {base = PACKAGES_BACKUP, ext = ".t??", pkg}
+   local g = filename {subdir = "portmaster-backup", ext = ".t??", pkg}
    for i, backupfile in pairs (glob (g) or {}) do
       TRACE ("BACKUP_DELETE", backupfile, PACKAGES .. "portmaster-backup/")
       Exec.run {as_root = true, "/bin/unlink", backupfile}
    end
 end
 
--- delete stale package file
+-- delete stale package file ==> convert to be based on pkg.pkgfile and pkg.bakfile XXX
 local function delete_old (pkg)
+   local bakfile = pkg.bak_file
    local g = filename {subdir = "*", ext = "t??", pkg}
    TRACE ("DELETE_OLD", pkg.name, g)
    for i, pkgfile in pairs (glob (g) or {}) do
-      TRACE ("CHECK_BACKUP", pkgfile, PACKAGES .. "portmaster-backup/")
-      if not string.match (pkgfile, "^" .. PACKAGES .. "portmaster-backup/") then
+      TRACE ("CHECK_BACKUP", pkgfile, bakfile)
+      if pkgfile ~= bakfile then
 	 Exec.run {as_root = true, "/bin/unlink", pkgfile}
       end
    end
@@ -193,49 +253,10 @@ local function shlibs_backup_remove_stale (pkg)
 end
 
 -- ----------------------------------------------------------------------------------
--- install package from passed filename
-local function install (pkg)
-   local pkgfile, abi = pkg.pkgfile, pkg.abi
-   local args = {"add", "-M", pkgfile, as_root = true, to_tty = true}
-   if pkgfile:match (".*/pkg-[^/]+$") then -- ports/pkg
-      if not access (PKG_CMD, "x") then
-	 Exec.run {as_root = true, to_tty = true, env = {"ASSUME_ALWAYS_YES=yes"}, "/usr/sbin/pkg", "-v"}
-      end
-      args.env = {SIGNATURE_TYPE = "none"}
-   elseif abi then
-      args.env = {ABI = abi}
-   end
-   return Exec.pkg (args)
-end
-
--- install package from passed filename in jail
-local function install_jailed (pkg)
-   local pkgfile = filename {pkg}
-   return pkg {jailed = true, "add", "-M", pkgfile}
-end
-
--- create category links and a lastest link
-local function category_links_create (pkg_new, categories)
-   local source = filename {base = "..", ext = extension, pkg_new}
-   local pkgname = pkg_new.name
-   local extension = Options.package_format
-   table.insert (categories, "Latest")
-   for i, category in ipairs (categories) do
-      local destination = PACKAGES .. category
-      if not is_dir (destination) then
-	 Exec.run {as_root = true, "mkdir", "-p", destination}
-      end
-      if category == "Latest" then
-	 destination = destination .. "/" .. pkg_new.name_base .. "." .. extension
-      end
-      Exec.run {as_root = true, "ln", "-sf", source, destination}
-   end
-end
-
--- ----------------------------------------------------------------------------------
 -- return true (exit code 0) if named package is locked
 -- set package to auto-installed if automatic == 1, user-installed else
 local function automatic_set (pkg, automatic)
+   TRACE ("AUTOMATIC_SET", pkg, automatic)
    local value = automatic and "1" or "0"
    PkgDb.set ("-A", value, pkg.name)
 end
@@ -459,6 +480,12 @@ local function __index (pkg, k)
       name_base_major = pkg_strip_minor,
       version = pkg_version,
       dep_pkgs = dep_pkgs_cache_load,
+      pkgfile = pkg_lookup,
+      bakfile = pkg_lookup,
+      pkgfile_abi = function (pkg, v)
+	 return file_get_abi (filename {pkg}) or false
+      end,
+      --bakfile_abi = file_get_abi,
       shared_libs = function (pkg, k)
 	 --return PkgDb.query {table = true, no_tty = true, "%b", pkg.name}
 	 return PkgDb.query {table = true, "%b", pkg.name}
@@ -483,10 +510,10 @@ local function __index (pkg, k)
 	 return PkgDb.query {table = true, "%B", pkg.name}
       end,
       --]]
-      pkgfile = function (pkg, k)
+      pkg_filename = function (pkg, k)
 	 return filename {subdir = "All", pkg}
       end,
-      bakfile = function (pkg, k)
+      bak_filename = function (pkg, k)
 	 return filename {subdir = "portmaster-backup", ext = Options.backup_format, pkg}
       end,
       --[[
@@ -573,7 +600,6 @@ return {
    category_links_create = category_links_create,
    file_search = file_search,
    --file_get_abi = file_get_abi,
-   file_valid_abi = file_valid_abi,
    check_use_package = check_use_package,
    check_excluded = check_excluded,
    deinstall = deinstall,

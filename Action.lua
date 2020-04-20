@@ -40,7 +40,7 @@ local function describe (action)
    local o_n = action.origin_new
    local p_n = action.pkg_new
    local a = action.action
-   TRACE ("DESCRIBE", a, o_o, o_n, p_o, p_n, pkgfile, vers_cmp)
+   TRACE ("DESCRIBE", a, o_o, o_n, p_o, p_n)
    if a then
       if a == "delete" then
 	 return string.format ("De-install %s built from %s", p_o.name, o_o.name)
@@ -55,8 +55,8 @@ local function describe (action)
 	 return string.format ("Skip excluded package %s installed from %s", tostring (p_o), tostring (o_o))
       elseif a == "upgrade" then
 	 local from = ""
-	 if p_n and action.pkg_file then
-	    from = "from " .. action.pkg_file
+	 if p_n and p_n.pkgfile then
+	    from = "from " .. p_n.pkgfile
 	 else
 	    from = "using " .. o_n.name .. (origin_changed (o_o, o_n) and " (was " .. o_o.name .. ")" or "")
 	 end
@@ -95,7 +95,7 @@ end
 local function pkgfiles_rename (action)
    local pkgname_old = action.pkg_old.name
    local pkgname_new = action.pkg_new.name
-   for i, pkgfile_old in glob (PACKAGES .. "*/" .. pkgname_old .. ".t??", GLOB_ERR) do
+   for i, pkgfile_old in glob (PACKAGES .. "*/" .. pkgname_old .. ".t??", GLOB_ERR) do -- use action.pkg_old:filename {subdir = "*", ext = "t??"}} XXX
       if access (pkgfile_old, "r") and not strpfx (pkgfile_old, PACKAGES_BACKUP) then
 	 local pkgfile_new = dirname (pkgfile_old) .. "/" .. pkgname_new .. pkgfile_old:gsub (".*(%.%w+)", "%1")
 	 return run ("/bin/mv", {as_root = true, to_tty = true, pkgfile_old, pkgfile_new})
@@ -135,7 +135,7 @@ end
 local function package_create (action)
    local origin_new = action.origin_new
    local pkgname = action.pkg_new.name
-   local pkgfile = action.pkg_new.pkgfile -- (PACKAGES .. "All", pkgname, Options.package_format)
+   local pkgfile = action.pkg_new.pkg_filename -- (PACKAGES .. "All", pkgname, Options.package_format)
    TRACE ("PACKAGE_CREATE", origin_new, pkgname, pkgfile)
    if Options.skip_recreate_pkg and access (pkgfile, "r") then
       Msg.show {"A package file for", pkgname, "does already exist and will not be overwritten"}
@@ -145,7 +145,7 @@ local function package_create (action)
 	 if not origin_new:port_make {to_tty = true, "-D", "_OPTIONS_OK", "PACKAGES=/tmp", "PKG_SUFX=." .. PACKAGE_FORMAT, "package"} then
 	    return false
 	 end -- >&4
-	 local filename = package_filename (PACKAGES, "All", pkgname, Options.package_format)
+	 local filename = action.pkg_new.filename
 	 os.rename (JAILBASE .. "/tmp/All/" .. filename, PACKAGES .. filename) -- <se> SUDO required ???
       else
 	 if not origin_new:port_make {to_tty = true, "-D", "_OPTIONS_OK", "PKG_SUFX=." .. Options.package_format, "package"} then
@@ -291,11 +291,13 @@ end
 
 -- return filename if a package file with correct ABI exists and a package may be used
 local function check_use_package (action)
-   if not action.pkg.pkgfile then
-      local build_type, dep_type, pkgname = action.build_type, action.dep_type, action.pkg.name
-      if pkgname and pkgname ~= "" then
-	 if build_type ~= "force" and not Options.packages and (not Options.packages_build or dep_type ~= "build") then
-	    action.pkg.pkgfile = Package.file_search (pkgname)
+   local build_type = action.build_type
+   local dep_type = action.dep_type
+   if build_type ~= "force" and not Options.packages and (not Options.packages_build or dep_type ~= "build") then
+      if not action.pkg_new.pkgfile then
+	 local pkgname = action.pkg_new.filename
+	 if pkgname and pkgname ~= "" then
+	    action.pkg_new.pkgfile = Package.file_search (pkgname)
 	 end
       end
    end
@@ -931,10 +933,7 @@ local function perform_portbuild (action)
    -- build and stage port
    Progress.show ("Build", pkgname_new)
    if not origin_new:port_make {to_tty = true, jailed = true, "-D", "NO_DEPENDS", "-D", "DISABLE_CONFLICTS", "-D", "_OPTIONS_OK", "build", "stage"} then
-      if action.pkg_old then
-	 Package.recover (action.pkg_old)
-	 return false
-      end
+      return false
    end
    return true
 end
@@ -953,8 +952,7 @@ local function perform_installation (action)
    local pkgname_old = p_o and p_o.name
    local pkgname_new = p_n.name
    local origin_new = o_n.name
-   local pkgfile = action.pkg_file
-   local automatic = p_o and p_o.is_automatic
+   local pkgfile = p_n.pkgfile
    local install_failed = false
    -- prepare installation, if this is an upgrade (and not a fresh install)
    if pkgname_old then
@@ -962,7 +960,7 @@ local function perform_installation (action)
 	 -- keep old package message for later comparison with new message
 	 local pkg_msg_old = PkgDb.get_pkgmessage (pkgname_old)
 	 -- create backup package file from installed files
-	 local create_backup = pkgname_old ~= pkgname_new or not pkgfile or not Package.file_valid_abi (pkgfile)
+	 local create_backup = pkgname_old ~= pkgname_new or not pkgfile
 	 -- preserve currently installed shared libraries
 	 if Options.save_shared then
 	    p_o:shlibs_backup () -- OUTPUT
@@ -973,7 +971,7 @@ local function perform_installation (action)
 	    shell ("ln", {as_root = true, PKG_CMD, PKG_CMD .. "~"})
 	 end
 	 -- delete old package version
-	 action.pkg_old.deinstall (action.pkg_old, create_backup) -- OUTPUT
+	 p_o:deinstall (create_backup) -- OUTPUT
 	 -- restore pkg-static if it has been preserved
 	 if origin_new == "ports-mgmt/pkg" then
 	    shell ("unlink", {as_root = true, PKG_CMD})
@@ -981,41 +979,47 @@ local function perform_installation (action)
 	 end
       end
    end
-   if action.pkgfile then
+   if pkgfile then
       -- try to install from package
-      Progress.show ("Install", action.pkg_new.name, "from a package")
+      Progress.show ("Install", pkgname_new, "from a package")
       -- <se> DEAL WITH CONFLICTS ONLY DETECTED BY PLIST CHECK DURING PKG REGISTRATION!!!
-      if not Package.install_jailed (action.pkgfile) then
+      local result
+      if Options.jailed then
+	 result = p_n:install_jailed ()
+      else
+	 result = p_n:install ()
+      end
+      if not result then
 	 -- OUTPUT
 	 if not Options.jailed then
-	    Package.deinstall (action.pkg_new) -- OUTPUT
-	    if action.pkg_old then
-	       Package.recover (action.pkg_old)
+	    p_n:deinstall () -- OUTPUT
+	    if p_o then
+	       p_o:recover ()
 	    end
 	 end
-	 Progress.show ("Rename", action.pkg_file, "to", action.pkg_file ..".NOTOK after failed installation")
-	 os.rename (action.pkg_file, action.pkg_file .. ".NOTOK")
+	 Progress.show ("Rename", pkgfile, "to", pkgfile ..".NOTOK after failed installation")
+	 os.rename (pkgfile, pkgfile .. ".NOTOK")
 	 return false
       end
    else
       -- try to install new port
-      Progress.show ("Install", action.pkg_new.name, "built from", action.origin_new.name)
+      Progress.show ("Install", pkgname_new, "built from", origin_new)
       -- <se> DEAL WITH CONFLICTS ONLY DETECTED BY PLIST CHECK DURING PKG REGISTRATION!!!
-      if not action.origin_new:install () then
+      if not o_n:install () then
 	 -- OUTPUT
 	 deinstall_failed (action)
-	 if action.pkg_old then
-	    Package.recover (action.pkg_old)
+	 if p_o then
+	    p_o:recover ()
 	 end
 	 return false
       end
    end
    -- set automatic flag to the value the previous version had
-   if automatic then
-      Package.automatic_set (action.pkg_new, true)
+   if p_o and p_o.is_automatic then
+      p_n:automatic_set (true)
    end
    -- register package name if package message changed
-   local pkg_msg_new = PkgDb.get_pkgmessage (action.pkg_new.name)
+   local pkg_msg_new = PkgDb.get_pkgmessage (pkgname_new)
    if pkg_msg_old ~= pkg_msg_new then
       action.pkgmsg = pkg_msg_new -- package message returned as field in action record ???
    end
@@ -1026,9 +1030,9 @@ local function perform_installation (action)
    -- delete stale package files
    if pkgname_old then
       if pkgname_old ~= pkgname_new then
-	 Package.delete_old (action.pkg_old)
+	 p_o:delete_old ()
 	 if not Options.backup then
-	    Package.backup_delete (action.pkg_old)
+	    p_o:backup_delete ()
 	 end
       end
    end
@@ -1037,10 +1041,15 @@ end
 
 -- install or upgrade a port
 local function perform_install_or_upgrade (action)
-   local origin_new = action.origin_new
+   local o_n = action.origin_new
    -- has a package been identified to be used instead of building the port?
-   local pkgfile = rawget (action, "pkgfile")
-   local skip_install = (Options.skip_install or Options.jailed) -- NYI: and BUILDDEP[origin_new]
+   local pkgfile
+   -- CHECK CONDITION for use of pkgfile: if build_type ~= "force" and not Options.packages and (not Options.packages_build or dep_type ~= "build") then
+   if true or not action.force and (Options.packages or Options.packages_build and not action.pkg_new.is_run_dep) then -- XXX TESTTESTTEST
+      pkgfile = action.pkg_new.pkgfile
+      TRACE ("PKGFILE", pkgfile)
+   end
+   local skip_install = (Options.skip_install or Options.jailed) -- NYI: and BUILDDEP[o_n]
    local taskmsg = describe (action)
    Progress.show_task (taskmsg)
    -- if not installing from a package file ...
@@ -1491,14 +1500,6 @@ local function determine_pkg_new (action, k)
 end
 
 --
-local function determine_pkg_file (action, k)
-   local f = action.pkg_new and action.pkg_new.pkg_filename
-   if f and access (f, "r") then
-      return f
-   end
-end
-
---
 local function determine_origin_old (action, k)
    --print ("OO:", action.pkg_old, (rawget (action, "pkg_old") and (action.pkg_old).origin or "-"), action.pkg_new, (rawget (action, "pkg_new") and (action.pkg_new.origin or "-")))
    local o = action.pkg_old and rawget (action.pkg_old, "origin")
@@ -1617,7 +1618,6 @@ local function __index (action, k)
    local dispatch = {
       pkg_old = determine_pkg_old,
       pkg_new = determine_pkg_new,
-      pkg_file = determine_pkg_file,
       vers_cmp = compare_versions,
       origin_old = determine_origin_old,
       origin_new = determine_origin_new,
@@ -2017,6 +2017,7 @@ local function add_missing_deps ()
 	       end
 	       --local action = Action:new {build_type = "auto", dep_type = "build", origin_new = o}
 	       local action = Action:new {build_type = "auto", dep_type = "build", pkg_new = p, origin_new = o}
+	       p.is_build_dep = true
 	       --assert (not o.action)
 	       --o.action = action -- NOT UNIQUE!!!
 	    end
@@ -2033,6 +2034,7 @@ local function add_missing_deps ()
 	       end
 	       --local action = Action:new {build_type = "auto", dep_type = "run", origin_new = o}
 	       local action = Action:new {build_type = "auto", dep_type = "run", pkg_new = p, origin_new = o}
+	       p.is_run_dep = true
 	       --assert (not o.action)
 	       --o.action = action -- NOT UNIQUE!!!
 	    end

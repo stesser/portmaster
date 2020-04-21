@@ -1052,7 +1052,9 @@ function ports_add_multiple (args)
    }
    for i, v in ipairs (args) do
       if string.match (v, "/") and access (path_concat (PORTSDIR, v, "Makefile"), "r") then
-	 Action:new {build_type = "user", dep_type = "run", force = force, origin_new = Origin:new (v)}
+	 local o = Origin:new (v)
+	 local p = o.pkg_new
+	 Action:new {build_type = "user", dep_type = "run", force = force, origin_new = o, pkg_new = p}
       end
    end
    --[[

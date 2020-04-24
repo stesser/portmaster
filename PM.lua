@@ -285,6 +285,11 @@ function tempfile_delete (...)
    end
 end
 
+-- directory name part of file path
+function dirname (filename)
+   return string.match (filename, ".*/") or "."
+end
+
 -- 
 function log_caller (f)
    local d = debug.getinfo (3, "ln")
@@ -375,13 +380,17 @@ end
 
 -- concatenate file path, first element must not be empty
 function path_concat (result, ...)
+   TRACE ("PATH_CONCAT", result, ...)
    if result and result ~= "" then
       for i, v in ipairs ({...}) do
+	 if string.sub (v, 1, 1) == "/" then
+	    v = string.sub (v, 2)
+	 end
 	 if v and v ~= "" then
 	    result = result .. (string.sub (result, -1) ~= "/" and "/" or "") .. v
 	 end
       end
-      TRACE ("PATH_CONCAT", result, ...)
+      TRACE ("PATH_CONCAT->", result)
       return result
    end
 end
@@ -390,7 +399,9 @@ end
 function is_dir (path)
    if path then
       local st, err = lstat (path)
+      TRACE ("IS_DIR?", st, err)
       if st and access (path, "x") then
+	 TRACE ("IS_DIR", path, stat_isdir (st.st_mode))
 	 return stat_isdir (st.st_mode) ~= 0
       end
    end
@@ -627,7 +638,8 @@ function messages_display ()
 	    Msg.show {verbatim = true, table.concat (pkgmsg, "\n", 2)}
 	 end
       end
-      Msg.show {start = true, "The following actions have been performed:"}
+      Msg.show {start = true}
+      Msg.show {"The following actions have been performed:"}
       for i, line in ipairs (SUCCESS_MSGS) do
 	 Msg.show {line}
       end
@@ -1102,7 +1114,7 @@ local function ports_add_all_outdated ()
    end
    ports_update {
       filter_old_abi,
-      filter_old_shared_libs,
+      --filter_old_shared_libs,
       filter_is_required,
       filter_pass_all,
    }

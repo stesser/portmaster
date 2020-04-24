@@ -75,16 +75,17 @@ end
 local function shell (args)
    local fd1r, fd1w
    local fd2r, fd2w
-   if args.jailed and JAILBASE then
+   if JAILBASE and args.jailed then
+      TRACE ("SHELL:CHROOT", JAILBASE)
       table.insert (args, 1, CHROOT_CMD)
       table.insert (args, 2, JAILBASE)
    end
    if args.as_root and SUDO_CMD then
       table.insert (args, 1, SUDO_CMD)
    end
+   args.to_tty = args.to_tty or args.as_root
    local flags = "[" .. table.concat (table.keys (args), ",") .. "]"
    TRACE ("SHELL", flags, table.unpack (args))
-   args.to_tty = args.to_tty or args.as_root
    if not args.to_tty then
       fd1r, fd1w = pipe ()
       fd2r, fd2w = pipe ()

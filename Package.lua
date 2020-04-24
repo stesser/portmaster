@@ -84,10 +84,11 @@ local function deinstall (package, make_backup)
    end
    if Options.jailed and PHASE ~= "install" then
       Progress.show ("De-install", pkgname, "from build jail")
+      return pkg {jailed = true, "delete", "-y", "-q", "-f", pkgname}
    else
       Progress.show ("De-install", pkgname)
+      return pkg {as_root = true, "delete", "-y", "-q", "-f", pkgname}
    end
-   return pkg {as_root = true, jailed = true, "delete", "-y", "-q", "-f", pkgname}
 end
 
 -- ----------------------------------------------------------------------------------
@@ -487,11 +488,9 @@ local function __index (pkg, k)
       end,
       --bakfile_abi = file_get_abi,
       shared_libs = function (pkg, k)
-	 --return PkgDb.query {table = true, no_tty = true, "%b", pkg.name}
 	 return PkgDb.query {table = true, "%b", pkg.name}
       end,
       req_shared_libs = function (pkg, k)
-	 --return PkgDb.query {table = true, no_tty = true, "%B", pkg.name}
 	 return PkgDb.query {table = true, "%B", pkg.name}
       end,
       is_installed = function (pkg, k)

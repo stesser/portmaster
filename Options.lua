@@ -511,6 +511,7 @@ local function save ()
       return
    end
    -- trap "" INT -- NYI
+   Msg.show {start = true}
    Msg.show {"Writing restart file for", tasks, "actions ..."}
 
    local tmp_filename = tempfile_create ("RESTART")

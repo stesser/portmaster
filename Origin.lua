@@ -65,10 +65,12 @@ local function port_make (origin, args)
       table.insert (args, 1, "FLAVOR=" .. flavor)
    end
    local dir = path (origin)
+   --[[ -- only valid for port_var, not generic port_make !!!
    if args.jailed and JAILBASE then
       dir = JAILBASE .. dir
       args.jailed = false
    end
+   --]]
    if not is_dir (dir) then
       return nil, "port directory " .. dir .. " does not exist"
    end
@@ -89,7 +91,7 @@ end
 
 -- return Makefile variables for port (with optional flavor)
 local function port_var (origin, vars)
-   local args = { saafe = true, table = vars.table }
+   local args = { safe = true, table = vars.table }
    for i = 1, #vars do
       args[i] = "-V" .. vars[i]
    end
@@ -621,13 +623,13 @@ local function check_config_allow (origin, recursive)
 	 end
       elseif origin.new_options or Options.force_config then
 	 do_config = true
-      elseif origin.options_file and not access (origin.options_file, "r") then
+      elseif origin.port_options and origin.options_file and not access (origin.options_file, "r") then
 	 TRACE ("NO_OPTIONS_FILE", origin.options_file)
-	 do_config = true
+	 --do_config = true
       end
       if do_config then
 	 TRACE ("NEW_OPTIONS", origin.new_options)
-	 origin:configure (recursive)
+	 configure (origin, recursive)
 	 return false
       end
    end
@@ -968,7 +970,6 @@ return {
    check_path = check_path,
    check_config_allow = check_config_allow,
    checksum = checksum,
-   configure = configure,
    delete = delete,
    depends = depends,
    install = install,

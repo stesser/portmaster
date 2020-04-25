@@ -26,7 +26,7 @@ SUCH DAMAGE.
 --]]
 
 -- ----------------------------------------------------------------------------------
-local Msg = {
+local State = {
    level = 0,
    at_start = true,
    empty_line = true,
@@ -36,43 +36,43 @@ local Msg = {
    sepabort = "# !!!!!\t",
    sepprompt = "#   >>>\t",
 }
-Msg.sep = Msg.sep1
+State.sep = State.sep1
 
 -- print continuation line
 local function cont (level, ...)
-   if level <= Msg.level then
+   if level <= State.level then
       local lines = split_lines (table.concat ({...}, " "))
       if lines then
 	 -- extra blank line if not a continuation and not following a blank line anyway
-	 if not (Msg.empty_line or not Msg.at_start) then
+	 if not (State.empty_line or not State.at_start) then
 	    stdout:write ("\n")
-	    Msg.empty_line = true
+	    State.empty_line = true
 	 end
 	 -- print lines prefixed with SEP
 	 local line
 	 for i, line in ipairs (lines) do
 	    if not line or line == "" then
-	       if not Msg.empty_line then
+	       if not State.empty_line then
 		  stdout:write ("\n")
-		  Msg.empty_line = true
+		  State.empty_line = true
 	       end
 	    else
-	       Msg.empty_line = false
-	       if Msg.doprompt then
+	       State.empty_line = false
+	       if State.doprompt then
 		  -- no newline after prompt
-		  stdout:write (Msg.sep, line)
+		  stdout:write (State.sep, line)
 	       else
-		  stdout:write (Msg.sep, line, "\n")
-		  Msg.sep = Msg.sep2
+		  stdout:write (State.sep, line, "\n")
+		  State.sep = State.sep2
 	       end
 	    end
-	    Msg.at_start = false
+	    State.at_start = false
 	 end
 	 -- reset to default prefix after reading user input
-	 if Msg.doprompt then
-	    Msg.sep = Msg.sep1
-	    Msg.at_start = true
-	    Msg.doprompt = false
+	 if State.doprompt then
+	    State.sep = State.sep1
+	    State.at_start = true
+	    State.doprompt = false
 	 end
       end
       stdout:flush ()
@@ -81,8 +81,8 @@ end
 
 -- print abort message at level 0
 local function abort (...)
-   Msg.at_start = true
-   Msg.sep = "\n" .. Msg.sepabort
+   State.at_start = true
+   State.sep = "\n" .. State.sepabort
    cont (0, ...)
 end
 
@@ -101,11 +101,11 @@ local PKGMSG = {}
 function show (args)
    --TRACE ("MSG_SHOW", table.unpack (table.keys (args)), table.unpack (args))
    local level = args.level or 0
-   if level <= Msg.level then
+   if level <= State.level then
       if args.start then
 	 -- print message with separator for new message section
-	 Msg.at_start = true
-	 Msg.sep = Msg.sep1
+	 State.at_start = true
+	 State.sep = State.sep1
       end
       if args.verbatim then
 	 -- print message with separator for new message section
@@ -113,49 +113,51 @@ function show (args)
       else
 	 if args.prompt then
 	    -- print a prompt to request user input
-	    Msg.doprompt = true
-	    Msg.sep = Msg.sepprompt
-	    Msg.at_start = true
+	    State.doprompt = true
+	    State.sep = State.sepprompt
+	    State.at_start = true
 	 end
 	 -- print arguments
 	 local lines = split_lines (table.concat (args, " "))
 	 if lines then
 	    -- extra blank line if not a continuation and not following a blank line anyway
-	    if not (Msg.empty_line or not Msg.at_start) then
+	    if not (State.empty_line or not State.at_start) then
 	       stdout:write ("\n")
-	       Msg.empty_line = true
+	       State.empty_line = true
 	    end
 	    -- print lines prefixed with SEP
 	    local line
 	    for i, line in ipairs (lines) do
 	       if not line or line == "" then
-		  if not Msg.empty_line then
+		  if not State.empty_line then
 		     stdout:write ("\n")
-		     Msg.empty_line = true
+		     State.empty_line = true
 		  end
 	       else
-		  Msg.empty_line = false
-		  if Msg.doprompt then
+		  State.empty_line = false
+		  if State.doprompt then
 		     -- no newline after prompt
-		     stdout:write (Msg.sep, line)
+		     stdout:write (State.sep, line)
 		  else
-		     stdout:write (Msg.sep, line, "\n")
-		     Msg.sep = Msg.sep2
+		     stdout:write (State.sep, line, "\n")
+		     State.sep = State.sep2
 		  end
 	       end
-	       Msg.at_start = false
+	       State.at_start = false
 	    end
 	    -- reset to default prefix after reading user input
-	    if Msg.doprompt then
-	       Msg.sep = Msg.sep2 -- sep1 ???
-	       Msg.at_start = true
-	       Msg.doprompt = false
+	    if State.doprompt then
+	       State.sep = State.sep2 -- sep1 ???
+	       State.at_start = true
+	       State.doprompt = false
 	    end
 	 end
       end
    end
 end
 
+-- ----------------------------------------------------------------------------------
+-- 
 local function success_add (text, seconds)
    if Options.dry_run then
       return
@@ -166,7 +168,7 @@ local function success_add (text, seconds)
 	 seconds = "in " .. seconds .. " seconds"
       end
       Progress.show (text, "successfully completed", seconds)
-      Msg.show {}
+      show {}
    end
 end
 
@@ -181,33 +183,44 @@ local function display ()
       for i, pkgname in ipairs (packages) do
 	 local pkgmsg = PkgDb.query {table = true, "%M", pkgname} -- tail +2
 	 if pkgmsg then
-	    Msg.show {start = true}
-	    Msg.show {"Post-install message for", pkgname .. ":"}
-	    Msg.show {}
-	    Msg.show {verbatim = true, table.concat (pkgmsg, "\n", 2)}
+	    show {start = true}
+	    show {"Post-install message for", pkgname .. ":"}
+	    show {}
+	    show {verbatim = true, table.concat (pkgmsg, "\n", 2)}
 	 end
       end
-      Msg.show {"The following actions have been performed:"}
-      for i, line in ipairs (SUCCESS_MSGS) do
-	 Msg.show {line}
-      end
-      if tasks_count () == 0 then
-	 Msg.show {start = true, "All requested actions have been completed"}
+      if #SUCCESS_MSGS > 0 then
+	 show {start = true, "The following actions have been performed:"}
+	 for i, line in ipairs (SUCCESS_MSGS) do
+	    show {line}
+	 end
+	 if tasks_count () == 0 then
+	    show {start = true, "All requested actions have been completed"}
+	 end
       end
    end
    PKGMSG = nil -- required ???
 end
 
 -- ----------------------------------------------------------------------------------
+local function incr_level ()
+   State.level = State.level + 1
+end
 
---Msg.start = start
---Msg.cont = cont
---Msg.prompt = prompt
-Msg.show = show
-Msg.checking = checking
-Msg.title_set = title_set
-Msg.success_add = success_add
-Msg.display = display
---]]
+local function level ()
+   return State.level
+end
+
+-- ----------------------------------------------------------------------------------
+
+Msg = {
+   checking = checking,
+   display = display,
+   incr_level = incr_level,
+   level = level,
+   show = show,
+   success_add = success_add,
+   title_set = title_set,
+}
 
 return Msg

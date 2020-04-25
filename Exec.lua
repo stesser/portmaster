@@ -25,22 +25,7 @@ OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 SUCH DAMAGE.
 --]]
 
--- ----------------------------------------------------------------------------------
--- print command if at least one of dry-run or show-work is set
-local function log (level, ...)
-   if Options.dry_run or Options.show_work then
-      local args = {level = level}
-      for i, v in ipairs ({...}) do
-	 args[i] = tostring(v)
-      end
-      if Options.dry_run then
-	 local text = table.concat (args, " ")
-	 args = {verbatim = true, "\t" .. text .. "\n"}
-      end
-      Msg.show (args)
-   end
-end
-
+--[[ unused - only left as working example of a coroutine
 -- return an iterator usable in for loops that returns shell command result lines
 -- usage: for line in shell_pipe (<shell cmd>) do ... end
 local function shell_pipe (args)
@@ -69,23 +54,13 @@ local function shell_pipe (args)
    TRACE (cmd)
    return (p (cmd))
 end
+--]]
 
--- execute shell command and return its standard output (UTIL)
+-- execute shell command and return its standard output (UTIL) -- not exported !!!
 -- the return value is a list with one entry per line without the trailing new-line
 local function shell (args)
    local fd1r, fd1w
    local fd2r, fd2w
-   if JAILBASE and args.jailed then
-      TRACE ("SHELL:CHROOT", JAILBASE)
-      table.insert (args, 1, CHROOT_CMD)
-      table.insert (args, 2, JAILBASE)
-   end
-   if args.as_root and SUDO_CMD then
-      table.insert (args, 1, SUDO_CMD)
-   end
-   args.to_tty = args.to_tty or args.as_root
-   local flags = "[" .. table.concat (table.keys (args), ",") .. "]"
-   TRACE ("SHELL", flags, table.unpack (args))
    if not args.to_tty then
       fd1r, fd1w = pipe ()
       fd2r, fd2w = pipe ()
@@ -101,104 +76,76 @@ local function shell (args)
       end
       if not args.to_tty then
 	 close(fd1r)
-	 close(fd2r)
-	 --local inpfile = io.open ("/dev/tty", "r")
-	 local outfile = io.stdout
-	 local errfile = io.stderr
-	 --dup2 (inpfile, fileno(io.stdin)) -- stdin
 	 dup2 (fd1w, fileno(io.stdout)) -- stdout
+	 close(fd2r)
 	 dup2 (fd2w, fileno(io.stderr)) -- stderr
       end
-      local cmd, args = args[1], { select (2, table.unpack (args)) }
-      local exitcode, errmsg = execp (cmd, args)
-      if not args.to_tty then
-	 io.stdout = outfile
-	 io.stderr = errfile
-      end
-      assert (exitcode, errmsg)
+      local cmd = table.remove (args, 1)
+      assert (execp (cmd, args))
       _exit (1) -- not reached ???
+   end
+   if args.to_tty then
+      local pid, status, exitcode = wait (pid)
+      TRACE ("==>", exitcode, status)
+      return exitcode == 0, status
+   end
+   close(fd1w)
+   close(fd2r) -- OK to ignore any output to stderr ???
+   close(fd2w)
+   local inp = fdopen (fd1r, "r")
+   local result = {}
+   local line = inp:read()
+   while line do
+      table.insert (result, line)
+      line = inp:read()
+   end
+   inp:close()
+   local pid, status, exitcode = wait (pid)
+   TRACE ("==>", exitcode, status)
+   if (args.table) then
+      return result
    else
-      if not args.to_tty then
-	 close(fd1w)
-	 close(fd2w)
-	 local poll_cond = {events = {IN = true}}
-	 local fds = {[fd1r] = {events = {IN = true}} , [fd2r] = {events = {IN = true}}}
-	 local done
-	 local result = { [fd1r] = "", [fd2r] = "" }
-	 while not done do
-	    poll (fds, -1)
-	    for fd in pairs (fds) do
-	       if fds[fd].revents.IN then
-		  result[fd] = result[fd] .. read (fd, 8192)
-	       end
-	       if fds[fd].revents.HUP then
-		  fds[fd] = nil
-		  close (fd)
-		  if not next (fds) then
-		     done = true
-		  end
-	       end
-	    end
-	 end
-	 local pid, status, exitcode = wait (pid)
-	 local result = result[fd1r]
-	 TRACE ("==>", result)
-	 if result then
-	    if args.table then
-	       return split_lines (result)
-	    else
-	       local nl_pos = string.find (result, "\n", 1, true)
-	       if nl_pos then
-		  if nl_pos < #result then
-		     error ("shell command unexpectedly returned multiple lines")
-		  end
-		  return string.sub (result, 1, nl_pos - 1)
-	       end
-	    end
-	 end
-	 return result
-      else
-	 local pid, status, exitcode = wait (pid)
-	 TRACE ("==>", exitcode, status)
-	 return exitcode == 0, status
-      end
+      return result[1]
    end
 end
 
 -- execute command according to passed flags argument
 local function run (args)
-   local log_level = args.safe and 2 or 0
-   --TRACE ("run", table.concat (table.keys (args), ","), cmd, table.unpack (args))
-   log (log_level, table.unpack (args))
-   if not Options.dry_run or args.safe then
-      if args.table then
-	 local result = {}
+   TRACE ("run", "[" .. table.concat (table.keys (args), ",") .. "]", table.unpack (args))
+   if JAILBASE and args.jailed then
+      table.insert (args, 1, CHROOT_CMD)
+      table.insert (args, 2, JAILBASE)
+      if not args.as_root then
+	 table.insert (args, 2, "-u")
+	 table.insert (args, 3, "se")
+	 args.as_root = true
+      end
+      args.jailed = nil
+   end
+   if args.as_root and SUDO_CMD then
+      table.insert (args, 1, SUDO_CMD)
+      --args.to_tty = true -- required for password entry requested by sudo command
+   end
+   if args.log then
+      if Options.dry_run or Options.show_work then
+	 local args = args
 	 for i, v in ipairs (args) do
 	    if string.match (v, "%s") then
 	       args[i] = "'" .. v .. "'"
 	    end
 	 end
-	 local cmdline = table.concat (args, " ")
-	 --print ("CMD", cmdline)
-	 local inp = io.popen (cmdline, "r")
-	 if inp then
-	    line = inp:read ()
-	    while line do
-	       table.insert (result, line)
-	       line = inp:read ()
-	    end
-	    io.close (inp)
-	    TRACE ("RUN", cmdline, "-->", #result, "lines")
-	    return result
+	 args.level = args.safe and 2 or 0
+	 if Options.dry_run then
+	    Msg.show {verbatim = true, "\t" .. table.concat (args, " ") .. "\n"}
 	 else
-	    return nil, "command failed: cmdline"
+	    Msg.show (args)
 	 end
-      else
-	 return shell (args)
       end
-   else
-      return "" -- dummy return value for --dry-run
    end
+   if Options.dry_run and not args.safe then
+      return args.table and {} or "" -- dummy return value for --dry-run
+   end
+   return shell (args)
 end
 
 -- run make command
@@ -239,6 +186,4 @@ return {
    make = make,
    pkg = pkg,
    run = run,
-   shell = shell,
-   shell_pipe = shell_pipe,
 }

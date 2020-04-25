@@ -100,7 +100,7 @@ local function install (pkg)
    TRACE ("INSTALL", abi, pkgfile)
    if pkgfile:match (".*/pkg-[^/]+$") then -- pkg command itself
       if not access (PKG_CMD, "x") then
-	 Exec.run {as_root = true, to_tty = true, env = {"ASSUME_ALWAYS_YES=yes"}, "/usr/sbin/pkg", "-v"}
+	 Exec.run {as_root = true, log = true, to_tty = true, env = {"ASSUME_ALWAYS_YES=yes"}, "/usr/sbin/pkg", "-v"}
       end
       args.env = {SIGNATURE_TYPE = "none"}
    elseif abi then
@@ -123,12 +123,12 @@ local function category_links_create (pkg_new, categories)
    for i, category in ipairs (categories) do
       local destination = PACKAGES .. category
       if not is_dir (destination) then
-	 Exec.run {as_root = true, "mkdir", "-p", destination}
+	 Exec.run {as_root = true, log = true, "mkdir", "-p", destination}
       end
       if category == "Latest" then
 	 destination = destination .. "/" .. pkg_new.name_base .. "." .. extension
       end
-      Exec.run {as_root = true, "ln", "-sf", source, destination}
+      Exec.run {as_root = true, log = true, "ln", "-sf", source, destination}
    end
 end
 
@@ -139,7 +139,7 @@ local function recover (pkg)
    local pkgname = pkg.name
    local pkgfile = pkg.pkgfile
    if not pkgfile then
-      pkgfile = Exec.shell {table = true, safe = true, "ls", "-1t", PACKAGES_BACKUP .. pkgname .. ".*"}[1] -- XXX replace with glob and sort by modification time ==> pkg.bakfile
+      pkgfile = Exec.run {table = true, safe = true, "ls", "-1t", PACKAGES_BACKUP .. pkgname .. ".*"}[1] -- XXX replace with glob and sort by modification time ==> pkg.bakfile
    end
    if pkgfile and access (pkgfile, "r") then
       Msg.show {"Re-installing previous version", pkgname}
@@ -148,7 +148,7 @@ local function recover (pkg)
 	    pkg:automatic_set (true)
 	 end
 	 shlibs_backup_remove_stale (pkg)
-	 Exec.run {as_root = true, "/bin/unlink", PACKAGES_BACKUP .. pkgname_old .. ".t??"} -- required ???
+	 Exec.run {as_root = true, log = true, "/bin/unlink", PACKAGES_BACKUP .. pkgname_old .. ".t??"} -- required ???
 	 return true
       end
    end
@@ -191,7 +191,7 @@ local function backup_delete (pkg)
    local g = filename {subdir = "portmaster-backup", ext = ".t??", pkg}
    for i, backupfile in pairs (glob (g) or {}) do
       TRACE ("BACKUP_DELETE", backupfile, PACKAGES .. "portmaster-backup/")
-      Exec.run {as_root = true, "/bin/unlink", backupfile}
+      Exec.run {as_root = true, log = true, "/bin/unlink", backupfile}
    end
 end
 
@@ -203,7 +203,7 @@ local function delete_old (pkg)
    for i, pkgfile in pairs (glob (g) or {}) do
       TRACE ("CHECK_BACKUP", pkgfile, bakfile)
       if pkgfile ~= bakfile then
-	 Exec.run {as_root = true, "/bin/unlink", pkgfile}
+	 Exec.run {as_root = true, log = true, "/bin/unlink", pkgfile}
       end
    end
 end
@@ -214,7 +214,7 @@ end
 function shlibs_backup (pkg)
    local pkg_libs = pkg.shared_libs
    if pkg_libs then
-      local ldconfig_lines = Exec.run {table = true, safe = true, LDCONFIG_CMD, "-r"} -- "RT?" ??? CACHE LDCONFIG OUTPUT???
+      local ldconfig_lines = Exec.run {log = true, table = true, safe = true, LDCONFIG_CMD, "-r"} -- "RT?" ??? CACHE LDCONFIG OUTPUT???
       for i, line in ipairs (ldconfig_lines) do
 	 local libpath, lib = string.match (line, " => (" .. LOCAL_LIB .. "*(lib.*%.so%..*))")
 	 if lib then
@@ -223,9 +223,9 @@ function shlibs_backup (pkg)
 		  if l == lib then
 		     local backup_lib = LOCAL_LIB_COMPAT .. lib
 		     if access (backup_lib, "r") then
-			Exec.run {as_root = true, to_tty = true, "/bin/unlink", backup_lib}
+			Exec.run {as_root = true, log = true, to_tty = true, "/bin/unlink", backup_lib}
 		     end
-		     Exec.run {as_root = true, "/bin/cp", libpath, backup_lib}
+		     Exec.run {as_root = true, log = true, "/bin/cp", libpath, backup_lib}
 		  end
 	       end
 	    end
@@ -246,8 +246,8 @@ local function shlibs_backup_remove_stale (pkg)
 	 end
       end
       if #deletes > 0 then
-	 Exec.run {as_root = true, "/bin/rm", "-f", table.unpack (deletes)}
-	 Exec.run {as_root = true , LDCONFIG_CMD, "-R"}
+	 Exec.run {as_root = true, log = true, "/bin/rm", "-f", table.unpack (deletes)}
+	 Exec.run {as_root = true, log = true, LDCONFIG_CMD, "-R"}
       end
       return true
    end

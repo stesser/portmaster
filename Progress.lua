@@ -123,7 +123,7 @@ local function list (action, table)
       end
       incr ()
       Msg.show {PROGRESS.state, describe_task (origin_old, origin_new, pkgname_old, pkgname_new, pkgfile)}
-      if Msg.level > 0 and PHASE ~= "install" and origin_new ~= "" and pkgfile == "" then
+      if Msg.level () > 0 and PHASE ~= "install" and origin_new ~= "" and pkgfile == "" then
 	 for i, origin in ipairs (DEP_DEL_AFTER_BUILD[origin_new]) do
 	    Msg.show {level = 1, "Deinstall no longer required build dependency", PKGNAME_NEW[origin]}
 	    for i, origin in ipairs (DEP_DEL_AFTER_RUN[origin]) do

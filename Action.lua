@@ -1045,15 +1045,15 @@ local function perform_install_or_upgrade (action)
    local seconds
    if not pkgfile then
       --assert (NYI: origin_new:wait_checksum ())
-      if not Options.fetch_only and not Options.dry_run then
+      if not Options.fetch_only then
 	 seconds = os.time()
 	 if not perform_portbuild (action) then
 	    return false
 	 end
 	 -- create package file from staging area
-	 if true or Options.create_package then
+	 if Options.create_package then
 	    if not package_create (action) then
-	       Msg.show {"Could not write package file for", pkgname_new}
+	       Msg.show {"Could not write package file for", pkg_new.name}
 	       return false
 	    end
 	 end
@@ -1307,7 +1307,8 @@ end
 
 -- display actions that will be performed
 local function show_tasks ()
-   Msg.show {start = true, "The following actions are required to perform the requested upgrade:"}
+   Msg.show {start = true}
+   Msg.show {"The following actions are required to perform the requested upgrade:"}
    Progress.set_max (num_actions)
    Progress.list ("delete", DELETES)
    Progress.list ("move", MOVES)

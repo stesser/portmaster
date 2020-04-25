@@ -295,7 +295,7 @@ VALID_OPTS = {
    recursive		= { "r", "port", "force building of dependent ports",					function (o, v) ports_add_recursive (v, Options.replace_origin) opt_clear ("replace_origin") end },
    clean_stale		= { "s", nil,	"deinstall unused packages that were installed as dependency",		function (o, v) opt_set (o, v) opt_set ("thorough", "yes") end },
    thorough		= { "t", nil,	"check all dependencies and de_install unused automatic packages",	function (o, v) opt_set (o, v) end },
-   verbose		= { "v", false,	"increase verbosity level",						function (o, v) Msg.level = Msg.level + 1 end },
+   verbose		= { "v", false,	"increase verbosity level",						function (o, v) Msg.incr_level () end },
    save_shared		= { "w", nil,	"keep backups of upgraded shared libraries",				function (o, v) opt_set (o, v) end },
    exclude		= { "x", "pattern", "add pattern to exclude list",					function (o, v) Excludes.add (v) end },
    default_yes		= { "y", nil,	"assume answer 'yes'",							function (o, v) opt_set (o, v) opt_clear ("default_no", o) end },
@@ -541,7 +541,7 @@ local function save ()
       end
    end
 
-   for i = 1, Msg.level do
+   for i = 1, Msg.level () do
       tmpf:write ("verbose=yes\n")
    end
    w ("")

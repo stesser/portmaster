@@ -375,7 +375,7 @@ local function packages_cache_load ()
       p.abi = abi
       p.is_automatic = automatic == "1"
       p.is_locked = locked == "1"
-      p.is_installed = true
+      p.is_installed = not Options.jailed
       p.num_depending = 0
       p.dep_pkgs = {}
       p.fbsd_version = pkg_fbsd_version[pkgname]
@@ -421,7 +421,7 @@ local function installed_pkgs ()
    packages_cache_load ()
    local result = {}
    for k, v in pairs (PACKAGES_CACHE) do
-      if v.is_installed then
+      if v.is_installed or Options.jailed then
 	 table.insert (result, PACKAGES_CACHE[k])
       end
    end

@@ -1,0 +1,13 @@
+.vscode/settings.json
+*.xlsx
+._*
+*.diff
+*.orig
+*.rej
+*.ads
+*.adb
+*.sh
+OLD/*
+~$*
+*~~
+.DS_*

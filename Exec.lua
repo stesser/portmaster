@@ -115,16 +115,20 @@ local function run (args)
    if JAILBASE and args.jailed then
       table.insert (args, 1, CHROOT_CMD)
       table.insert (args, 2, JAILBASE)
-      if not args.as_root then
-	 table.insert (args, 2, "-u")
-	 table.insert (args, 3, "se")
+      if not args.as_root and SUDO_CMD then -- chroot needs root but can then switch back to user
 	 args.as_root = true
+	 table.insert (args, 2, "-u")
+	 table.insert (args, 3, USER)
       end
-      args.jailed = nil
    end
    if args.as_root and SUDO_CMD then
       table.insert (args, 1, SUDO_CMD)
-      --args.to_tty = true -- required for password entry requested by sudo command
+      if args.env then
+	 for k, v in pairs (args.env) do
+	    table.insert (args, 2, k .. "=" .. v)
+	 end
+	 args.env = nil
+      end
    end
    if args.log then
       if Options.dry_run or Options.show_work then

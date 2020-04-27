@@ -100,11 +100,12 @@ local function opt_check (opt)
 	 return opt
       end
    end
-   error ("Invalid option " .. opt, 2)
+   error ("Invalid option " .. (opt or "<nil>"), 2)
 end
 
 -- process long option of type "--longopt=param" with optional param
 local function longopt_action (opt, arg)
+   TRACE ("LONGOPT_ACTION", opt, arg)
    local opt_rec = VALID_OPTS[opt]
    if not opt_rec then
       opt_err (opt)
@@ -133,6 +134,7 @@ end
 -- 
 local function rcfile_tryload (filename)
    local inp = io.open (filename, "r")
+   TRACE ("RCFILE_TRYLOAD", filename, inp or tostring (inp))
    if not inp then
       return
    end
@@ -172,6 +174,7 @@ end
 
 -- set option (or clear, if value is nil)
 local function opt_set (opt, value)
+   TRACE ("OPT_SET", opt, value or tostring (value))
    Options[opt] = value
 end
 
@@ -296,7 +299,7 @@ VALID_OPTS = {
    clean_stale		= { "s", nil,	"deinstall unused packages that were installed as dependency",		function (o, v) opt_set (o, v) opt_set ("thorough", "yes") end },
    thorough		= { "t", nil,	"check all dependencies and de_install unused automatic packages",	function (o, v) opt_set (o, v) end },
    verbose		= { "v", false,	"increase verbosity level",						function (o, v) Msg.incr_level () end },
-   save_shared		= { "w", nil,	"keep backups of upgraded shared libraries",				function (o, v) opt_set (o, v) end },
+   save_shared		= { "w", nil,	"keep backup copies of replaced shared libraries",			function (o, v) opt_set (o, v) end },
    exclude		= { "x", "pattern", "add pattern to exclude list",					function (o, v) Excludes.add (v) end },
    default_yes		= { "y", nil,	"assume answer 'yes'",							function (o, v) opt_set (o, v) opt_clear ("default_no", o) end },
    developer_mode	= { nil, nil,	"create log and trace files",						function (o, v) tracefd = io.open (TRACEFILE, "w") end },
@@ -322,7 +325,7 @@ local function init ()
    rcfile_tryload ("/usr/local/etc/portmaster.rc")
 
    -- Read a local one next, and allow the command line to override later
-   rcfile_tryload (os.getenv ("HOME") .. "/.portmasterrc")
+   rcfile_tryload (path_concat (os.getenv ("HOME"), "/.portmasterrc"))
 
       -- options processing
    local longopt_i = 0

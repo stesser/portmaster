@@ -141,18 +141,25 @@ local function package_create (action)
       Msg.show {"A package file for", pkgname, "does already exist and will not be overwritten"}
    else
       Msg.show {"Create a package for new version", pkgname}
-      if not origin_new:port_make {jailed = Options.jailed, to_tty = true, "-D", "_OPTIONS_OK", "PACKAGES=/tmp", "PKG_SUFX=." .. Options.package_format, "package"} then
-	 return false
-      end -- >&4
-      if Options.jailed then
-	 local filename = action.pkg_new.filename
-	 os.rename (JAILBASE .. "/tmp/All/" .. filename, PACKAGES .. filename) -- <se> SUDO required ???
+      local jailed = Options.jailed
+      local as_root = PACKAGES_RO
+      local base = as_root and TMPDIR or PACKAGES -- use random tempdir !!!
+      local sufx = "." .. Options.package_format
+      if origin_new:port_make {jailed = jailed, to_tty = true, "-D", "_OPTIONS_OK", "PACKAGES=" .. base, "PKG_SUFX=" .. sufx, "package"} then
+	 if as_root then
+	    local tmpfile = path_concat (base, "All/", pkgname .. sufx)
+	    if jailed then
+	       tmpfile = path_concat (JAILBASE, tmpfile)
+	    end
+	    chown (tmpfile, 0, 0)
+	    Exec.run {as_root = true, "/bin/mv", tmpfile, pkgfile}
+	 end
+	 assert (Options.dry_run or access (pkgfile, "r"), "Package file has not been created")
+	 action.pkg_new:category_links_create (origin_new.categories)
+	 Msg.show {"Package saved to", pkgfile}
       end
-      assert (Options.dry_run or access (pkgfile, "r"), "Package file has not been created")
-      action.pkg_new:category_links_create (origin_new.categories)
-      Msg.show {"Package saved to", pkgfile}
+      return true
    end
-   return true
 end
 
 -- clean work directory and special build depends (might also be delayed to just before program exit)
@@ -196,6 +203,7 @@ end
 -- ==> Register for each dependency (key) which port (value) relies on it
 -- ==> The run dependency (key) can be deinstalled, if the registered port (value) registered last has been deinstalled
 
+--[[
 local RECURSIVE_MSG = ""
 
 -- print first line for new port being checked for the need of upgrades or changes
@@ -368,6 +376,7 @@ local function register_delete (action)
    end
    return true
 end
+--]]
 
 -- check conflicts of new port with installed packages (empty table if no conflicts found)
 local function conflicting_pkgs (action, mode)
@@ -956,15 +965,15 @@ local function perform_installation (action)
 	 end
 	 -- preserve pkg-static even when deleting the "pkg" package
 	 if action.origin_new == "ports-mgmt/pkg" then
-	    shell ("unlink", {as_root = true, PKG_CMD .. "~"})
-	    shell ("ln", {as_root = true, PKG_CMD, PKG_CMD .. "~"})
+	    Exec.run {as_root = true, "unlink", PKG_CMD .. "~"}
+	    Exec.run {as_root = true, "ln", PKG_CMD, PKG_CMD .. "~"}
 	 end
 	 -- delete old package version
 	 p_o:deinstall (create_backup) -- OUTPUT
 	 -- restore pkg-static if it has been preserved
 	 if origin_new == "ports-mgmt/pkg" then
-	    shell ("unlink", {as_root = true, PKG_CMD})
-	    shell ("mv", {as_root = true, PKG_CMD .. "~", PKG_CMD})
+	    Exec.run {as_root = true, "unlink", PKG_CMD}
+	    Exec.run {as_root = true, "mv", PKG_CMD .. "~", PKG_CMD}
 	 end
       end
    end
@@ -972,13 +981,7 @@ local function perform_installation (action)
       -- try to install from package
       Progress.show ("Install", pkgname_new, "from a package")
       -- <se> DEAL WITH CONFLICTS ONLY DETECTED BY PLIST CHECK DURING PKG REGISTRATION!!!
-      local result
-      if Options.jailed then
-	 result = p_n:install_jailed ()
-      else
-	 result = p_n:install ()
-      end
-      if not result then
+      if not p_n:install () then
 	 -- OUTPUT
 	 if not Options.jailed then
 	    p_n:deinstall () -- OUTPUT
@@ -1031,14 +1034,17 @@ end
 -- install or upgrade a port
 local function perform_install_or_upgrade (action)
    local o_n = action.origin_new
+   local p_n = action.pkg_new
+   TRACE ("P", p_n.name, p_n.pkgfile, table.unpack (table.keys (p_n)))
    -- has a package been identified to be used instead of building the port?
    local pkgfile
    -- CHECK CONDITION for use of pkgfile: if build_type ~= "force" and not Options.packages and (not Options.packages_build or dep_type ~= "build") then
-   if true or not action.force and (Options.packages or Options.packages_build and not action.pkg_new.is_run_dep) then -- XXX TESTTESTTEST
-      pkgfile = action.pkg_new.pkgfile
+   if true or not action.force and (Options.packages or Options.packages_build and not p_n.is_run_dep) then -- XXX TESTTESTTEST
+      TRACE ("P", p_n.name, p_n.pkgfile, table.unpack (table.keys (p_n)))
+      pkgfile = p_n.pkgfile
       TRACE ("PKGFILE", pkgfile)
    end
-   local skip_install = (Options.skip_install or Options.jailed) -- NYI: and BUILDDEP[o_n]
+   local skip_install = (Options.skip_install or Options.jailed) and not p_n.is_build_dep -- NYI: and BUILDDEP[o_n]
    local taskmsg = describe (action)
    Progress.show_task (taskmsg)
    -- if not installing from a package file ...
@@ -1061,6 +1067,7 @@ local function perform_install_or_upgrade (action)
    end
    -- install build depends immediately but optionally delay installation of other ports
    if not skip_install then
+   TRACE ("PKGFILE2", pkgfile)
       if not perform_installation (action) then
 	 return false
       end
@@ -1111,10 +1118,11 @@ end
 
 -- peform delayed installation of ports not required as build dependencies after all ports have been built
 local function perform_delayed_installation (action)
-   action.pkgfile = Package.filename (PACKAGES .. "All", pkgname_new, Options.package_format)
+   local p_n = action.pkg_new
+   action.pkg_new.pkgfile = Package.filename {p_n}
    local taskmsg = describe (action)
    Progress.show_task (taskmsg)
-   assert (perform_installation (action), "Installation of " .. pkgname_new .. " from " .. pkgfile .. " failed")
+   assert (perform_installation (action), "Installation of " .. p_n.name .. " from " .. pkgfile .. " failed")
    Msg.success_add (taskmsg)
 end
 

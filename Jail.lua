@@ -292,8 +292,8 @@ local function setup_etc (jaildir)
 end
 
 local function setup_var_run (jaildir)
-   Exec.run {jailed = true, log = true, "ldconfig", "/lib", "/usr/lib", LOCALBASE .. "/lib"}
-   Exec.run {jailed = true, log = true, "ldconfig", "-32", "/usr/lib32", LOCALBASE .. "/lib32"}
+   Exec.run {as_root = true, jailed = true, log = true, "ldconfig", "/lib", "/usr/lib", LOCALBASE .. "/lib"}
+   Exec.run {as_root = true, jailed = true, log = true, "ldconfig", "-32", "/usr/lib32", LOCALBASE .. "/lib32"}
 end
 
 local function setup_usr_local (jaildir)
@@ -317,7 +317,7 @@ local function create ()
 end
 
 local function destroy ()
-   unmount_all (JAILBASE)
+--   unmount_all (JAILBASE)
    JAILBASE = nil
 end
 

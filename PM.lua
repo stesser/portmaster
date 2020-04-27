@@ -51,6 +51,9 @@ fileno = P_IO.fileno
 P_PP = require ("posix.poll")
 poll = P_PP.poll
 
+P_PW = require ("posix.pwd")
+getpwuid = P_PW.getpwuid
+
 P_SL = require ("posix.stdlib")
 setenv = P_SL.setenv
 
@@ -66,12 +69,14 @@ wait = P_SW.wait
 P_US = require ("posix.unistd")
 access = P_US.access
 chdir = P_US.chdir
+chown = P_US.chown
 close = P_US.close
 dup2 = P_US.dup2
 execp = P_US.execp
 fork = P_US.fork
 geteuid = P_US.geteuid
 getpid = P_US.getpid
+getuid = P_US.getuid
 pipe = P_US.pipe
 read = P_US.read
 rmdir = P_US.rmdir
@@ -486,15 +491,21 @@ function init_globals ()
    -- port infrastructure paths, may be modified by user
    PORTSDIR		= init_global_path (ports_var {"PORTSDIR"}, "/usr/ports")
    DISTDIR		= init_global_path (ports_var {"DISTDIR"}, path_concat (PORTSDIR, "distfiles"))
+   DISTDIR_RO		= not access (DISTDIR, "rw") -- need sudo to fetch or purge distfiles
+
    PACKAGES		= init_global_path (Options.local_packagedir, ports_var {"PACKAGES"}, path_concat (PORTSDIR, "packages"), "/usr/packages")
    PACKAGES_BACKUP	= init_global_path (PACKAGES .. "portmaster-backup")
-
+   PACKAGES_RO		= not access (PACKAGES, "rw") -- need sudo to create or delete package files
+   
    LOCALBASE		= init_global_path (ports_var {"LOCALBASE"}, "/usr/local")
    LOCAL_LIB		= init_global_path (path_concat (LOCALBASE, "lib"))
    LOCAL_LIB_COMPAT	= init_global_path (path_concat (LOCAL_LIB, "compat/pkg"))
 
    PKG_DBDIR		= init_global_path (ports_var {needportmk = true, "PKG_DBDIR"}, "/var/db/pkg")	-- no value returned for make -DBEFOREPORTMK
+   PKG_DBDIR_RO		= not access (PKG_DBDIR, "rw") -- need sudo to update the package database
+
    PORT_DBDIR		= init_global_path (ports_var {"PORT_DBDIR"}, "/var/db/ports")
+   PORT_DBDIR_RO	= not access (PORT_DBDIR, "rw") -- need sudo to record port options
 
    TMPDIR		= init_global_path (os.getenv ("TMPDIR"), "/tmp")
 
@@ -505,8 +516,15 @@ function init_globals ()
 -- 	[ -x "${LOCALBASE}sbin/pkg-static" ] || ASSUME_ALWAYS_YES=yes /usr/sbin/pkg -v > /dev/null
    PKG_CMD		= init_global_cmd (path_concat (LOCALBASE, "sbin/pkg-static"))
 
-   if not SUDO_CMD and geteuid () ~= 0 then
-      SUDO_CMD = init_global_cmd (path_concat (LOCALBASE, "bin/sudo"))
+   UID = geteuid ()
+   local pw_entry = getpwuid (UID)
+   USER = pw_entry.pw_name
+   HOME = pw_entry.pw_dir
+   TRACE ("PW_ENTRY", UID, EUID, USER, HOME)
+
+   if not SUDO_CMD and UID ~= 0 then
+      local cmd = Options.su_cmd or "sudo"
+      SUDO_CMD = init_global_cmd (path_concat (LOCALBASE, "sbin", cmd), path_concat (LOCALBASE, "bin", cmd))
    end
 
    -- locate grep command that provided required functionality
@@ -1063,7 +1081,7 @@ function ports_add_multiple (args)
       if string.match (v, "/") and access (path_concat (PORTSDIR, v, "Makefile"), "r") then
 	 local o = Origin:new (v)
 	 local p = o.pkg_new
-	 Action:new {build_type = "user", dep_type = "run", force = force, origin_new = o, pkg_new = p}
+	 Action:new {build_type = "user", dep_type = "run", force = Options.force, origin_new = o, pkg_new = p}
       end
    end
    --[[
@@ -1153,6 +1171,7 @@ end
 -- ask whether some directory and its contents  should be deleted (except when -n or -y enforce a default answer)
 function ask_and_delete_directory (prompt, ...)
    local msg_level = 1
+   local answer
    if Options.default_no then
       answer = "q"
    end
@@ -1574,7 +1593,7 @@ function TEST_ ()
 end
 --]]
 
-local sucess, errmsg = xpcall (main, debug.traceback)
+local success, errmsg = xpcall (main, debug.traceback)
 if not success then
    fail (errmsg)
 end

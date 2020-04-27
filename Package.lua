@@ -92,26 +92,23 @@ local function deinstall (package, make_backup)
 end
 
 -- ----------------------------------------------------------------------------------
--- install package from passed pkg filename
+-- install package from passed pkg
 local function install (pkg)
    local pkgfile = pkg.pkgfile
    local abi = pkg.pkgfile_abi
-   local args = {as_root = true, to_tty = true, env = {IGNORE_OSVERSION = "yes"}, "add", "-M", pkgfile}
+   local jailed = Options.jailed
+   local env = {IGNORE_OSVERSION = "yes"}
    TRACE ("INSTALL", abi, pkgfile)
    if pkgfile:match (".*/pkg-[^/]+$") then -- pkg command itself
       if not access (PKG_CMD, "x") then
-	 Exec.run {as_root = true, log = true, to_tty = true, env = {"ASSUME_ALWAYS_YES=yes"}, "/usr/sbin/pkg", "-v"}
+	 env.ASSUME_ALWAYS_YES = "yes"
+	 Exec.run {as_root = true, jailed = jailed, log = true, to_tty = true, env = env, "/usr/sbin/pkg", "-v"}
       end
-      args.env = {SIGNATURE_TYPE = "none"}
+      env.SIGNATURE_TYPE = "none"
    elseif abi then
-      args.env = {ABI = abi}
+      env.ABI = abi
    end
-   return Exec.pkg (args)
-end
-
--- install package from passed pkg filename in jail
-local function install_jailed (pkg)
-   return pkg {jailed = true, "add", "-M", pkg.pkgfile}
+   return Exec.pkg {as_root = true, jailed = jailed, to_tty = true, env = env, "add", "-M", pkgfile}
 end
 
 -- create category links and a lastest link

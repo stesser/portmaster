@@ -93,11 +93,11 @@ local function deinstall (package, make_backup)
    local pkgname = package.name
    if make_backup then
       Progress.show ("Create backup package for", pkgname)
-      pkg {as_root = true, "create", "-q", "-o", PACKAGES_BACKUP, "-f", Options.backup_format, pkgname}
+      Exec.pkg {as_root = true, "create", "-q", "-o", PACKAGES_BACKUP, "-f", Options.backup_format, pkgname}
    end
    if Options.jailed and PHASE ~= "install" then
       Progress.show ("De-install", pkgname, "from build jail")
-      return pkg {jailed = true, "delete", "-y", "-q", "-f", pkgname}
+      return Exec.pkg {jailed = true, "delete", "-y", "-q", "-f", pkgname}
    else
       Progress.show ("De-install", pkgname)
       return Exec.pkg {as_root = true, "delete", "-y", "-q", "-f", pkgname}

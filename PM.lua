@@ -27,6 +27,32 @@ OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 SUCH DAMAGE.
 --]]
 
+-- ----------------------------------------------------------------------------------
+package.path = package.path .. ";/home/se/src/GIT/portmaster/?.lua"
+
+-- ----------------------------------------------------------------------------------
+local P = require ("posix")
+local glob = P.glob
+
+local P_PW = require ("posix.pwd")
+local getpwuid = P_PW.getpwuid
+
+local P_SL = require ("posix.stdlib")
+local setenv = P_SL.setenv
+
+local P_SS = require ("posix.sys.stat")
+local stat = P_SS.stat
+local lstat = P_SS.lstat
+local stat_isdir = P_SS.S_ISDIR
+local stat_isreg = P_SS.S_ISREG
+
+local P_US = require ("posix.unistd")
+local access = P_US.access
+local chdir = P_US.chdir
+local geteuid = P_US.geteuid
+local getpid = P_US.getpid
+local ttyname = P_US.ttyname
+
 --[[
 function trace (event, line)
    local s = debug.getinfo (2).short_src
@@ -38,52 +64,6 @@ debug.sethook (trace, "l")
 -- R = require ("strict")
 
 -- local _debug = require 'std._debug'(true)
-
-P = require ("posix")
-glob = P.glob
-umask = P.umask
-_exit = P._exit
-
-P_IO = require ("posix.stdio")
-fdopen = P_IO.fdopen
-fileno = P_IO.fileno
-
-P_PP = require ("posix.poll")
-poll = P_PP.poll
-
-P_PW = require ("posix.pwd")
-getpwuid = P_PW.getpwuid
-
-P_SL = require ("posix.stdlib")
-setenv = P_SL.setenv
-
-P_SS = require ("posix.sys.stat")
-stat = P_SS.stat
-lstat = P_SS.lstat
-stat_isdir = P_SS.S_ISDIR
-stat_isreg = P_SS.S_ISREG
-
-P_SW = require ("posix.sys.wait")
-wait = P_SW.wait
-
-P_US = require ("posix.unistd")
-access = P_US.access
-chdir = P_US.chdir
-chown = P_US.chown
-close = P_US.close
-dup2 = P_US.dup2
-execp = P_US.execp
-fork = P_US.fork
-geteuid = P_US.geteuid
-getpid = P_US.getpid
-getuid = P_US.getuid
-pipe = P_US.pipe
-read = P_US.read
-rmdir = P_US.rmdir
-sleep = P_US.sleep
-ttyname = P_US.ttyname
-
-package.path = package.path .. ";/home/se/src/GIT/portmaster/?.lua"
 
 Port = require ("Port")
 Origin = require ("Origin")
@@ -118,6 +98,7 @@ setenv ("CASE_SENSITIVE_MATCH", "yes")
 setenv ("LOCK_RETRIES", "120")
 -- setenv ("WRKDIRPREFIX", "/usr/work") -- ports_var ???
 
+--[[
 -- ----------------------------------------------------------------------------------
 NUM = { -- GLOBAL
    actions = 0,
@@ -131,10 +112,11 @@ NUM = { -- GLOBAL
    builds = 0,
    provides = 0,
 }
+]]
 
 -- ----------------------------------------------------------------------------------
 -- clean up when script execution ends
-function exit_cleanup (exit_code)
+local function exit_cleanup (exit_code)
    exit_code = exit_code or 0
    -- echo EXIT_CLEANUP PID=$$ MASTER_PID=$PID >&3
    --  "$$" = "$PID" ] || exit 0
@@ -161,13 +143,15 @@ end
 
 local STARTTIMESECS = os.time ()
 -- trivial trace function printing to stdout (UTIL)
+local tracefd
+
 function TRACE (...)
    if tracefd then
       local sep = ""
       local tracemsg = ""
       local t = {...}
       for i = 1, #t do
-	 v = t[i] or "<" .. tostring (t[i]) .. ">"
+	 local v = t[i] or ("<" .. tostring (t[i]) .. ">")
 	 v = tostring (v)
 	 if v == "" or string.find (v, " ") then
 	    v = "'" .. v .. "'"
@@ -305,7 +289,7 @@ end
 JAILBASE = nil -- GLOBAL
 
 -- ----------------------------------------------------------------------------------
--- wait for new-line, ignore any input given
+-- wait for new-line, ignore any input given -- move all read_*() to Msg mdoule ???
 function read_nl (prompt)
    Msg.show {prompt = true, prompt}
    stdin:read("*l")
@@ -507,6 +491,9 @@ function init_globals ()
    PORT_DBDIR		= init_global_path (ports_var {"PORT_DBDIR"}, "/var/db/ports")
    PORT_DBDIR_RO	= not access (PORT_DBDIR, "rw") -- need sudo to record port options
 
+   WRKDIRPREFIX		= init_global_path (ports_var {"WRKDIRPREFIX"}, "/")
+   WRKDIR_RO		= not access (path_concat (WRKDIRPREFIX, PORTSDIR), "rw") -- need sudo to build ports
+
    TMPDIR		= init_global_path (os.getenv ("TMPDIR"), "/tmp")
 
    -- 	cd "${PORTSDIR}" || fail "Cannot determine the base of the ports tree"
@@ -558,7 +545,7 @@ end
 -- ----------------------------------------------------------------------------------
 -- set sane defaults and cache some buildvariables in the environment
 -- <se> ToDo convert to sub-shell and "export -p | egrep '^(VAR1|VAR2)'" ???
-function init_environment ()
+local function init_environment ()
    local output
 
    -- reset PATH to a sane default
@@ -620,7 +607,8 @@ function pkgname_old_from_origin_new (origin_new)
    return pkgname_old -- may be nil
 end
 
--- add line to success message to display at the end
+-- ----------------------------------------------------------------------------------
+-- add line to success message to display at the end -- move message_*() to Msg module ???
 SUCCESS_MSGS = {} -- GLOBAL
 PKGMSG = {}
 
@@ -663,7 +651,7 @@ function messages_display ()
 end
 
 -- ----------------------------------------------------------------------------------
--- check parameter against excludes list
+-- check parameter against excludes list -- move to Excludes module ???
 function excludes_check (...)
    print ("EXCLUDES_CHECK", ...)
    for i, pattern in ipairs {...} do
@@ -681,7 +669,7 @@ function excludes_check (...)
 end
 
 -- try to find matching port origin (directory and optional flavor) given a passed in new origin and current package name
-function origin_from_dir_and_pkg (origin_new, pkgname_old)
+function origin_from_dir_and_pkg (origin_new, pkgname_old) -- move to Action module ???
 -- 	local pkgname_new pkgname_base pkgname_major dir flavors flavor
 -- 
    -- determine package name for given origin
@@ -795,7 +783,8 @@ function origin_from_dir (dir_glob)
 end
 --]]
 
--- return all origin@flavor for port(s) in relative or absolute directory "$dir" (<se> TOO EXPENSIVE!!!)
+-- ----------------------------------------------------------------------------------
+-- return all origin@flavor for port(s) in relative or absolute directory "$dir" (<se> TOO EXPENSIVE!!!) -- move to Origin module ???
 function origin_old_from_port (port_glob)
    local dir_glob = port_glob:port ()
    local flavors = port_glob:flavor ()
@@ -890,11 +879,10 @@ end
 -- ----------------------------------------------------------------------------------
 -- extract and patch files, but do not try to fetch any missing dist files
 function port_provide_special_depends (special_depends)
-   local origin_target
    for i, origin_target in ipairs (special_depends) do
       --print ("SPECIAL_DEPENDS", origin_target)
-      target = target_part (origin_target)
-      origin = origin_target:gsub(":.*", "") -- define function to strip the target ???
+      local target = target_part (origin_target)
+      local origin = origin_target:gsub(":.*", "") -- define function to strip the target ???
       assert (origin:wait_checksum ())
       if target ~= "fetch" and target ~= "checksum" then
 	 -- extract from package if $target=stage and _packages is set? <se>
@@ -912,15 +900,16 @@ end
 --#	port_make "$origin"  -D BATCH -D NO_DEPENDS identify-install-conflicts
 --#}
 
+--[[
 -- add the one port identified by the installed package name to the worklist
-function add_one_pkg (pkgname_old, origin_new) -- 2nd parameter is optional
+local function add_one_pkg (pkgname_old, origin_new) -- 2nd parameter is optional
    local build_type = Options.force and "force" or "auto"
    -- call choose_action with old origin and package name (new origin only if passed with -o)
    choose_action (build_type, "run", nil, origin_new, pkgname_old)
 end
 
 -- expand passed in pkgname or port glob (port glob with optional flavor)
-function add_with_globbing (args)
+local function add_with_globbing (args)
    local build_type = args.force and "force"
    local origin_new = args.origin_new -- ??? origin_new is actually never passed ...
    local origin_glob = args[1]
@@ -946,9 +935,10 @@ function add_with_globbing (args)
    end
    return matches
 end
+--]]
 
 -- replace passed package or port with one built from the new origin
-function ports_add_changed_origin (build_type, name, origin_new) -- 3d´rd arg is NOT optional
+local function ports_add_changed_origin (build_type, name, origin_new) -- 3d´rd arg is NOT optional
    if Options.force then
       build_type = "force"
    end
@@ -960,8 +950,9 @@ function ports_add_changed_origin (build_type, name, origin_new) -- 3d´rd arg i
    end
 end
 
+--[[
 -- find origin of a port that depends on the origin passed as second parameter
-function origin_new_from_dependency (origin_old, origin_dep)
+local function origin_new_from_dependency (origin_old, origin_dep)
    assert (origin_dep)
    local depends = origin_old:depends ("all") --  "all" vs. "run" ???
    if table.index (depends, origin_dep) then
@@ -993,7 +984,7 @@ function origin_new_from_dependency (origin_old, origin_dep)
 end
 
 -- add installed package and all dependencies for the given origin (with optional flavor)
-function ports_add_recursive (name, origin_new) -- 2nd parameter is optional
+local function ports_add_recursive (name, origin_new) -- 2nd parameter is optional
 -- 	local pkgnames pkgname pkgname_dep origin_old origin_old2 origin_new2
 -- 
    Package.package_cache_load () -- initialize ORIGIN_OLD (with flavor) and PKGNAME_OLD
@@ -1036,9 +1027,10 @@ function ports_add_recursive (name, origin_new) -- 2nd parameter is optional
       end
    end
 end
+--]]
 
 --
-function ports_update (filters)
+local function ports_update (filters)
    local pkgs, rest = Package:installed_pkgs (), {}
    for i, filter in ipairs (filters) do
       for i, pkg in ipairs (pkgs) do
@@ -1054,7 +1046,7 @@ function ports_update (filters)
 end
 
 -- add all matching ports identified by pkgnames and/or portnames with optional flavor
-function ports_add_multiple (args)
+local function ports_add_multiple (args)
    local pattern_table = {}
    for i, name_glob in ipairs (args) do
       local pattern = string.gsub (name_glob, "%.", "%%.")
@@ -1136,7 +1128,7 @@ local function ports_add_all_outdated ()
 end
 
 -- ---------------------------------------------------------------------------
--- ask whether some file should be deleted (except when -n or -y enforce a default answer)
+-- ask whether some file should be deleted (except when -n or -y enforce a default answer) -- move to Msg module -- convert to return table of files to delete?
 function ask_and_delete (prompt, ...)
    local msg_level = 1
    if Options.default_no then
@@ -1169,7 +1161,7 @@ function ask_and_delete (prompt, ...)
 end
 
 -- ask whether some directory and its contents  should be deleted (except when -n or -y enforce a default answer)
-function ask_and_delete_directory (prompt, ...)
+function ask_and_delete_directory (prompt, ...) -- move to Msg module -- convert to return table of directories to delete?
    local msg_level = 1
    local answer
    if Options.default_no then
@@ -1218,7 +1210,7 @@ end
 --#}
 
 -- list package files in current directory (e.g. portmaster-backup) except for the newest one for each package
-function list_old_package_files ()
+local function list_old_package_files ()
    -- create a list of packages with more than one package backup file
 -- 	files = ls (-1Lt *-*.t?? 2>/dev/null)
 -- 	duplicate_packages = echo ("$files" | sed -E 's|-[^-]*\.t..|-[^-]*\.t..|' | sort | uniq -d)
@@ -1231,7 +1223,7 @@ function list_old_package_files ()
 end
 
 -- # list package files for old versions in sub-directories of the current directory
-function list_stale_package_files ()
+local function list_stale_package_files ()
 -- 	local tmpfile packages_pattern
 -- 
 -- 	tmpfile = tempfile_create (PKGS)
@@ -1251,7 +1243,7 @@ function list_stale_package_files ()
 end
 
 -- # delete package files that do not belong to any currently installed port (except portmaster backup packages)
-function packagefiles_purge ()
+local function packagefiles_purge () -- move to new PackageFile module ???
 -- 	(
 -- 		local stale_packages dir
 -- 
@@ -1295,7 +1287,7 @@ function packagefiles_purge ()
 end
 
 -- ----------------------------------------------------------------------------------
-function list_stale_libraries ()
+local function list_stale_libraries ()
    -- create list of shared libraries used by packages and create list of compat libs that are not required (anymore)
    local activelibs = {}
    local lines = PkgDb.query {table = true, glob = true, "%B", "*"}
@@ -1315,7 +1307,7 @@ function list_stale_libraries ()
 end
 
 -- delete stale compat libraries (i.e. those no longer required by any installed port)
-function shlibs_purge ()
+local function shlibs_purge ()
    Msg.show {start = true, "Scanning for stale shared library backups ..."}
    local stale_compat_libs = list_stale_libraries ()
    if #stale_compat_libs then
@@ -1328,7 +1320,7 @@ end
 
 -- ----------------------------------------------------------------------------------
 -- delete stale options files
-function portdb_purge ()
+local function portdb_purge ()
    Msg.show {start = true, "Scanning", PORT_DBDIR, "for stale cached options:"}
    local origins = {}
    local origin_list = PkgDb.query {table = true, "%o"}
@@ -1352,7 +1344,7 @@ function portdb_purge ()
 end
 
 -- list ports (optionally with information about updates / moves / deletions)
-function list_ports (mode)
+local function list_ports (mode)
    local filter = {
       {
 	  "root ports (no dependencies and not depended on)",
@@ -1449,7 +1441,7 @@ end
 --TRACEFILE = "/tmp/pm.cmd-log" -- DEBUGGING EARLY START-UP ONLY -- GLOBAL
 
 -- ----------------------------------------------------------------------------------
-function main ()
+local function main ()
    --print (umask ("755")) -- ERROR: results in 7755, check the details of this function
    --shell ({to_tty = true}, "umask")
 
@@ -1489,7 +1481,7 @@ function main ()
    elseif Options.all then
       ports_add_all_outdated ()
    elseif Options.all_old_abi then
-      ports_add_all_old_abi ()
+      ports_add_all_old_abi () -- create from ports_add_all_outdated() ???
    end
       
    --  allow the specification of -a and -r together with further individual ports to install or upgrade

@@ -26,6 +26,11 @@ SUCH DAMAGE.
 --]]
 
 -- ----------------------------------------------------------------------------------
+local P_US = require ("posix.unistd")
+local access = P_US.access
+local sleep = P_US.sleep
+
+-- ----------------------------------------------------------------------------------
 -- return port name without flavor
 local function port (origin)
    return (string.match (origin.name, "^[^:@%%]+"))
@@ -110,28 +115,6 @@ local function port_var (origin, vars)
    return result
 end
 
--- check whether port is marked BROKEN, IGNORE, or FORBIDDEN
-local function check_forbidden (origin)
-   local dir = port (origin)
-
-   --TRACE ("grep", "-E", "-ql", "'^(BROKEN|FORBIDDEN|IGNORE)'", port_dir (origin) .. "/Makefile")
-   local makefile = io.open (origin:path () .. "/Makefile", "r")
-   local ignore_type
-   for line in makefile:lines () do
-      if line:match ("^(BROKEN|FORBIDDEN|IGNORE)") then
-	 local reason = origin:port_var {table = true, "BROKEN", "FORBIDDEN", "IGNORE"}
-	 for i, ignore_type in ipairs ({"BROKEN", "FORBIDDEN", "IGNORE"}) do
-	    if reason[i] then
-	       Msg.show {level = 1, "This port is marked", ignore_type}
-	       Msg.show {level = 1, reason[i]}
-	       return true
-	    end
-	 end
-      end
-   end
-   return false
-end
-
 -- local function only to be called when the flavor is queried via __index !!!
 local function port_flavor_get (origin)
    local f = flavor (origin)
@@ -179,7 +162,7 @@ local function origin_from_dir_and_pkg (origin)
 	    return PkgDb.query {"%o", old_pkg} -- is this correct ???
 	 end
 	 -- <se> is this additional search loop required? Better to fail if no packages with same major version?
-	 local flavor = origin.flavor
+	 local flavor = origin.flavor -- flavor is already defined as a function
 	 if flavor then
 	    table.insert (flavors, 1, flavor)
 	 end
@@ -199,6 +182,7 @@ local function origin_from_dir_and_pkg (origin)
    origin.pkg_new = nil
 end
 
+--[[
 -- set variable origin_new in external frame to new origin@flavor (if any) for given old origin@flavor (or to the old origin as default)
 local function origin_new_from_old (origin_old, pkgname_old)
    assert (pkgname_old, "Need pkgname_old for origin " .. origin_old.name)
@@ -223,6 +207,7 @@ local function origin_new_from_old (origin_old, pkgname_old)
    end
    return origin_new
 end
+--]]
 
 -- return origin corresponding to given relative or absolute directory
 local function origin_from_dir (dir_glob)
@@ -237,6 +222,7 @@ local function origin_from_dir (dir_glob)
    return result
 end
 
+--[[
 -- return all origin@flavor for port(s) in relative or absolute directory "$dir" (<se> TOO EXPENSIVE!!!)
 local function origin_old_from_port (port_glob)
    local dir_glob = port (port_glob)
@@ -267,6 +253,7 @@ end
 --#	done
 --#	test "$matched" = yes
 --#}
+--]]
 
 -- optionally or forcefully configure port
 local function configure (origin, force)
@@ -304,13 +291,13 @@ local function wait_checksum (origin)
    local errmsg = "cannot find fetch acknowledgement file"
    local dir = origin.port
    if TMPFILE_FETCH_ACK then
-      local status = shell (GREP_CMD, {safe = true, "-m", "1", "OK " .. dir .. " ", TMPFILE_FETCH_ACK})
+      local status = Exec.run {safe = true, GREP_CMD, "-m", "1", "OK " .. dir .. " ", TMPFILE_FETCH_ACK}
       print ("'" .. status .. "'")
       if not status then
 	 sleep (1)
 	 repeat
 	    Msg.show {"Waiting for download of all distfiles for", dir, "to complete"}
-	    status = shell (GREP_CMD, {safe = true, "-m", "1", "OK " .. dir .. " ", TMPFILE_FETCH_ACK})
+	    status = Exec.run {safe = true, GREP_CMD, "-m", "1", "OK " .. dir .. " ", TMPFILE_FETCH_ACK}
 	    if not status then
 	       sleep (3)
 	    end
@@ -380,7 +367,7 @@ to reliably get the date when flavors were added from the MOVED
 file.
 --]]
 
-local function moved_cache_load (filename)
+local function moved_cache_load ()
    local function register_moved (old, new, date, reason)
       if old then
 	 local o_p, o_f = string.match (old, "([^@]+)@?([%S]*)")
@@ -463,6 +450,7 @@ local function lookup_moved_origin (origin)
    end
 end
 
+--[=[
 -- try to find origin in list of moved or deleted ports, returns new origin or nil if found, false if not found, followed by reason text
 local function lookup_prev_origins (origin)
    --[[
@@ -529,6 +517,7 @@ local function check_conflicts (origin)
    end
    return list
 end
+--]=]
 
 --[=[
 --
@@ -690,7 +679,7 @@ local function __index (origin, k)
 	 local function adjustname (new_name) -- origin is UPVALUE
 	    TRACE ("ORIGIN_SETALIAS", origin.name, new_name)
 	    ORIGIN_ALIAS[origin.name] = new_name
-	    local o = Origin.get (name)
+	    local o = Origin.get (new_name)
 	    if o then -- origin with alias has already been seen, move fields over and continue with new table
 	       o.flavors = rawget (origin, "flavors")
 	       o.pkg_new = rawget (origin, "pkg_new")
@@ -925,8 +914,8 @@ local function new (origin, name)
 	 O.__class = origin
 	 origin.__index = __index
 	 origin.__newindex = __newindex -- DEBUGGING ONLY
-	 origin.__tostring = function (origin)
-	    return origin.name
+	 origin.__tostring = function (self)
+	    return self.name
 	 end
 	 --origin.__eq = function (a, b) return a.name == b.name end
 	 setmetatable (O, origin)
@@ -967,11 +956,11 @@ return {
    new = new,
    get = get,
    check_excluded = check_excluded,
-   check_path = check_path,
+   --check_path = check_path,
    check_config_allow = check_config_allow,
    checksum = checksum,
    delete = delete,
-   depends = depends,
+   --depends = depends,
    install = install,
    port_make = port_make,
    port_var = port_var,
@@ -980,8 +969,8 @@ return {
    wait_checksum = wait_checksum,
    moved_cache_load = moved_cache_load,
    lookup_moved_origin = lookup_moved_origin,
-   list_prev_origins = list_prev_origins,
-   load_default_versions = load_default_versions, -- MUST BE CALLED ONCE WITH ANY ORIGIN AS PARAMETER
+   --list_prev_origins = list_prev_origins,
+   --load_default_versions = load_default_versions, -- MUST BE CALLED ONCE WITH ANY ORIGIN AS PARAMETER
    dump_cache = dump_cache,
 }
 

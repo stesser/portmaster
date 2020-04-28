@@ -26,6 +26,19 @@ SUCH DAMAGE.
 --]]
 
 -- ----------------------------------------------------------------------------------
+local P = require ("posix")
+local glob = P.glob
+
+local P_SS = require ("posix.sys.stat")
+local stat = P_SS.stat
+local lstat = P_SS.lstat
+local stat_isdir = P_SS.S_ISDIR
+local stat_isreg = P_SS.S_ISREG
+
+local P_US = require ("posix.unistd")
+local access = P_US.access
+
+-- ----------------------------------------------------------------------------------
 -- the Package class describes a package with optional package file
 
 -- 
@@ -87,7 +100,7 @@ local function deinstall (package, make_backup)
       return pkg {jailed = true, "delete", "-y", "-q", "-f", pkgname}
    else
       Progress.show ("De-install", pkgname)
-      return pkg {as_root = true, "delete", "-y", "-q", "-f", pkgname}
+      return Exec.pkg {as_root = true, "delete", "-y", "-q", "-f", pkgname}
    end
 end
 
@@ -114,7 +127,7 @@ end
 -- create category links and a lastest link
 local function category_links_create (pkg_new, categories)
    local source = filename {base = "..", ext = extension, pkg_new}
-   local pkgname = pkg_new.name
+   --local pkgname = pkg_new.name
    local extension = Options.package_format
    table.insert (categories, "Latest")
    for i, category in ipairs (categories) do
@@ -145,7 +158,7 @@ local function recover (pkg)
 	    pkg:automatic_set (true)
 	 end
 	 shlibs_backup_remove_stale (pkg)
-	 Exec.run {as_root = true, log = true, "/bin/unlink", PACKAGES_BACKUP .. pkgname_old .. ".t??"} -- required ???
+	 --Exec.run {as_root = true, log = true, "/bin/unlink", PACKAGES_BACKUP .. pkgname .. ".t??"} -- required ???
 	 return true
       end
    end
@@ -156,7 +169,7 @@ end
 local function file_search (pkg)
    for d in ipairs ({"All", "package-backup"}) do
       local file
-      for i, f in ipairs (glob (filename {subdir = d, ext = ".t??", pkg}) or {}) do
+      for _, f in ipairs (glob (filename {subdir = d, ext = ".t??", pkg}) or {}) do
 	 if file_valid_abi (f) then
 	    if not file or stat (file).modification < stat (f).modification then
 	       file = f
@@ -211,7 +224,7 @@ end
 function shlibs_backup (pkg)
    local pkg_libs = pkg.shared_libs
    if pkg_libs then
-      local ldconfig_lines = Exec.run {log = true, table = true, safe = true, LDCONFIG_CMD, "-r"} -- "RT?" ??? CACHE LDCONFIG OUTPUT???
+      local ldconfig_lines = Exec.run {table = true, safe = true, LDCONFIG_CMD, "-r"} -- "RT?" ??? CACHE LDCONFIG OUTPUT???
       for i, line in ipairs (ldconfig_lines) do
 	 local libpath, lib = string.match (line, " => (" .. LOCAL_LIB .. "*(lib.*%.so%..*))")
 	 if lib then
@@ -381,7 +394,7 @@ local function packages_cache_load ()
    Msg.show {level = 2, "The list of installed packages has been loaded (" .. pkg_count .. " packages)"}
    Msg.show {level = 2, start = true, "Load package dependencies"}
    local p = {}
-   local lines = PkgDb.query {table = true, "%n-%v %rn-%rv"}
+   lines = PkgDb.query {table = true, "%n-%v %rn-%rv"}
    for i, line in ipairs (lines) do
       local pkgname, dep_pkg = string.match (line, "(%S+) (%S+)")
       if pkgname ~= rawget (p, "name") then
@@ -425,6 +438,7 @@ local function installed_pkgs ()
    return result
 end
 
+--[[]]
 -- 
 local function get_attribute (pkg, k)
    for i, v in ipairs (PkgDb.query {table = true, "%At %Av", pkg.name}) do
@@ -434,6 +448,7 @@ local function get_attribute (pkg, k)
       end
    end
 end
+--]]
 
 --
 local function __newindex (pkg, n, v)
@@ -454,7 +469,7 @@ local function __index (pkg, k)
       set_field ("num_depending", tonumber (t[4]))
       return pkg[k]
    end
-   function load_num_dependencies (pkg, k)
+   local function load_num_dependencies (pkg, k)
       Msg.show {level = 2, start = true, "Load dependency counts"}
       local t = PkgDb.query {table = true, "%#d %n-%v"}
       for i, line in ipairs (t) do
@@ -590,16 +605,15 @@ return {
    get = get,
    installed_pkgs = installed_pkgs,
    backup_delete = backup_delete,
-   backup_create = backup_create,
+   --backup_create = backup_create,
    delete_old = delete_old,
    recover = recover,
    category_links_create = category_links_create,
    file_search = file_search,
    --file_get_abi = file_get_abi,
-   check_use_package = check_use_package,
+   --check_use_package = check_use_package,
    check_excluded = check_excluded,
    deinstall = deinstall,
-   install_jailed = install_jailed,
    install = install,
    shlibs_backup = shlibs_backup,
    shlibs_backup_remove_stale = shlibs_backup_remove_stale,

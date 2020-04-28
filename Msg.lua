@@ -49,7 +49,6 @@ local function cont (level, ...)
 	    State.empty_line = true
 	 end
 	 -- print lines prefixed with SEP
-	 local line
 	 for i, line in ipairs (lines) do
 	    if not line or line == "" then
 	       if not State.empty_line then
@@ -98,7 +97,7 @@ local SUCCESS_MSGS = {} -- GLOBAL
 local PKGMSG = {}
 
 --
-function show (args)
+local function show (args)
    --TRACE ("MSG_SHOW", table.unpack (table.keys (args)), table.unpack (args))
    local level = args.level or 0
    if level <= State.level then
@@ -126,7 +125,6 @@ function show (args)
 	       State.empty_line = true
 	    end
 	    -- print lines prefixed with SEP
-	    local line
 	    for i, line in ipairs (lines) do
 	       if not line or line == "" then
 		  if not State.empty_line then
@@ -181,7 +179,7 @@ local function display ()
    if packages or SUCCESS_MSGS then
       -- preserve current stdout and locally replace by pipe to "more" ???
       for i, pkgname in ipairs (packages) do
-	 local pkgmsg = PkgDb.query {table = true, "%M", pkgname} -- tail +2
+	 local pkgmsg = PkgDb.query {table = true, "%M", pkgname}
 	 if pkgmsg then
 	    show {start = true}
 	    show {"Post-install message for", pkgname .. ":"}
@@ -213,8 +211,9 @@ end
 
 -- ----------------------------------------------------------------------------------
 
-Msg = {
-   checking = checking,
+return {
+   --checking = checking,
+   abort = abort,
    display = display,
    incr_level = incr_level,
    level = level,
@@ -222,5 +221,3 @@ Msg = {
    success_add = success_add,
    title_set = title_set,
 }
-
-return Msg

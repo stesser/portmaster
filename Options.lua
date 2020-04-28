@@ -26,6 +26,15 @@ SUCH DAMAGE.
 --]]
 
 -- ----------------------------------------------------------------------------------
+local P = require "posix"
+local getopt = P.getopt
+
+local P_US = require ("posix.unistd")
+local access = P_US.access
+local getpid = P_US.getpid
+local ttyname = P_US.ttyname
+
+-- ----------------------------------------------------------------------------------
 -- options and rc file processing
 local Options = {}
 local LONGOPT = {}
@@ -61,7 +70,6 @@ local function usage ()
       local shortopt = spec[1]
       local param = spec[2]
       local descr = spec[3]
-      local action = spec[4]
       if shortopt then
 	 line = "-" .. shortopt
 	 if param then
@@ -110,7 +118,7 @@ local function longopt_action (opt, arg)
    if not opt_rec then
       opt_err (opt)
    end
-   param = opt_rec[2]
+   local param = opt_rec[2]
    if param then
       assert (arg and #arg > 0, "required parameter is missing")
    else
@@ -294,7 +302,7 @@ VALID_OPTS = {
    list			= { "l", false,	"list installed ports",							function (o, v) opt_set ("list", "short") end },
    make_args		= { "m", "arg",	"pass option to make processes",					function (o, v) opt_add (o, v) end },
    default_no		= { "n", nil,	"assume answer 'no'",							function (o, v) opt_set (o, v) opt_clear ("default_yes", o) end },
-   origin		= { "o", "origin",	"install from specified origin",				function (o, v) opt_set ("replace_origin", v) end },
+   origin		= { "o", "origin",	"install from specified origin",				function (o, v) opt_set ("replace_origin", v) end }, -- use module local static variable to hold this value ???
    recursive		= { "r", "port", "force building of dependent ports",					function (o, v) ports_add_recursive (v, Options.replace_origin) opt_clear ("replace_origin") end },
    clean_stale		= { "s", nil,	"deinstall unused packages that were installed as dependency",		function (o, v) opt_set (o, v) opt_set ("thorough", "yes") end },
    thorough		= { "t", nil,	"check all dependencies and de_install unused automatic packages",	function (o, v) opt_set (o, v) end },
@@ -330,7 +338,9 @@ local function init ()
       -- options processing
    local longopt_i = 0
    local current_i = 1
-   for opt, opterr, i in P.getopt (arg, getopts_opts, opterr, i) do
+   local opterr
+   local i
+   for opt, opterr, i in getopt (arg, getopts_opts, opterr, i) do -- check getopt usage parameters 3 and 4
       if opt == "-" then
 	 opt = arg[current_i]:sub(3)
 	 local value = opt:gsub(".+=(%S)", "%1")
@@ -391,43 +401,44 @@ end
 -- convert option to rc file form (upper case and dash instead of underscore)
 local function opt_name_rc (opt)
    opt = string.gsub (opt, "_", "-")
-   return opt.lower
+   return string.upper (opt)
 end
 
 -- print rc file line to set option to "yes" or to "no" for all passed option names
 local function opt_state_rc (...)
    local opts = {...}
-   local result = ""
+   local result = {}
    for i = 1, #opts do
       local opt = opts[i]
       if Options[opt] then
-	 result = result .. opt .. "=yes\n"
+         opt = opt_name_rc (opt)
+	 table.insert (result, opt .. "=yes")
       else
-	 result = result .. opt .. "=no\n"
+	 table.insert (result, opt .. "=no")
       end
    end
-   return result
+   return table.concat (result, "\n")
 end
 
 -- print rc file lines with the values of all passed option names
 local function opt_value_rc (...)
-   local opts = {...}, opt
-   local result = ""
+   local opts = {...}, opt -- ??? final argument "opt" in list is undefined ???
+   local result = {}
    for i = 1, #opts do
       opt = opts[i]
       local val = Options[opt]
       if val then
 	 local type = type (val)
 	 if type == "string" then
-	    result = result .. opt .. "=" .. val .. "\n"
+	    table.insert (result, opt .. "=" .. val)
 	 elseif type == "table" then
 	    for i, val in ipairs (val) do
-	       result = result .. opt .. "=" .. val .. "\n"
+         table.insert (result, opt .. "=" .. val)
 	    end
 	 end
       end
    end
-   return result
+   return table.concat (result, "\n")
 end
 
 -- name of restart file dependent on tty name or pid
@@ -574,7 +585,7 @@ local function save ()
    end
    --]]
 
-   filename = restart_file_name ()
+   local filename = restart_file_name ()
    os.remove (filename)
    os.rename (tmp_filename, filename)
    Msg.show {"Restart information has been written to", filename}
@@ -628,7 +639,7 @@ local function register_upgrade_restart (dep_type, origin_old, origin_new, pkgna
       end
    end
 end
-       
+
 -- parse action line of restart file and register action
 local function restart_file_parse_line (hash, command, origin_old, origin_new, pkgname_old, pkgname_new, pkgfile, ...)
    local special_depends = {...}

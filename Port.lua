@@ -51,6 +51,7 @@ end
 
 --
 local function __index (self, k)
+   --[[
    local function __port_vars (self, k)
       local function set_field (field, v)
 	 if v == "" then v = false end
@@ -63,6 +64,7 @@ local function __index (self, k)
       set_field ("num_depending", tonumber (t[4]))
       return self[k]
    end
+   --]]
 
    local dispatch = {
       flavors = flavors_get,
@@ -98,8 +100,8 @@ local function new (port, name)
 	 P = {name = name}
 	 P.__class = port
 	 port.__index = __index
-	 port.__tostring = function (port)
-	    return port.name
+	 port.__tostring = function (self)
+	    return self.name
 	 end
 	 --port.__eq = function (a, b) return a.name == b.name end
 	 setmetatable (P, port)
@@ -118,8 +120,8 @@ return {
    name = false,
    new = new,
    origin = false,
-   dir = dir,
-   path = path,
-   flavor = flavor,
-   flavors = flavors,
+   --dir = dir,
+   --path = path,
+   --flavor = flavor,
+   --flavors = flavors,
 }

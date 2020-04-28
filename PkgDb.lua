@@ -96,6 +96,7 @@ local function flavor_check (pkgname, flavor)
    return flavor_get (pkgname) == flavor
 end
 
+--[[
 -- list ports that are currently installed and not a dependency of some other port
 local function list_origins ()
    local pkgname
@@ -104,6 +105,7 @@ local function list_origins ()
       io.stdout:write (origin_from_pkgname (pkgname), "\n")
    end
 end
+--]]
 
 -- return list of all installed packages that meet the condition, order by decreasing number of dependencies
 local function list_pkgnames (condition)
@@ -233,6 +235,7 @@ local function pkgname_from_origin (origin)
    end
 end
 
+--[[
 -- rename package in package DB (including all dependencies on this package)
 local function update_pkgname (action)
    local pkg_old = action.pkgname_old:basename ()
@@ -244,6 +247,7 @@ local function update_pkgname (action)
    end
    return PkgDb.set ("--change-name", pkg_old .. ":" .. pkg_new, tostring (action.pkgname_old))
 end
+--]]
 
 -- register new origin in package registry (must be performed before package rename, if any)
 local function update_origin (old, new, pkgname)
@@ -272,7 +276,7 @@ return {
    flavor_set = flavor_set,
    flavor_check = flavor_check,
    get_pkgmessage = get_pkgmessage,
-   list_origins = list_origins,
+   --list_origins = list_origins,
    list_pkgnames = list_pkgnames,
    list_pkgnames_origins = list_pkgnames_origins,
    update_origin = update_origin,

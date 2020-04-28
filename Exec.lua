@@ -25,6 +25,27 @@ OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 SUCH DAMAGE.
 --]]
 
+-- ----------------------------------------------------------------------------------
+local P = require ("posix")
+local _exit = P._exit
+
+local P_IO = require ("posix.stdio")
+local fdopen = P_IO.fdopen
+local fileno = P_IO.fileno
+
+local P_SL = require ("posix.stdlib")
+local setenv = P_SL.setenv
+
+local P_SW = require ("posix.sys.wait")
+local wait = P_SW.wait
+
+local P_US = require ("posix.unistd")
+local close = P_US.close
+local dup2 = P_US.dup2
+local execp = P_US.execp
+local fork = P_US.fork
+local pipe = P_US.pipe
+
 --[[ unused - only left as working example of a coroutine
 -- return an iterator usable in for loops that returns shell command result lines
 -- usage: for line in shell_pipe (<shell cmd>) do ... end
@@ -169,7 +190,7 @@ local function make (args)
 end
 
 -- execute and log a package command that does not modify any state (JAILED)
-function pkg (args)
+local function pkg (args)
    if args.jailed then
       if JAILBASE then
 	 table.insert (args, 1, "-c")

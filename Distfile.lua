@@ -25,6 +25,26 @@ OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 SUCH DAMAGE.
 --]]
 
+-- ----------------------------------------------------------------------------------
+local P = require ("posix")
+local _exit = P._exit
+
+local P_IO = require ("posix.stdio")
+local fdopen = P_IO.fdopen
+local fileno = P_IO.fileno
+
+local P_PP = require ("posix.poll")
+local poll = P_PP.poll
+
+local P_US = require ("posix.unistd")
+local access = P_US.access
+local chdir = P_US.chdir
+local close = P_US.close
+local dup2 = P_US.dup2
+local fork = P_US.fork
+local pipe = P_US.pipe
+local read = P_US.read
+
 -- perform "make checksum", analyse status message and write success status to file (meant to be executed in a background task)
 local function dist_fetch (origin)
    --   Msg.show {level = 3, "Fetch distfiles for '" .. port .. "'"}
@@ -35,7 +55,7 @@ local function dist_fetch (origin)
    local port = origin.port
    local result = ""
    local lines = origin:port_make {as_root = DISTDIR_RO, table = true, "-D", "NO_DEPENDS", "-D", "DISABLE_CONFLICTS", "-D", "DISABLE_LICENSES", "DEV_WARNING_WAIT=0", "checksum"} -- as_root?
-   for i, l in ipairs (lines) do
+   for _, l in ipairs (lines) do
       local files = string.match (l, "Giving up on fetching files: (.*)")
       if files then
 	 for i, file in ipairs (split_words (files)) do
@@ -50,8 +70,8 @@ local function dist_fetch (origin)
    return "OK " .. port .. " "
 end
 
-TMPFILE_FETCH_ACK = nil -- GLOABL
-fetchq = nil -- pipe used as fetch request queue -- GLOBAL
+local TMPFILE_FETCH_ACK = nil -- GLOABL
+local fetchq = nil -- pipe used as fetch request queue -- GLOBAL
 
 -- fetch and check distfiles (in background?)
 local function fetch (origin)
@@ -220,7 +240,7 @@ local function clean_stale ()
 	    Msg.show {"No stale distfiles found"}
 	 end
       end
-      shell ("find", {"-x", DISTDIR, "-type", "d", "-empty", "-delete"})
+      Exec.run {"find", "-x", DISTDIR, "-type", "d", "-empty", "-delete"}
    end
 end
 

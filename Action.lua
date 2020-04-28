@@ -26,6 +26,14 @@ SUCH DAMAGE.
 --]]
 
 -- ----------------------------------------------------------------------------------
+local P = require ("posix")
+local glob = P.glob
+
+local P_US = require ("posix.unistd")
+local access = P_US.access
+local chown = P_US.chown
+
+-- ----------------------------------------------------------------------------------
 local function origin_changed (o_o, o_n)
    return o_o and o_o.name ~= "" and o_o ~= o_n and o_o.name ~= string.match (o_n.name, "^([^%%]+)%%")
 end
@@ -54,7 +62,7 @@ local function describe (action)
       elseif a == "exclude" then
 	 return string.format ("Skip excluded package %s installed from %s", tostring (p_o), tostring (o_o))
       elseif a == "upgrade" then
-	 local from = ""
+	 local from
 	 if p_n and p_n.pkgfile then
 	    from = "from " .. p_n.pkgfile
 	 else
@@ -808,6 +816,7 @@ local function register_delayed_installs ()
    end
 end
 
+--[[
 -- 
 local function register_delete_build_only (action)
 -- 	local origin build_deps has_build_deps has_run_deps dep_origin package dep_package
@@ -886,6 +895,7 @@ end
 --#	done
 --#	return 1
 --#}
+--]]
 
 -- ----------------------------------------------------------------------------------
 -- perform all steps required to build a port (extract, patch, build, stage, opt. package)
@@ -952,11 +962,12 @@ local function perform_installation (action)
    local origin_new = o_n.name
    local pkgfile = p_n.pkgfile
    local install_failed = false
+   local pkg_msg_old
    -- prepare installation, if this is an upgrade (and not a fresh install)
    if pkgname_old then
       if not Options.jailed or PHASE == "install" then
 	 -- keep old package message for later comparison with new message
-	 local pkg_msg_old = PkgDb.get_pkgmessage (pkgname_old)
+	 pkg_msg_old = PkgDb.get_pkgmessage (pkgname_old)
 	 -- create backup package file from installed files
 	 local create_backup = pkgname_old ~= pkgname_new or not pkgfile
 	 -- preserve currently installed shared libraries
@@ -1033,7 +1044,7 @@ end
 
 -- install or upgrade a port
 local function perform_install_or_upgrade (action)
-   local o_n = action.origin_new
+   --local o_n = action.origin_new
    local p_n = action.pkg_new
    TRACE ("P", p_n.name, p_n.pkgfile, table.unpack (table.keys (p_n)))
    -- has a package been identified to be used instead of building the port?
@@ -1071,9 +1082,11 @@ local function perform_install_or_upgrade (action)
       if not perform_installation (action) then
 	 return false
       end
+      --[[
       if not Options.jailed then
-	 --worklist_remove (origin_new)
+	 worklist_remove (origin_new)
       end
+      --]]
    end
    -- perform some book-keeping and clean-up if a port has been built
    if not pkgfile then
@@ -1187,8 +1200,8 @@ end
 
 -- update package name of installed package
 local function perform_pkg_rename (action)
-   Progress.show ("Rename", pkgname_old, "to", pkgname_new)
-   if PkgDb.update_pkgname (action.pkgname_old, action.pkgname_new) then
+   Progress.show ("Rename", action.pkg_old.name, "to", action.pkg_new.name)
+   if PkgDb.update_pkgname (action.pkg_old.name, action.pkg_new.name) then
       pkgfiles_rename (action)
       action.done = true
       return true
@@ -1233,7 +1246,7 @@ local function perform_upgrades ()
 	 --NYI: origin_new:perform_post_build_deletes ()
       else
 	 if Options.hide_build then
-	    shell_pipe ("cat > /dev/tty", BUILDLOG)
+	    --shell_pipe ("cat > /dev/tty", BUILDLOG) -- use read and write to copy the file to STDOUT XXX
 	 end
 	 fail ("Aborting", PROGRAM, "due to a failed port upgrade. Fix the issue and use '" .. PROGRAM, "-R' to restart")
       end
@@ -1761,6 +1774,8 @@ local function lookup_cached_action (args) -- args.pkg_new is a string not an ob
    return action
 end
 
+
+--[[
 -- check package name for possibly used default version parameter
 local function check_used_default_version (action)
    local T = {
@@ -1794,6 +1809,7 @@ local function check_used_default_version (action)
       error ("Package name has not been set!")
    end
 end
+--]]
 
 --
 local function action_enrich (action)
@@ -1903,10 +1919,10 @@ local function action_enrich (action)
    --[[
    --Action.check_conflicts ("build_conflicts")
    Action.check_conflicts ("install_conflicts")
-   
+
    -- 
 --   Action.check_licenses ()
-   
+
    -- build list of packages to install after all ports have been built
    Action.register_delayed_installs ()
    --]]
@@ -2153,7 +2169,7 @@ return {
    execute = execute,
    packages_delete_stale = packages_delete_stale,
    register_delayed_installs = register_delayed_installs,
-   add = add,
+   --add = add,
    sort_list = sort_list,
    add_missing_deps = add_missing_deps,
    check_licenses = check_licenses,

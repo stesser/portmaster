@@ -25,6 +25,10 @@ OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 SUCH DAMAGE.
 --]]
 
+-- ----------------------------------------------------------------------------------
+local P_US = require ("posix.unistd")
+local rmdir = P_US.rmdir
+
 -- ---------------------------------------------------------------------------
 -- fstype, mount point, option (size, ro/rw for fstype="null", or linrdlink for Linux "fdesc")
 local JAIL_FS = {
@@ -113,11 +117,13 @@ local function mountpoint (dir)
    end
 end
 
+--[[
 -- ---------------------------------------------------------------------------
 local function dir_is_fsroot (dir)
    TRACE ("IS_FSROOT", dir)
    return dir == mountpoint (dir)
 end
+--]]
 
 -- (UTIL)
 local function do_mount (fs_type, from, onto, param)
@@ -211,10 +217,9 @@ local function mount_all (jaildir)
       local spec = JAIL_FS[dir]
       local fs_type = spec.fs_type
       local mount_opt = spec.fs_opt
-      local where = path_concat (jaildir, dir)
       local real_fs = Exec.run {safe = true, "realpath", dir}
       local where = path_concat (jaildir, real_fs)
-      TRACE ("MOUNT", fs_type, jaildir, dir, mnt_point, reals_fs, where, mount_opt or "<nil>")
+      TRACE ("MOUNT", fs_type, jaildir, dir, mnt_point, real_fs, where, mount_opt or "<nil>")
       if not is_dir (where) then
 	 Exec.run {as_root = true, "mkdir", "-p", where}
 	 assert (is_dir (where)) -- assert that mount point directory has been created
@@ -234,9 +239,9 @@ local JAIL_GID_EXCL_HIGH = 65530
 
 -- ---------------------------------------------------------------------------
 local function provide_file (jaildir, ...)
-   local file, dir
+   local dir
    local files = {...}
-   for i, file in ipairs (files) do
+   for _, file in ipairs (files) do
       dir = path_concat (jaildir, dirname (file))
       Exec.run {"mkdir", "-p", dir} -- use direct LUA function
       Exec.run {"cp", "-pR", file, dir} -- copy with LUA

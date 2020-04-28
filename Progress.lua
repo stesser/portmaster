@@ -56,6 +56,7 @@ local function clear ()
    Msg.title_set ("")
 end
 
+--[=[
 -- increment counter
 local function num_incr (counter)
    NUM[counter] = NUM[counter] + 1
@@ -133,7 +134,8 @@ local function list (action, table)
       end
    end
 end
-	 
+--]=]
+
 -- print a progress message and display it in the terminal window
 local function show (...)
    Msg.show {...}
@@ -150,10 +152,10 @@ end
 
 return {
    clear = clear,
-   num_incr = incr,
-   num_decr = decr,
+   --num_incr = incr,
+   --num_decr = decr,
    show = show,
    show_task = show_task,
-   list = list,
+   --list = list,
    set_max = set_max,
 }

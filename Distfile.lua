@@ -56,6 +56,7 @@ local function dist_fetch (origin)
    local result = ""
    local lines = origin:port_make {as_root = DISTDIR_RO, table = true, "-D", "NO_DEPENDS", "-D", "DISABLE_CONFLICTS", "-D", "DISABLE_LICENSES", "DEV_WARNING_WAIT=0", "checksum"} -- as_root?
    for _, l in ipairs (lines) do
+      TRACE ("FETCH:", l)
       local files = string.match (l, "Giving up on fetching files: (.*)")
       if files then
 	 for i, file in ipairs (split_words (files)) do

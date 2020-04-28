@@ -696,7 +696,7 @@ local function __index (origin, k)
 	    adjustname (name .. "@" .. default_flavor)
 	 end
 	 -- check for existing package cache entry and its origin
-	 local p = Package.get (origin.pkg_new)
+	 local p = origin.pkg_new
 	 local o = p and p.origin -- MERGE !!!
 	 TRACE ("CHECK_ORIGIN_ALIAS", origin and origin.name or "<nil>", o and o.name or "<nil>", p and p.name or "<nil>")
 	 if o and o.name ~= origin.name then
@@ -842,7 +842,7 @@ local function __index (origin, k)
       new_options = __port_vars,
       port_options = __port_vars,
       categories = __port_vars,
-      pkg_old = Package.packages_cache_load,
+      --pkg_old = Package.packages_cache_load,
       pkg_new = __port_vars,
       --old_pkgs = PkgDb.pkgname_from_origin,
       path = path,

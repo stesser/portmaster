@@ -26,6 +26,13 @@ SUCH DAMAGE.
 --]]
 
 -- ----------------------------------------------------------------------------------
+local Excludes = require ("Excludes")
+--local Options = require ("Options")
+local Msg = require ("Msg")
+local Distfile = require ("Distfile")
+local Exec = require ("Exec")
+
+-- ----------------------------------------------------------------------------------
 local P_US = require ("posix.unistd")
 local access = P_US.access
 local sleep = P_US.sleep
@@ -131,6 +138,7 @@ local function port_flavor_get (origin)
    --]]
 end
 
+--[[
 -- try to find matching port origin (directory and optional flavor) given a passed in new origin and current package name
 local function origin_from_dir_and_pkg (origin)
    -- determine package name for given origin
@@ -175,12 +183,13 @@ local function origin_from_dir_and_pkg (origin)
 	    end
 	    origin.pkg_new = nil
 	 end
-	 -- 
+	 --
 	 return Origin:new (origin_old:port_var {"PKGORIGIN"})
       end
    end
    origin.pkg_new = nil
 end
+--]]
 
 --[[
 -- set variable origin_new in external frame to new origin@flavor (if any) for given old origin@flavor (or to the old origin as default)
@@ -209,6 +218,7 @@ local function origin_new_from_old (origin_old, pkgname_old)
 end
 --]]
 
+--[[
 -- return origin corresponding to given relative or absolute directory
 local function origin_from_dir (dir_glob)
    local result = {}
@@ -221,6 +231,7 @@ local function origin_from_dir (dir_glob)
    end
    return result
 end
+--]]
 
 --[[
 -- return all origin@flavor for port(s) in relative or absolute directory "$dir" (<se> TOO EXPENSIVE!!!)
@@ -258,7 +269,7 @@ end
 -- optionally or forcefully configure port
 local function configure (origin, force)
    local target = force and "config" or "config-conditional"
-   return origin:port_make {to_tty = true, as_root = true, "-D", "NO_DEPENDS", "-D", "DISABLE_CONFLICTS", target}
+   return origin:port_make {to_tty = true, as_root = PORT_DBDIR_RO, "-D", "NO_DEPENDS", "-D", "DISABLE_CONFLICTS", target}
 end
 
 -- check config options and ask for confirmation if interactive, return true if options changed
@@ -355,15 +366,15 @@ Cases:
    3) with flavor -> no flavor (flavors removed)
    4) no flavor -> no flavor (flavored port !!!)
 
-Cases 1, 2 and 3 can easily be dealt with by comparing the 
+Cases 1, 2 and 3 can easily be dealt with by comparing the
 full origin with column 1 (table lookup using full origin).
 
-Case 4 cannot be assumed from the origin having or not having 
+Case 4 cannot be assumed from the origin having or not having
 a flavor - and it looks identical to case 1 in the MOVED file.
 
 If the passed in origin contains a flavor, then entries before
 the addition of flavors should be ignored, but there is no way
-to reliably get the date when flavors were added from the MOVED 
+to reliably get the date when flavors were added from the MOVED
 file.
 --]]
 
@@ -587,7 +598,7 @@ local function check_config_allow (origin, recursive)
 	 Msg.show {origin.name, "will be skipped since it is marked", name .. ":", origin[field]}
 	 Msg.show {"If you are sure you can build this port, remove the", name, "line in the Makefile and try again"}
 	 if not Options.no_confirm then
-            read_nl ("Press the [Enter] or [Return] key to continue ")
+            Msg.read_nl ("Press the [Enter] or [Return] key to continue ")
 	 end
 	 origin.skip = true
 	 return true
@@ -606,7 +617,7 @@ local function check_config_allow (origin, recursive)
 	 if origin.all_options then
 	    Msg.show {"You may try to change the port options to allow this port to build"}
 	    Msg.show {}
-	    if read_yn ("Do you want to try again with changed port options") then
+	    if Msg.read_yn ("Do you want to try again with changed port options") then
 	       do_config = true
 	    end
 	 end
@@ -624,7 +635,7 @@ local function check_config_allow (origin, recursive)
    end
    -- ask for confirmation if requested by a program option
    if Options.interactive then
-      if not read_yn ("Perform upgrade", "y") then
+      if not Msg.read_yn ("Perform upgrade", "y") then
 	 Msg.show {"Action will be skipped on user request"}
 	 origin.skip = true
 	 return false
@@ -634,7 +645,7 @@ local function check_config_allow (origin, recursive)
    if origin.is_interactive then
       Msg.show {"Warning:", origin.name, "is interactive, and will likely require attention during the build"}
       if not Options.no_confirm then
-	 read_nl ("Press the [Enter] or [Return] key to continue ")
+	 Msg.read_nl ("Press the [Enter] or [Return] key to continue ")
       end
    end
 end
@@ -736,7 +747,11 @@ local function __index (origin, k)
 	 "CONFLICTS_BUILD",	-- 22
 	 "CONFLICTS_INSTALL",	-- 23
 	 "CONFLICTS",		-- 24
-	 "OPTIONS_FILE",	-- 25
+    "OPTIONS_FILE",	-- 25
+    "DISTDIR",
+    "DIST_SUBDIR",
+    "DISTFILES",  -- may have ":" followed by fetch label appended
+    "PATCHFILES", -- as above
       } or {}
       TRACE ("PORT_VAR(" .. origin.name .. ", " .. k ..")", table.unpack (t))
       -- first check for and update port options since they might affect the package name
@@ -765,6 +780,10 @@ local function __index (origin, k)
       set_table (origin, "conflicts_build_var", t.CONFLICTS_BUILD)
       set_table (origin, "conflicts_install_var", t.CONFLICTS_INSTALL)
       set_table (origin, "conflicts_var", t.CONFLICTS)
+      set_table (origin, "distfiles", t.DISTFILES)
+      set_table (origin, "patchfiles", t.PATCHFILES)
+      origin.distdir = t.DISTDIR
+      origin.dist_subdir = t.DIST_SUBDIR
       origin.options_file = t.OPTIONS_FILE
       return rawget (origin, k)
    end
@@ -868,9 +887,9 @@ local function __index (origin, k)
       build_conflicts = __port_conflicts,
       install_conflicts = __port_conflicts,
    }
-   
+
    TRACE ("INDEX(o)", origin, k)
-   local w = rawget (origin.__class, k)
+   local w = Origin[k] -- rawget (origin.__class, k)
    if w == nil then
       rawset (origin, k, false)
       local f = dispatch[k]
@@ -904,30 +923,14 @@ local function get (name)
    end
 end
 
---
-local function new (origin, name)
-   --local TRACE = print -- TESTING
-   if name then
-      local O = get (name)
-      if not O then
-	 O = {name = name}
-	 O.__class = origin
-	 origin.__index = __index
-	 origin.__newindex = __newindex -- DEBUGGING ONLY
-	 origin.__tostring = function (self)
+
+local mt = {
+   __index = __index,
+   __newindex = __newindex, -- DEBUGGING ONLY
+   tostring = function (self)
 	    return self.name
-	 end
-	 --origin.__eq = function (a, b) return a.name == b.name end
-	 setmetatable (O, origin)
-	 TRACE ("NEW Origin", name)
-	 ORIGINS_CACHE[name] = O
-      else
-	 TRACE ("NEW Origin", name, "(cached)", O.name)
-      end
-      return O
-   end
-   return nil
-end
+   end,
+}
 
 --
 local function delete (origin)
@@ -950,8 +953,25 @@ local function dump_cache ()
    end
 end
 
--- 
-return {
+local function new (origin, name)
+   --local TRACE = print -- TESTING
+   if name then
+      local O = get (name)
+      if not O then
+	 O = {name = name}
+	 setmetatable (O, mt)
+	 TRACE ("NEW Origin", name)
+	 ORIGINS_CACHE[name] = O
+      else
+	 TRACE ("NEW Origin", name, "(cached)", O.name)
+      end
+      return O
+   end
+   return nil
+end
+
+--
+local Origin = {
    --name = false,
    new = new,
    get = get,
@@ -973,6 +993,8 @@ return {
    --load_default_versions = load_default_versions, -- MUST BE CALLED ONCE WITH ANY ORIGIN AS PARAMETER
    dump_cache = dump_cache,
 }
+
+return Origin
 
 --[[
    Instance variables of class Origin:

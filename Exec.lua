@@ -26,6 +26,10 @@ SUCH DAMAGE.
 --]]
 
 -- ----------------------------------------------------------------------------------
+--local Options = require ("Options")
+local Msg = require ("Msg")
+
+-- ----------------------------------------------------------------------------------
 local P = require ("posix")
 local _exit = P._exit
 
@@ -176,6 +180,10 @@ end
 -- run make command
 local function make (args)
    table.insert (args, 1 , MAKE_CMD)
+   if args.trace then
+      table.insert (args, 1, "ktrace")
+      table.insert (args, 2, "-dia")
+   end
    --local result = shell (args)
    local result = run (args)
    if result then

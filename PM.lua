@@ -65,17 +65,12 @@ debug.sethook (trace, "l")
 
 -- local _debug = require 'std._debug'(true)
 
-Port = require ("Port")
-Origin = require ("Origin")
 Package = require ("Package")
-Dependency = require ("Dependency")
-Excludes = require ("Excludes")
+Origin = require ("Origin")
 Options = require ("Options")
 PkgDb = require ("PkgDb")
-Jail = require ("Jail")
 Msg = require ("Msg")
 Progress = require ("Progress")
-Worklist = require ("Worklist")
 Distfile = require ("Distfile")
 Action = require ("Action")
 Exec = require ("Exec")
@@ -243,7 +238,7 @@ function table:index (list, val)
       end
    end
    return nil
-end 
+end
 
 -- ---------------------------------------------------------------------------------- (UTIL)
 -- create tempfile with a name that contains "$type" and the portmaster PID
@@ -279,7 +274,7 @@ function dirname (filename)
    return string.match (filename, ".*/") or "."
 end
 
--- 
+--
 function log_caller (f)
    local d = debug.getinfo (3, "ln")
    TRACE ((d.name or "main") .. ":" .. d.currentline, "--", f)
@@ -289,73 +284,13 @@ end
 JAILBASE = nil -- GLOBAL
 
 -- ----------------------------------------------------------------------------------
--- wait for new-line, ignore any input given -- move all read_*() to Msg mdoule ???
-function read_nl (prompt)
-   Msg.show {prompt = true, prompt}
-   stdin:read("*l")
-end
-
--- print $prompt and read checked user input
-function read_answer (prompt, default, choices)
-   TRACE ("READ_ANSWER", prompt, default, table.unpack (choices))
-   local choice = ""
-   local display = ""
-   local display_default = ""
-   local reply = default
-   if Options.no_confirm and default and true then
-      -- check whether stdout is connected to a terminal !!!
-      Msg.show {start = true}
-      return reply
-   else
-      for i = 1, #choices do
-	 choice = choices[i]
-	 if #display == 0 then
-	    display = "["
-	 else
-	    display = display .. "|"
-	 end
-	 display = display .. choice
-      end
-      display = display .. "]"
-      if default and #default > 0 then
-	 display_default = "(" .. default .. ")"
-      end
-      while true do
-	 Msg.show {prompt = true, prompt, display, display_default .. ": "}
-	 reply = stdin:read ()
-	 if not reply or #reply == 0 then
-	    reply = default
-	 end
-	 for i = 1, #choices do
-	    if reply == choices[i] then
-	       Msg.show {start = true}
-	       return reply
-	    end
-	 end
-	 Msg.show {"Invalid input '" .. reply .. "' ignored - please enter one of", display}
-      end
-   end
-end
-
--- read "y" or "n" from STDIN, with default provided for empty input lines
-function read_yn (prompt, default)
-   if Options.default_yes then
-      default = "y"
-   end
-   if Options.default_no then
-      default = "n"
-   end
-   return read_answer(prompt, default, { "y", "n"}) == "y"
-end
-
--- ----------------------------------------------------------------------------------
 -- some important paths and global parameters, can be overridden in the config file
 
 --# set global variable to first parameter that is an executable command file and accepts option "-f /dev/stdin"
 -- init_grep_cmd () {
 -- 	global_var="$1"
 -- 	shift
--- 
+--
 -- 	[ -n "$(getvar "$global_var")" ] && return
 -- 	for cmd; do
 -- 		if [ -f "$cmd" -a -x "$cmd" ]; then
@@ -480,7 +415,7 @@ function init_globals ()
    PACKAGES		= init_global_path (Options.local_packagedir, ports_var {"PACKAGES"}, path_concat (PORTSDIR, "packages"), "/usr/packages")
    PACKAGES_BACKUP	= init_global_path (PACKAGES .. "portmaster-backup")
    PACKAGES_RO		= not access (PACKAGES, "rw") -- need sudo to create or delete package files
-   
+
    LOCALBASE		= init_global_path (ports_var {"LOCALBASE"}, "/usr/local")
    LOCAL_LIB		= init_global_path (path_concat (LOCALBASE, "lib"))
    LOCAL_LIB_COMPAT	= init_global_path (path_concat (LOCAL_LIB, "compat/pkg"))
@@ -650,28 +585,11 @@ function messages_display ()
    PKGMSG = nil -- required ???
 end
 
--- ----------------------------------------------------------------------------------
--- check parameter against excludes list -- move to Excludes module ???
-function excludes_check (...)
-   print ("EXCLUDES_CHECK", ...)
-   for i, pattern in ipairs {...} do
-      if string.match (pattern, "/") then
-	 if Origin.check_excluded (pattern) then
-	    return true
-	 end
-      else
-	 if Package.check_excluded (pattern) then
-	    return true
-	 end
-      end
-   end
-   return false
-end
-
+--[[
 -- try to find matching port origin (directory and optional flavor) given a passed in new origin and current package name
 function origin_from_dir_and_pkg (origin_new, pkgname_old) -- move to Action module ???
 -- 	local pkgname_new pkgname_base pkgname_major dir flavors flavor
--- 
+--
    -- determine package name for given origin
    local pkgname_new = origin_new.pkg_new.name
    if pkgname_new then
@@ -711,12 +629,13 @@ function origin_from_dir_and_pkg (origin_new, pkgname_old) -- move to Action mod
 	    end
 	    origin_new.pkg_new = nil
 	 end
-	 -- 
+	 --
 	 return Origin:new (origin_old:port_var {"PKGORIGIN"}) -- ???
       end
    end
    origin_new.pkg_new = nil
 end
+--]]
 
 --[[ OBSOLETE ???
 -- try to find origin in list of moved or deleted ports, returns new origin or "" followed by reason text
@@ -783,6 +702,7 @@ function origin_from_dir (dir_glob)
 end
 --]]
 
+--[[
 -- ----------------------------------------------------------------------------------
 -- return all origin@flavor for port(s) in relative or absolute directory "$dir" (<se> TOO EXPENSIVE!!!) -- move to Origin module ???
 function origin_old_from_port (port_glob)
@@ -801,6 +721,7 @@ function origin_old_from_port (port_glob)
    end
    return result
 end
+--]]
 
 --[[ OBSOLETE
 --## return old pkgname for given new origin@flavor
@@ -938,7 +859,7 @@ end
 --]]
 
 -- replace passed package or port with one built from the new origin
-local function ports_add_changed_origin (build_type, name, origin_new) -- 3d´rd arg is NOT optional
+local function ports_add_changed_origin (build_type, name, origin_new) -- 3rd arg is NOT optional
    if Options.force then
       build_type = "force"
    end
@@ -986,7 +907,7 @@ end
 -- add installed package and all dependencies for the given origin (with optional flavor)
 local function ports_add_recursive (name, origin_new) -- 2nd parameter is optional
 -- 	local pkgnames pkgname pkgname_dep origin_old origin_old2 origin_new2
--- 
+--
    Package.package_cache_load () -- initialize ORIGIN_OLD (with flavor) and PKGNAME_OLD
    Msg.show {level = 1, start = true, "Rebuilding", name, "and ports that depend on it, and upgrading ports they depend on ..."}
    local pkgnames = PkgDb.query {table = true, "%n-%v", name} or PkgDb.query {table = true, glob = true, "%n-%v", name .. "*"}
@@ -1059,7 +980,7 @@ local function ports_add_multiple (args)
 	 if string.match (pkg.name_base, v .. "$") then
 	    return true
 	 end
-	 if string.match (pkg.origin.name, v .. "$") or string.match (pkg.origin.name, v .. "@%S+$") then
+	 if pkg.origin and (string.match (pkg.origin.name, v .. "$") or string.match (pkg.origin.name, v .. "@%S+$")) then
 	    return true
 	 end
       end
@@ -1084,7 +1005,7 @@ local function ports_add_multiple (args)
 	    if access (filename, "r") then
 	       local port = string.match (filename, "/([^/]+/[^/]+)/Makefile")
 	       local origin = Origin:new (port)
-	       Action:new {build_type = "user", dep_type = "run", origin_new = origin} 
+	       Action:new {build_type = "user", dep_type = "run", origin_new = origin}
 	    end
 	 end
       else
@@ -1139,7 +1060,7 @@ function ask_and_delete (prompt, ...)
    end
    for i, file in ipairs (...) do
       if answer ~= "a" and answer ~= "q" then
-	 answer = read_answer ("Delete " .. prompt .. " '" .. file .. "'", "y", {"y", "n", "a", "q"})
+	 answer = Msg.read_answer ("Delete " .. prompt .. " '" .. file .. "'", "y", {"y", "n", "a", "q"})
       end
       if answer == "a" then
 	 msg_level = 0
@@ -1172,7 +1093,7 @@ function ask_and_delete_directory (prompt, ...) -- move to Msg module -- convert
    end
    for i, directory in ipairs (...) do
       if answer ~= "a" and answer ~= "q" then
-	 answer = read_answer ("Delete " .. prompt .. " '" .. directory .. "'", "y", {"y", "n", "a", "q"})
+	 answer = Msg.read_answer ("Delete " .. prompt .. " '" .. directory .. "'", "y", {"y", "n", "a", "q"})
       end
       if answer == "a" then
 	 msg_level = 0
@@ -1225,16 +1146,16 @@ end
 -- # list package files for old versions in sub-directories of the current directory
 local function list_stale_package_files ()
 -- 	local tmpfile packages_pattern
--- 
+--
 -- 	tmpfile = tempfile_create (PKGS)
 -- 	trap "unlink $tmpfile; Msg.start 0 'Aborted'; exit 0" INT
--- 
+--
 -- 	# create list of all package files (except those in directory portmaster-backup)
 -- 	find $(/bin/ls -1 | ${GREP_CMD} -E -v '^portmaster-backup$') -type f -name "*-*.t??" | sort > "$tmpfile"
--- 
+--
 -- 	# create list of package files not corresponding to installed packages
 -- 	packages_pattern = PkgDb.query ("%n-%v" | sed -E 's|^|/|;s!(\.|\[|\]|\{|\})!\\\1!g;s|$|\\.t..$|')
--- 
+--
 -- 	# the following "grep" takes an extremely long time to run with LANG=C and/or LC_CTYPE=C (affects only the GNU grep in FreeBSD!)
 -- 	echo "$packages_pattern" | ${GREP_CMD} -vf /dev/stdin "$tmpfile"
 -- 	unlink "$tmpfile"
@@ -1246,9 +1167,9 @@ end
 local function packagefiles_purge () -- move to new PackageFile module ???
 -- 	(
 -- 		local stale_packages dir
--- 
+--
 -- 		cd "$PACKAGES" || fail "No packages directory $PACKAGES found"
--- 
+--
 -- 		Msg.start 0 "Scanning $PACKAGES for stale package files ..."
 -- 		stale_packages = list_stale_package_files)
 -- (
@@ -1266,14 +1187,14 @@ local function packagefiles_purge () -- move to new PackageFile module ???
 -- 				list_old_package_files | xargs -n1 unlink
 -- 			)
 -- 		done
--- 
+--
 -- 		# silently delete stale symbolic links pointing to now deleted package files
 -- 		RUN_SU ${FIND_CMD} . -type l | xargs -n1 -I% sh -c '[ -e "%" ] || unlink "%"'
 -- 		# delete empty package sub-directories
 -- 		RUN_SU ${FIND_CMD} . -type d -empty -delete
--- 
+--
 -- 		cd "$PACKAGES/portmaster-backup" 2>/dev/null || return
--- 
+--
 -- 		Msg.start 0 "Scanning $PACKAGES/portmaster-backup for stale backup package files ..."
 -- 		stale_packages = list_old_package_files)
 -- 		(if [ -n "$stale_packages" ]; then
@@ -1468,7 +1389,7 @@ local function main ()
 
    -- TESTING
    if TEST then TEST () end
-   
+
    -- ----------------------------------------------------------------------------------
    -- plan tasks based on parameters passed on the command line
    PHASE = "scan"
@@ -1483,7 +1404,7 @@ local function main ()
    elseif Options.all_old_abi then
       ports_add_all_old_abi () -- create from ports_add_all_outdated() ???
    end
-      
+
    --  allow the specification of -a and -r together with further individual ports to install or upgrade
    if #arg > 0 then
       arg.force = Options.force
@@ -1502,7 +1423,7 @@ local function main ()
    Package.dump_cache ()
    Action.dump_cache ()
    --]]
-   
+
    -- end of scan phase, all required actions are known at this point, builds may start
    PHASE = "build"
 
@@ -1596,14 +1517,14 @@ os.exit (0)
 -- # ???automatically rebuild ports after a required shared library changed (i.e. when an old library of a dependency was moved to the backup directory)
 -- #      ---> pkg query "%B %n-%v" | grep $old_lib
 -- #
--- 
+--
 -- # use "pkg query -g "%B" "*" | sort -u" to get a list of all shared libraries required by the installed packages and remove all files not in this list from lib/compat/pkg.
 -- # Additionally consider all files that still require libs in /lib/compat/pkg as outdated, independently of any version changes.
--- 
+--
 -- # Check whether FLAVORS have been removed from a port before trying to build it with a flavor. E.g. the removal of "qt4" caused ports with FLAVORS qt4 and qt5 to become qt5 only and non-flavored
--- 
+--
 -- # In jailed or repo modes, a full recursion has to be performed on run dependencies (of dependencies ...) or some deep dependencies may be missed and run dependencies of build dependencies may be missing
--- 
+--
 -- # BUGS
 -- #
 -- # -x does not always work (e.g. when a port is to be installed as a new dependency)
@@ -1612,17 +1533,17 @@ os.exit (0)
 -- #	in that case, the package of new new conflicting port has already been created and it can be installed from that (if the option to save the package had been given)
 -- #
 -- # -o <origin_new> -r <name>: If $origin_new is set, then the dependencies must be relative to the version built from that origin!!!
--- 
+--
 -- # --delayed-installation does not take the case of a run dependency of a build dependency into account!
 -- # If a build dependency has run dependencies, then these must be installed as soon as available, as if they were build dependencies (since they need to exist to make the build dependency runnable)
--- 
+--
 -- # --force or --recursive should prevent use of already existing binaries to satisfy the request - the purpose is to re-compile those ports since some dependency might have incompatibly changed
--- 
+--
 -- # failure in the configuration phase (possibly other phases, too) lead to empty origin_new and then to a de-installation of the existing package!!! (e.g. caused by update conflict in port's Makefile)
--- 
+--
 -- # restart file: in jailed/repo-mode count only finished "build-only" packages as DONE, but especially do not count "provided" packages, which might be required as build deps for a later port build
--- 
--- 
+--
+--
 -- # General build policy rules (1st match decides!!!):
 -- #
 -- # Build_Dep_Flag := Build_Type = Provide
@@ -1660,23 +1581,23 @@ os.exit (0)
 -- #  D/L	| A   U	|   -	|   -	|  Y	|  Yes	| - -     - U
 -- #  L/J	|   F  	|  Y	|  Y	|   -	|  Yes	| -   B R F
 -- #  L/J	| A   U	|  Y	|  Y	|  Y	|  Yes	| -   B R - U
--- 
+--
 -- # Usage_Mode:
 -- # D = Direct installation
 -- # L = deLayed installation
 -- # J = Jailed build
 -- # R = Repository mode
--- 
+--
 -- # Build_Type:
 -- # A = Automatic
 -- # F = Forced
 -- # U = User request
--- 
+--
 -- # Installation_Mode (BaseInst):
 -- # Temp = Temporary installation
 -- # Late = Installation after completion of all port builds
 -- # Yes  = Direct installation from a port or package
--- 
+--
 -- # ----------------------------------------------------------------------------
 -- #
 -- # Build-Deps:
@@ -1691,9 +1612,9 @@ os.exit (0)
 -- # ==> Register for each dependency (key) which port (value) relies on it
 -- # ==> The run dependency (key) can be deinstalled, if the registered port (value) registered last has been deinstalled
 -- #
--- 
+--
 -- # b r C D J -----------------------------------------------------------------------------
--- 
+--
 -- # b r C     classic port build and installation:
 -- # b r C      - recursively build/install build deps if new or version changed or forced
 -- # b r C      - build port
@@ -1701,12 +1622,12 @@ os.exit (0)
 -- # b r C      - deinstall old package
 -- # b r C      - install new version
 -- # b r C      - recursively build/install run deps if new or version changed or forced
--- #          
+-- #
 -- # b r C     classic package installation/upgrade:
 -- # b r C      - recursively provide run deps (from port or package)
 -- # b r C      - deinstall old package
 -- # b r C      - install new package
--- 
+--
 -- # b r   D   delay-installation port build (of build dependency):
 -- # b r   D    - recursively build/install build deps if new or version changed or forced
 -- # b r   D    - build port
@@ -1720,8 +1641,8 @@ os.exit (0)
 -- #   r   D    - build port
 -- #   r   D    - create package
 -- #   r   D    - register package for delayed installation / upgrade
--- 
--- 
+--
+--
 -- # b     D    - recursively build/install build deps if new or version changed or forced
 -- # b     D    - build port
 -- # b     D    - create package
@@ -1735,10 +1656,10 @@ os.exit (0)
 -- # b     D    - recursively build/install run deps
 -- # b     D    - deinstall old package
 -- # b     D    - install new version
--- #       D  
+-- #       D
 -- #   r   D   delay-installation package installation (not a build dependency):
 -- #   r   D    - register package for delayed installation / upgrade
--- 
+--
 -- # b       J jailed port build (of build dependency):
 -- # b       J  - recursively build/install build deps in jail
 -- # b       J  - build port
@@ -1746,24 +1667,24 @@ os.exit (0)
 -- # b       J  - install new version in jail
 -- # b       J  - recursively build/install run deps in jail
 -- # b       J  - register package for delayed installation / upgrade
--- #        
+-- #
 -- #   r     J jailed port build (not a build dependency):
 -- #   r     J  - recursively build/install build deps in jail
 -- #   r     J  - build port
 -- #   r     J  - create package
 -- #   r     J  - register package for delayed installation / upgrade
--- #        
--- #        
+-- #
+-- #
 -- # b       J jailed package installation (of build dependency):
 -- # b       J  - recursively build/install run deps in jail
 -- # b       J  - install package in jail
 -- # b       J  - register package for delayed installation / upgrade depending on user options
--- #        
+-- #
 -- #   r     J jailed package installation (not a build dependency):
 -- #   r     J  - register package for delayed installation / upgrade
--- 
+--
 -- #           repo-mode is identical to jailed builds but without installation in base
--- 
+--
 -- # -----------------------
 -- # Invocation of "make -V $VAR" - possible speed optimization: query multiple variables and cache result
 -- #

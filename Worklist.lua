@@ -26,6 +26,9 @@ SUCH DAMAGE.
 --]]
 
 -- ----------------------------------------------------------------------------------
+local Progress = require ("Progress")
+
+-- ----------------------------------------------------------------------------------
 -- locate item position in list
 local function list_find (list, origin)
    for i, v in ipairs (list) do
@@ -89,7 +92,7 @@ local function add_delayedlist (origin)
    end
 end
 
--- 
+--
 return {
    add = add,
    remove = remove,

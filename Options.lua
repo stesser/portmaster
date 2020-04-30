@@ -26,6 +26,9 @@ SUCH DAMAGE.
 --]]
 
 -- ----------------------------------------------------------------------------------
+local Excludes = require ("Excludes")
+
+-- ----------------------------------------------------------------------------------
 local P = require "posix"
 local getopt = P.getopt
 
@@ -98,7 +101,7 @@ local function opt_err (opt)
    usage ()
 end
 
--- 
+--
 local function opt_check (opt)
    if VALID_OPTS[opt] then
       return opt
@@ -139,7 +142,7 @@ local function shortopt_action (opt, arg)
    longopt_action (longopt, arg)
 end
 
--- 
+--
 local function rcfile_tryload (filename)
    local inp = io.open (filename, "r")
    TRACE ("RCFILE_TRYLOAD", filename, inp or tostring (inp))
@@ -417,6 +420,7 @@ local function opt_state_rc (...)
 	 table.insert (result, opt .. "=no")
       end
    end
+   table.insert (result, "")
    return table.concat (result, "\n")
 end
 
@@ -438,6 +442,7 @@ local function opt_value_rc (...)
 	 end
       end
    end
+   table.insert (result, "")
    return table.concat (result, "\n")
 end
 
@@ -487,7 +492,7 @@ local function restart_file_print_upgrade (build_type, origin_new)
    end
    return line .. "\n"
 end
-   
+
 -- print "delete after" line
 local function restart_file_print_delafter (cond, origin_new)
    local last_use = {}
@@ -643,7 +648,7 @@ end
 -- parse action line of restart file and register action
 local function restart_file_parse_line (hash, command, origin_old, origin_new, pkgname_old, pkgname_new, pkgfile, ...)
    local special_depends = {...}
-   if hash == "#:" and not check_locked (pkgname_old) and not excludes_check (pkgname_new, origin_new) then
+   if hash == "#:" and not check_locked (pkgname_old) and not Excludes.check (pkgname_new, origin_new) then
       if command == "Delete" then
 	 register_delete (pkgname_old)
       elseif command == "Move" then

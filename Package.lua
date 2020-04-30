@@ -26,6 +26,15 @@ SUCH DAMAGE.
 --]]
 
 -- ----------------------------------------------------------------------------------
+--local Origin = require ("Origin")
+local Excludes = require ("Excludes")
+--local Options = require ("Options")
+local PkgDb = require ("PkgDb")
+local Msg = require ("Msg")
+local Progress = require ("Progress")
+local Exec = require ("Exec")
+
+-- ----------------------------------------------------------------------------------
 local P = require ("posix")
 local glob = P.glob
 
@@ -41,7 +50,7 @@ local access = P_US.access
 -- ----------------------------------------------------------------------------------
 -- the Package class describes a package with optional package file
 
--- 
+--
 local function filename (args)
    local pkg = args[1]
    local pkgname = pkg.name
@@ -93,7 +102,7 @@ local function deinstall (package, make_backup)
    local pkgname = package.name
    if make_backup then
       Progress.show ("Create backup package for", pkgname)
-      Exec.pkg {as_root = true, "create", "-q", "-o", PACKAGES_BACKUP, "-f", Options.backup_format, pkgname}
+      Exec.pkg {as_root = PACKAGES_RO, "create", "-q", "-o", PACKAGES_BACKUP, "-f", Options.backup_format, pkgname}
    end
    if Options.jailed and PHASE ~= "install" then
       Progress.show ("De-install", pkgname, "from build jail")
@@ -101,6 +110,17 @@ local function deinstall (package, make_backup)
    else
       Progress.show ("De-install", pkgname)
       return Exec.pkg {as_root = true, "delete", "-y", "-q", "-f", pkgname}
+   end
+end
+
+-- ----------------------------------------------------------------------------------
+-- get package message in case of an installation to the base system
+local function message (pkg)
+   if not Options.dry_run and (not Options.jailed or PHASE == "install") then
+      local lines = PkgDb.query {table = true, "%M", pkg.name}
+      if lines then
+	 return table.concat (lines, "\n")
+      end
    end
 end
 
@@ -142,7 +162,7 @@ local function category_links_create (pkg_new, categories)
    end
 end
 
--- 
+--
 -- re-install package from backup after attempted installation of a new version failed
 local function recover (pkg)
    -- if not pkgname then return true end
@@ -317,7 +337,7 @@ local function shared_libs_cache_load ()
       local pkgname, lib = string.match (line, "^(%S+) (%S+%.so%..*)")
       if pkgname then
 	 if pkgname ~= rawget (p, "name") then
-	    p = Package:get (pkgname) -- fetch cached package record
+	    p = Package.get (pkgname) -- fetch cached package record
 	    p.shared_libs = {}
 	 end
 	 table.insert (p.shared_libs, lib)
@@ -335,7 +355,7 @@ local function req_shared_libs_cache_load ()
       local pkgname, lib = string.match (line, "^(%S+) (%S+%.so%..*)")
       if pkgname then
 	 if pkgname ~= rawget (p, "name") then
-	    p = Package:get (pkgname) -- fetch cached package record
+	    p = Package.get (pkgname) -- fetch cached package record
 	    p.req_shared_libs = {}
 	 end
 	 table.insert (p.req_shared_libs, lib)
@@ -364,7 +384,7 @@ local function packages_cache_load ()
 	 end
       end
    end
-   -- load 
+   -- load
    local pkg_count = 0
    lines = PkgDb.query {table = true, "%n-%v %o %q %a %k"} -- no dependent packages
    for i, line in ipairs (lines) do
@@ -398,7 +418,7 @@ local function packages_cache_load ()
    for i, line in ipairs (lines) do
       local pkgname, dep_pkg = string.match (line, "(%S+) (%S+)")
       if pkgname ~= rawget (p, "name") then
-	 p = Package:get (pkgname) -- fetch cached package record
+	 p = Package.get (pkgname) -- fetch cached package record
 	 p.dep_pkgs = {}
       end
       p.num_depending = p.num_depending + 1
@@ -421,12 +441,12 @@ local function dep_pkgs_cache_load (pkg, k)
    return rawget (pkg, k)
 end
 
--- 
-local function get (pkg, name)
-   return PACKAGES_CACHE[name]
+--
+local function get (pkgname)
+   return PACKAGES_CACHE[pkgname]
 end
 
--- 
+--
 local function installed_pkgs ()
    packages_cache_load ()
    local result = {}
@@ -439,7 +459,7 @@ local function installed_pkgs ()
 end
 
 --[[]]
--- 
+--
 local function get_attribute (pkg, k)
    for i, v in ipairs (PkgDb.query {table = true, "%At %Av", pkg.name}) do
       local result = string.match (v, "^" .. k .. " (.*)")
@@ -540,9 +560,9 @@ local function __index (pkg, k)
       end,
       --]]
    }
-   
+
    TRACE ("INDEX(p)", pkg, k)
-   local w = rawget (pkg.__class, k)
+   local w = Package[k]
    if w == nil then
       rawset (pkg, k, false)
       local f = dispatch[k]
@@ -563,31 +583,13 @@ local function __index (pkg, k)
    return w
 end
 
--- create new Package object or return existing one for given name
-local function new (pkg, name)
-   --local TRACE = print -- TESTING
-   assert (type (name) == "string", "Package:new (" .. type (name) .. ")")
-   if name then
-      local P = PACKAGES_CACHE[name]
-      if not P then
-	 P = {name = name}
-	 P.__class = pkg
-	 pkg.__index = __index
-	 pkg.__newindex = __newindex -- DEBUGGING ONLY
-	 pkg.__tostring = function (pkg)
-	    return pkg.name
-	 end
-	 --pkg.__eq = function (a, b) return a.name == b.name end
-	 setmetatable (P, pkg)
-	 PACKAGES_CACHE[name] = P
-	 TRACE ("NEW Package", name)
-      else
-	 TRACE ("NEW Package", name, "(cached)")
-      end
-      return P
-   end
-   return nil
-end
+local mt = {
+   __index = __index,
+	__newindex = __newindex, -- DEBUGGING ONLY
+	__tostring = function (pkg)
+      return pkg.name
+	end,
+}
 
 -- DEBUGGING: DUMP INSTANCES CACHE
 local function dump_cache ()
@@ -598,8 +600,27 @@ local function dump_cache ()
    end
 end
 
+-- create new Package object or return existing one for given name
+local function new (pkg, name)
+   --local TRACE = print -- TESTING
+  -- assert (type (name) == "string", "Package:new (" .. type (name) .. ")")
+   if name then
+      local P = PACKAGES_CACHE[name]
+      if not P then
+	 P = {name = name}
+	 setmetatable (P, mt)
+	 PACKAGES_CACHE[name] = P
+	 TRACE ("NEW Package", name)
+      else
+	 TRACE ("NEW Package", name, "(cached)")
+      end
+      return P
+   end
+   return nil
+end
+
 -- ----------------------------------------------------------------------------------
-return {
+local Package = {
    name = false,
    new = new,
    get = get,
@@ -613,6 +634,7 @@ return {
    --file_get_abi = file_get_abi,
    --check_use_package = check_use_package,
    check_excluded = check_excluded,
+   message = message,
    deinstall = deinstall,
    install = install,
    shlibs_backup = shlibs_backup,
@@ -621,6 +643,8 @@ return {
    packages_cache_load = packages_cache_load,
    dump_cache = dump_cache,
 }
+
+return Package
 
 --[[
    Instance variables of class Package:

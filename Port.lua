@@ -69,7 +69,7 @@ local function __index (self, k)
    local dispatch = {
       flavors = flavors_get,
    }
-   
+
    local w = rawget (self.__class, k)
    if w == nil then
       TRACE ("INDEX(d)", self, k)

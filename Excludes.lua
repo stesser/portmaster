@@ -26,13 +26,13 @@ SUCH DAMAGE.
 --]]
 
 -- ----------------------------------------------------------------------------------
--- 
+--
 local EXCLUDED_PKG = {}
 local EXCLUDED_PKG_PREFIX = {}
 local EXCLUDED_PORT = {}
 local EXCLUDED_PORT_PREFIX = {}
 
--- 
+--
 local function add_pkg (pkg)
    TRACE ("EXCLUDES_ADD_PKG", pkg)
    if (string.match (pkg, "%*$")) then
@@ -42,7 +42,7 @@ local function add_pkg (pkg)
    end
 end
 
--- 
+--
 local function add_port (port)
    TRACE ("EXCLUDES_ADD_PORT", port)
    if (string.match (port, "%*$")) then
@@ -62,7 +62,7 @@ local function add (port_or_pkg)
    end
 end
 
--- 
+--
 local function check_pkg (pkg)
    TRACE ("EXCLUDES_CHK_PKG", pkg.name)
    local basename = pkg.name_base
@@ -82,7 +82,7 @@ local function check_pkg (pkg)
    end
 end
 
--- 
+--
 local function check_port (port)
    TRACE ("EXCLUDES_CHK_PORT", port.name)
    for i, v in ipairs (EXCLUDED_PORT) do
@@ -101,7 +101,27 @@ local function check_port (port)
    end
 end
 
--- 
+--[[
+-- ----------------------------------------------------------------------------------
+-- check parameter against excludes list
+function check (...)
+   print ("EXCLUDES_CHECK", ...)
+   for i, pattern in ipairs {...} do
+      if string.match (pattern, "/") then
+	 if Origin.check_excluded (pattern) then
+	    return true
+	 end
+      else
+	 if Package.check_excluded (pattern) then
+	    return true
+	 end
+      end
+   end
+   return false
+end
+--]]
+
+--
 local function list ()
    local result = EXCLUDED_PKG
    --table.move (EXCLUDED_PORT, 1, #EXCLUDED_PORT, #result + 1, result) -- lua53 only

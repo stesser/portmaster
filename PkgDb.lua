@@ -26,6 +26,9 @@ SUCH DAMAGE.
 --]]
 
 -- ----------------------------------------------------------------------------------
+local Exec = require ("Exec")
+
+-- ----------------------------------------------------------------------------------
 -- query package DB for passed origin (with optional flavor) or passed package name
 -- <se> actually not working for origin with flavor due to lack of transparent support in "pkg"
 local function query (args) -- optional extra argument: pkgname or origin
@@ -53,16 +56,6 @@ end
 -- set package attribute for specified ports and/or packages
 local function set (...)
    return Exec.pkg {as_root = true, "set", "-y", ...}
-end
-
--- get package message in case of an installation to the base system
-local function get_pkgmessage (pkgname)
-   if not Options.dry_run and (not Options.jailed or PHASE == "install") then
-      local lines = PkgDb.query {table = true, "%M", pkgname}
-      if lines then
-	 return table.concat (lines, "\n")
-      end
-   end
 end
 
 -- get the annotation value (e.g. flavor), if any
@@ -96,21 +89,10 @@ local function flavor_check (pkgname, flavor)
    return flavor_get (pkgname) == flavor
 end
 
---[[
--- list ports that are currently installed and not a dependency of some other port
-local function list_origins ()
-   local pkgname
-   flavored_cache_load ()
-   for i, pkgname in ipairs (PkgDb.query {table = true, cond = "%#r==0", "%n-%v"}) do
-      io.stdout:write (origin_from_pkgname (pkgname), "\n")
-   end
-end
---]]
-
 -- return list of all installed packages that meet the condition, order by decreasing number of dependencies
 local function list_pkgnames (condition)
    local list = {}
-   for i, line in ipairs (PkgDb.query {table = true, cond = condition, "%#d %n-%v"}) do
+   for i, line in ipairs (query {table = true, cond = condition, "%#d %n-%v"}) do
       local num, pkg = line:match ("(%d+) (%S+)")
       if not list[num] then
 	 list[num] = {}
@@ -123,7 +105,7 @@ end
 -- return registered name and origin
 local function list_pkgnames_origins (condition)
    local list = {}
-   for i, line in pairs (PkgDb.query {table = true, cond = condition, "%#d %n-%v %o"}) do
+   for i, line in pairs (query {table = true, cond = condition, "%#d %n-%v %o"}) do
       local depends, pkgname, port = line:match ("(%d+) (%S+) (%S+)")
       depends = depends + 0
       -- work around the fact that pkg query "%o" does not include the flavor
@@ -139,7 +121,7 @@ end
 local function nearest_pkgname (pkgname_new)
    local pkgname_nov = Package.basename (pkgname_new)
    local version = Package.version (pkgname_new)
-   local pkgnames = PkgDb.query {table = true, "%n-%v", pkgname_nov}
+   local pkgnames = query {table = true, "%n-%v", pkgname_nov}
    if not pkgnames then
       return nil
    end
@@ -161,14 +143,15 @@ end
 -- return origin if found in the package registry
 local function origin_from_pkgname (pkgname)
    local flavor = ""
-   flavor = PkgDb.flavor_get (pkgname)
+   flavor = flavor_get (pkgname)
    flavor = flavor and "@" .. flavor or ""
-   return PkgDb.query {"%o" .. flavor, pkgname}
+   return query {"%o" .. flavor, pkgname}
 end
 
+--[[
 -- return origin for package glob if it is unique in the package registry
 local function origin_from_pkgname_glob (pkgname)
-   local pkgnames = PkgDb.query {table = true, glob = true, "%n-%v", pkgname}
+   local pkgnames = query {table = true, glob = true, "%n-%v", pkgname}
    if pkgnames[2] then
       return nil
    end -- not unique
@@ -181,8 +164,8 @@ local function origins_flavor_from_glob (param)
    local glob = dir_part (param)
    local flavor = flavor_part (param)
    local matches = {}
-   for i, pkgname in PkgDb.query {table = true, glob = true, "%n-%v", glob} do
-      if not flavor or PkgDb.flavor_check (pkgname, flavor) then
+   for i, pkgname in query {table = true, glob = true, "%n-%v", glob} do
+      if not flavor or flavor_check (pkgname, flavor) then
 	 local origin = pkgdb_origin_from_pkgname (pkgname)
 	 if origin then
 	    matches:insert (Origin:new (origin)) -- Origin.get ???
@@ -191,6 +174,7 @@ local function origins_flavor_from_glob (param)
    end
    return matches
 end
+--]]
 
 -- return pkgname(s) for origin (with optional flavor)
 -- <se> MOVED ORIGIN HANDLING MUST BE PERFORMED BY CALLERS!!!
@@ -204,7 +188,7 @@ local function pkgname_from_origin (origin)
    end
    -- [ -n "$OPT_jailed" ] && return 1 # assume PHASE=build: the jails are empty, then
    if flavor then
-      local lines = PkgDb.query {table = true, "%At %Av %n-%v", dir}
+      local lines = query {table = true, "%At %Av %n-%v", dir}
       if lines then
 	 for line in ipairs (lines) do
 	    local tag, value, pkgname = string.match (line, "(%S+) (%S+) (%S+)")
@@ -221,8 +205,8 @@ local function pkgname_from_origin (origin)
    else
       local result = {}
       local p
-      --local lines = PkgDb.query {table = true, cond = "%#A==0", "%n-%v", dir}
-      local lines = PkgDb.query {table = true, "%n-%v", dir}
+      --local lines = query {table = true, cond = "%#A==0", "%n-%v", dir}
+      local lines = query {table = true, "%n-%v", dir}
       for i, pkgname in ipairs (lines) do
 	 p = Package:new (pkgname)
 	 if rawget (p, "origin") then -- paranoid test
@@ -235,20 +219,6 @@ local function pkgname_from_origin (origin)
    end
 end
 
---[[
--- rename package in package DB (including all dependencies on this package)
-local function update_pkgname (action)
-   local pkg_old = action.pkgname_old:basename ()
-   local pkg_new = action.pkgname_new:basename ()
-   
-   -- compare package name without the version, which is stored in another attribute                                                                                                                  
-   if pkg_old == pkg_new then
-      return true
-   end
-   return PkgDb.set ("--change-name", pkg_old .. ":" .. pkg_new, tostring (action.pkgname_old))
-end
---]]
-
 -- register new origin in package registry (must be performed before package rename, if any)
 local function update_origin (old, new, pkgname)
    local dir_old = old:port ()
@@ -256,12 +226,12 @@ local function update_origin (old, new, pkgname)
    local flavor = new:flavor ()
 
    if dir_old ~= dir_new then
-      if not PkgDb.set ("--change-origin", dir_old .. ":" .. dir_new, pkgname) then
+      if not set ("--change-origin", dir_old .. ":" .. dir_new, pkgname) then
 	 return false, "Could not change origin of " .. tostring (pkgname) .. " from " .. dir_old .. " to " .. dir_new
       end
    end
-   if not PkgDb.flavor_check (pkgname, flavor) then
-      if not PkgDb.flavor_set (pkgname, flavor) then
+   if not flavor_check (pkgname, flavor) then
+      if not flavor_set (pkgname, flavor) then
 	 return false, "Could not set flavor of " .. tostring (pkgname) .. " to " .. flavor
       end
    end
@@ -275,7 +245,6 @@ return {
    flavor_get = flavor_get,
    flavor_set = flavor_set,
    flavor_check = flavor_check,
-   get_pkgmessage = get_pkgmessage,
    --list_origins = list_origins,
    list_pkgnames = list_pkgnames,
    list_pkgnames_origins = list_pkgnames_origins,

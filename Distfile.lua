@@ -26,6 +26,14 @@ SUCH DAMAGE.
 --]]
 
 -- ----------------------------------------------------------------------------------
+--local Origin = require ("Origin")
+--local PkgDb = require ("PkgDb")
+--local Msg = require ("Msg")
+--local Distfile = require ("Distfile")
+local Exec = require ("Exec")
+
+-- ----------------------------------------------------------------------------------
+--[[
 local P = require ("posix")
 local _exit = P._exit
 
@@ -44,6 +52,7 @@ local dup2 = P_US.dup2
 local fork = P_US.fork
 local pipe = P_US.pipe
 local read = P_US.read
+--]]
 
 -- perform "make checksum", analyse status message and write success status to file (meant to be executed in a background task)
 local function dist_fetch (origin)
@@ -54,7 +63,7 @@ local function dist_fetch (origin)
    end
    local port = origin.port
    local result = ""
-   local lines = origin:port_make {as_root = DISTDIR_RO, table = true, "-D", "NO_DEPENDS", "-D", "DISABLE_CONFLICTS", "-D", "DISABLE_LICENSES", "DEV_WARNING_WAIT=0", "checksum"} -- as_root?
+   local lines = origin:port_make {as_root = DISTDIR_RO, table = true, "FETCH_BEFORE_ARGS=-v", "-D", "NO_DEPENDS", "-D", "DISABLE_CONFLICTS", "-D", "DISABLE_LICENSES", "DEV_WARNING_WAIT=0", "checksum"} -- as_root?
    for _, l in ipairs (lines) do
       TRACE ("FETCH:", l)
       local files = string.match (l, "Giving up on fetching files: (.*)")
@@ -65,12 +74,13 @@ local function dist_fetch (origin)
       end
    end
    if result ~= "" then
-      Msg.show {level = 3, "Fetching distfiles for '" .. port .. "' failed:", result}
+      --Msg.show {level = 3, "Fetching distfiles for '" .. port .. "' failed:", result}
       return "NOTOK " .. port .. " missing/wrong checksum: " .. result
    end
    return "OK " .. port .. " "
 end
 
+--[[
 local TMPFILE_FETCH_ACK = nil -- GLOABL
 local fetchq = nil -- pipe used as fetch request queue -- GLOBAL
 
@@ -134,6 +144,7 @@ local function fetch (origin)
    end
    fetchq:write (name .. "\n")
 end
+--]]
 
 --
 local function fetch_finish ()
@@ -144,6 +155,7 @@ local function fetch_finish ()
    end
 end
 
+--[[
 -- delete old distfiles
 local function delete_old (origin_new, pkgname_old)
    --error ("NYI")
@@ -244,11 +256,12 @@ local function clean_stale ()
       Exec.run {"find", "-x", DISTDIR, "-type", "d", "-empty", "-delete"}
    end
 end
+--]]
 
 return {
    --fetch = fetch,
    fetch = dist_fetch,
    fetch_finish = fetch_finish,
-   update_list = update_list,
-   clean_stale = clean_stale,
+   --update_list = update_list,
+   --clean_stale = clean_stale,
 }

@@ -26,6 +26,11 @@ SUCH DAMAGE.
 --]]
 
 -- ----------------------------------------------------------------------------------
+--local Options = require ("Options")
+--local PkgDb = require ("PkgDb")
+--local Progress = require ("Progress")
+
+-- ----------------------------------------------------------------------------------
 local State = {
    level = 0,
    at_start = true,
@@ -85,7 +90,7 @@ local function abort (...)
    cont (0, ...)
 end
 
--- set window title 
+-- set window title
 local function title_set (...)
    if not Options.no_term_title then
       stderr:write ("\x1b]2;" .. table.concat ({...}, " ") .. "\x07")
@@ -155,7 +160,7 @@ local function show (args)
 end
 
 -- ----------------------------------------------------------------------------------
--- 
+--
 local function success_add (text, seconds)
    if Options.dry_run then
       return
@@ -210,6 +215,66 @@ local function level ()
 end
 
 -- ----------------------------------------------------------------------------------
+-- wait for new-line, ignore any input given -- move all read_*() to Msg mdoule ???
+local function read_nl (prompt)
+   Msg.show {prompt = true, prompt}
+   stdin:read("*l")
+end
+
+-- print $prompt and read checked user input
+local function read_answer (prompt, default, choices)
+   TRACE ("READ_ANSWER", prompt, default, table.unpack (choices))
+   local choice = ""
+   local display = ""
+   local display_default = ""
+   local reply = default
+   if Options.no_confirm and default and true then
+      -- check whether stdout is connected to a terminal !!!
+      Msg.show {start = true}
+      return reply
+   else
+      for i = 1, #choices do
+	 choice = choices[i]
+	 if #display == 0 then
+	    display = "["
+	 else
+	    display = display .. "|"
+	 end
+	 display = display .. choice
+      end
+      display = display .. "]"
+      if default and #default > 0 then
+	 display_default = "(" .. default .. ")"
+      end
+      while true do
+	 Msg.show {prompt = true, prompt, display, display_default .. ": "}
+	 reply = stdin:read (1)
+	 if not reply or #reply == 0 or reply == "\n" then
+	    reply = default
+	 end
+	 for i = 1, #choices do
+	    if reply == choices[i] then
+	       Msg.show {start = true}
+	       return reply
+	    end
+	 end
+	 Msg.show {"Invalid input '" .. reply .. "' ignored - please enter one of", display}
+      end
+   end
+end
+
+-- read "y" or "n" from STDIN, with default provided for empty input lines
+local function read_yn (prompt, default)
+   if Options.default_yes then
+      default = "y"
+   end
+   if Options.default_no then
+      default = "n"
+   end
+   return read_answer(prompt, default, { "y", "n"}) == "y"
+end
+
+-- ----------------------------------------------------------------------------------
 
 return {
    --checking = checking,
@@ -217,6 +282,9 @@ return {
    display = display,
    incr_level = incr_level,
    level = level,
+   read_nl = read_nl,
+   read_answer = read_answer,
+   read_yn = read_yn,
    show = show,
    success_add = success_add,
    title_set = title_set,

@@ -26,6 +26,10 @@ SUCH DAMAGE.
 --]]
 
 -- ----------------------------------------------------------------------------------
+local Options = require ("Options")
+local Exec = require ("Exec")
+
+-- ----------------------------------------------------------------------------------
 local P_US = require ("posix.unistd")
 local rmdir = P_US.rmdir
 
@@ -274,7 +278,7 @@ local function setup_etc (jaildir)
    outf1:close()
    outf2:close()
    Exec.run {"pwd_mkdb", "-d", path_concat (jaildir, "/etc"), path_concat (jaildir, "/etc/master.passwd")}
-   
+
    -- create /etc/group
    local inpf = io.open ("/etc/group", "r")
    assert (inpf)

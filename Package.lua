@@ -126,13 +126,12 @@ end
 
 -- ----------------------------------------------------------------------------------
 -- install package from passed pkg
-local function install (pkg)
+local function install (pkg, abi)
    local pkgfile = pkg.pkgfile
-   local abi = pkg.pkgfile_abi
    local jailed = Options.jailed
    local env = {IGNORE_OSVERSION = "yes"}
    TRACE ("INSTALL", abi, pkgfile)
-   if pkgfile:match (".*/pkg-[^/]+$") then -- pkg command itself
+   if string.match (pkgfile, ".*/pkg-[^/]+$") then -- pkg command itself
       if not access (PKG_CMD, "x") then
 	 env.ASSUME_ALWAYS_YES = "yes"
 	 Exec.run {as_root = true, jailed = jailed, log = true, to_tty = true, env = env, "/usr/sbin/pkg", "-v"}
@@ -169,7 +168,7 @@ local function recover (pkg)
    local pkgname = pkg.name
    local pkgfile = pkg.pkgfile
    if not pkgfile then
-      pkgfile = Exec.run {table = true, safe = true, "ls", "-1t", PACKAGES_BACKUP .. pkgname .. ".*"}[1] -- XXX replace with glob and sort by modification time ==> pkg.bakfile
+      pkgfile = Exec.run {table = true, safe = true, "ls", "-1t", pkg:filename {base = PACKAGES_BACKUP, subdir = "",  ext = ".*"}}[1] -- XXX replace with glob and sort by modification time ==> pkg.bakfile
    end
    if pkgfile and access (pkgfile, "r") then
       Msg.show {"Re-installing previous version", pkgname}

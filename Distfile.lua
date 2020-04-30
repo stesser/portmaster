@@ -54,6 +54,36 @@ local pipe = P_US.pipe
 local read = P_US.read
 --]]
 
+local DISTINFO_CACHE = {}
+
+--[[
+TIMESTAMP = 1587747990
+SHA256 (bash/bash-5.0.tar.gz) = b4a80f2ac66170b2913efbfb9f2594f1f76c7b1afd11f799e22035d63077fb4d
+SIZE (bash/bash-5.0.tar.gz) = 10135110
+--]]
+
+local function parse_distinfo (di_filename)
+	local result = {}
+	local timestamp
+	di_file = io.open (di_filename, "r")
+	for line in di_file:lines() do
+		local key, file, value = string.match (line, "(%S+) %((%S+)%) = (%S+)")
+		if key then
+			t = result[file]
+			if not t then
+				t = {TIMESTAMP = timestamp}
+			end
+			t[key] = value
+			print (key, file, value)
+			result[file] = t
+		else
+			timestamp = string.match (line, "TIMESTAMP = %d+")
+		end
+	end
+	di_file:close()
+	return result
+end
+
 -- perform "make checksum", analyse status message and write success status to file (meant to be executed in a background task)
 local function dist_fetch (origin)
    --   Msg.show {level = 3, "Fetch distfiles for '" .. port .. "'"}
@@ -61,6 +91,7 @@ local function dist_fetch (origin)
    if not origin then
       return
    end
+   local distinfo = parse_distinfo (origin.distinfo_file)
    local port = origin.port
    local result = ""
    local lines = origin:port_make {as_root = DISTDIR_RO, table = true, "FETCH_BEFORE_ARGS=-v", "-D", "NO_DEPENDS", "-D", "DISABLE_CONFLICTS", "-D", "DISABLE_LICENSES", "DEV_WARNING_WAIT=0", "checksum"} -- as_root?

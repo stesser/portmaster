@@ -1,7 +1,7 @@
 --[[
 SPDX-License-Identifier: BSD-2-Clause-FreeBSD
 
-Copyright (c) 2019 Stefan Eßer <se@freebsd.org>
+Copyright (c) 2019 Stefan EÃŸer <se@freebsd.org>
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions
@@ -75,7 +75,7 @@ local function check_pkg (pkg)
    end
    for i, v in ipairs (EXCLUDED_PKG_PREFIX) do
       TRACE ("EXCLUDE_CHK", v, pkg.name)
-      if string.sub (pkg, 1, #v) == v then
+      if string.sub (pkg.name, 1, #v) == v then
 	 TRACE ("EXCLUDED", v, pkg.name)
 	 return true
       end

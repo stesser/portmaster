@@ -964,6 +964,12 @@ local function deinstall_failed (action)
    return action.origin_new:port_make {to_tty = true, jailed = true, as_root = true, "deinstall"}
 end
 
+--
+local function perform_provide (action)
+   TRACE ("PROVIDE", action.pkg_new.name)
+   return action.pkg_new:install ()
+end
+
 -- perform actual installation from a port or package
 local function perform_installation (action)
    local o_n = action.origin_new
@@ -1234,6 +1240,7 @@ local function perform_upgrades ()
       end
       local result
       local verb = action.action
+      print ("DO", verb, action.pkg_new.name)
       if verb == "delete" then
 	 result = perform_delete (action)
       elseif verb == "upgrade" then
@@ -1241,13 +1248,21 @@ local function perform_upgrades ()
       elseif verb == "change" then
 	 if action.pkg_old.name ~= action.pkg_new.name then
 	    result = perform_pkg_rename (action)
-	 elseif action.origin_old.name ~= action.origin_new.name then
-	    result = perform_origin_change (action)
+    elseif action.origin_old.name ~= action.origin_new.name then
+       result = perform_origin_change (action)
 	 end
-      elseif verb == "keep" then
-	 result = true -- nothing to be done
+      elseif verb == "provide" or verb == false then
+         if Options.jailed then
+            if action.pkg_new.pkgfile then
+               result = perform_provide (action)
+            else
+               result = perform_install_or_upgrade (action)
+            end
+         else
+            result = true -- nothing to be done
+         end
       else
-	 error ("unknown verb in action: " .. (verb or "<nil>"))
+         error ("unknown verb in action: " .. (verb or "<nil>"))
       end
       if result then
 	 if BUILDLOG then

@@ -27,7 +27,7 @@ SUCH DAMAGE.
 
 -- ----------------------------------------------------------------------------------
 local Excludes = require ("Excludes")
---local Options = require ("Options")
+local Options = require ("Options")
 local Msg = require ("Msg")
 local Distfile = require ("Distfile")
 local Exec = require ("Exec")

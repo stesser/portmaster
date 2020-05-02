@@ -26,9 +26,8 @@ SUCH DAMAGE.
 --]]
 
 -- ----------------------------------------------------------------------------------
---local Options = require ("Options")
---local PkgDb = require ("PkgDb")
---local Progress = require ("Progress")
+local stdout = io.stdout
+local stderr = io.stderr
 
 -- ----------------------------------------------------------------------------------
 local State = {
@@ -42,6 +41,13 @@ local State = {
    sepprompt = "#   >>>\t",
 }
 State.sep = State.sep1
+
+-- local table for copies of 4 options that are used in this module
+local Options = {}
+
+local function opt_set (opt, value)
+	Options[opt] = value
+end
 
 -- print continuation line
 local function cont (level, ...)
@@ -162,29 +168,23 @@ end
 -- ----------------------------------------------------------------------------------
 --
 local function success_add (text, seconds)
-   if Options.dry_run then
-      return
-   end
    if not strpfx (text, "Provide ") then
       table.insert (SUCCESS_MSGS, text)
       if seconds then
 	 seconds = "in " .. seconds .. " seconds"
       end
-      Progress.show (text, "successfully completed", seconds)
-      show {}
+      show {text, "successfully completed", seconds}
+      show {start = true}
    end
 end
 
 -- display all package messages that are new or have changed
 local function display ()
-   local packages = {}
-   if Options.repo_mode then
-      packages = table.keys (PKGMSG)
-   end
-   if packages or SUCCESS_MSGS then
+   local packages = table.keys (PKGMSG) -- only add to PKGMSG if repo_mode is true XXX
+   if #packages > 0 or #SUCCESS_MSGS > 0 then
       -- preserve current stdout and locally replace by pipe to "more" ???
       for i, pkgname in ipairs (packages) do
-	 local pkgmsg = PkgDb.query {table = true, "%M", pkgname}
+	 local pkgmsg = PkgDb.query {table = true, "%M", pkgname} -- replace by access to field in pkg XXX
 	 if pkgmsg then
 	    show {start = true}
 	    show {"Post-install message for", pkgname .. ":"}
@@ -215,9 +215,9 @@ local function level ()
 end
 
 -- ----------------------------------------------------------------------------------
--- wait for new-line, ignore any input given -- move all read_*() to Msg mdoule ???
+-- wait for new-line, ignore any input given
 local function read_nl (prompt)
-   Msg.show {prompt = true, prompt}
+   show {prompt = true, prompt}
    stdin:read("*l")
 end
 
@@ -230,7 +230,7 @@ local function read_answer (prompt, default, choices)
    local reply = default
    if Options.no_confirm and default and true then
       -- check whether stdout is connected to a terminal !!!
-      Msg.show {start = true}
+      show {start = true}
       return reply
    else
       for i = 1, #choices do
@@ -247,18 +247,18 @@ local function read_answer (prompt, default, choices)
 	 display_default = "(" .. default .. ")"
       end
       while true do
-	 Msg.show {prompt = true, prompt, display, display_default .. ": "}
+	 show {prompt = true, prompt, display, display_default .. ": "}
 	 reply = stdin:read (1)
 	 if not reply or #reply == 0 or reply == "\n" then
 	    reply = default
 	 end
 	 for i = 1, #choices do
 	    if reply == choices[i] then
-	       Msg.show {start = true}
+	       show {start = true}
 	       return reply
 	    end
 	 end
-	 Msg.show {"Invalid input '" .. reply .. "' ignored - please enter one of", display}
+	 show {"Invalid input '" .. reply .. "' ignored - please enter one of", display}
       end
    end
 end
@@ -288,4 +288,5 @@ return {
    show = show,
    success_add = success_add,
    title_set = title_set,
+   opt_set = opt_set,
 }

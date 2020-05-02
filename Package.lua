@@ -28,7 +28,7 @@ SUCH DAMAGE.
 -- ----------------------------------------------------------------------------------
 --local Origin = require ("Origin")
 local Excludes = require ("Excludes")
---local Options = require ("Options")
+local Options = require ("Options")
 local PkgDb = require ("PkgDb")
 local Msg = require ("Msg")
 local Progress = require ("Progress")
@@ -128,7 +128,7 @@ end
 -- install package from passed pkg
 local function install (pkg, abi)
    local pkgfile = pkg.pkgfile
-   local jailed = Options.jailed
+   local jailed = Options.jailed and PHASE == "build"
    local env = {IGNORE_OSVERSION = "yes"}
    TRACE ("INSTALL", abi, pkgfile)
    if string.match (pkgfile, ".*/pkg-[^/]+$") then -- pkg command itself
@@ -582,14 +582,6 @@ local function __index (pkg, k)
    return w
 end
 
-local mt = {
-   __index = __index,
-	__newindex = __newindex, -- DEBUGGING ONLY
-	__tostring = function (pkg)
-      return pkg.name
-	end,
-}
-
 -- DEBUGGING: DUMP INSTANCES CACHE
 local function dump_cache ()
    local t = PACKAGES_CACHE
@@ -598,6 +590,14 @@ local function dump_cache ()
       TRACE ("PACKAGES_CACHE", name, table.unpack (table.keys (t[v])))
    end
 end
+
+local mt = {
+   __index = __index,
+	__newindex = __newindex, -- DEBUGGING ONLY
+	__tostring = function (pkg)
+      return pkg.name
+	end,
+}
 
 -- create new Package object or return existing one for given name
 local function new (pkg, name)
@@ -619,7 +619,7 @@ local function new (pkg, name)
 end
 
 -- ----------------------------------------------------------------------------------
-local Package = {
+return {
    name = false,
    new = new,
    get = get,
@@ -642,8 +642,6 @@ local Package = {
    packages_cache_load = packages_cache_load,
    dump_cache = dump_cache,
 }
-
-return Package
 
 --[[
    Instance variables of class Package:

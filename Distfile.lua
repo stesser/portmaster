@@ -66,6 +66,7 @@ local function parse_distinfo (di_filename)
 	local result = {}
 	local timestamp
 	di_file = io.open (di_filename, "r")
+	if di_file then --  meta-ports do not have a distinfo file
 	for line in di_file:lines() do
 		local key, file, value = string.match (line, "(%S+) %((%S+)%) = (%S+)")
 		if key then
@@ -74,7 +75,7 @@ local function parse_distinfo (di_filename)
 				t = {TIMESTAMP = timestamp}
 			end
 			t[key] = value
-			print (key, file, value)
+			TRACE ("DISTINFO", key, file, value)
 			result[file] = t
 		else
 			timestamp = string.match (line, "TIMESTAMP = %d+")
@@ -82,6 +83,7 @@ local function parse_distinfo (di_filename)
 	end
 	di_file:close()
 	return result
+end
 end
 
 -- perform "make checksum", analyse status message and write success status to file (meant to be executed in a background task)

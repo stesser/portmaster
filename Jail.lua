@@ -313,12 +313,11 @@ end
 local JAILROOT = "/tmp"
 
 local function create ()
-   JAILBASE = JAILROOT .. "/TEST" -- NYI use individual jail names
-
-   unmount_all (JAILBASE)
-   mount_all (JAILBASE)
-   --Exec.run {to_tty = true, safe = true, "df", "-T"}
    if not Options.dry_run then
+      JAILBASE = JAILROOT .. "/TEST" -- NYI use individual jail names
+
+      unmount_all (JAILBASE)
+      mount_all (JAILBASE)
       setup_etc (JAILBASE)
       setup_var_run (JAILBASE)
       setup_usr_local (JAILBASE)
@@ -326,7 +325,9 @@ local function create ()
 end
 
 local function destroy ()
---   unmount_all (JAILBASE)
+   if not Options.dry_run then
+      unmount_all (JAILBASE)
+   end
    JAILBASE = nil
 end
 

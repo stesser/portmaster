@@ -27,6 +27,7 @@ SUCH DAMAGE.
 
 -- ----------------------------------------------------------------------------------
 local Excludes = require ("Excludes")
+local Msg = require ("Msg")
 
 -- ----------------------------------------------------------------------------------
 local P = require "posix"
@@ -183,10 +184,21 @@ local function set_package_format (var, fmt)
    Options[var] = fmt
 end
 
+-- options that have to be set in the Msg module, too
+local msg_opts = {
+   no_confirm = true,
+   no_term_title = true,
+   default_yes = true,
+   default_no = true,
+}
+
 -- set option (or clear, if value is nil)
 local function opt_set (opt, value)
    TRACE ("OPT_SET", opt, value or tostring (value))
    Options[opt] = value
+   if msg_opts[opt] then
+      Msg.opt_set (opt, value)
+   end
 end
 
 -- append passed value to option string
@@ -203,6 +215,9 @@ local function opt_clear (opt, cause)
 	 Msg.show {level = 2, "Option", opt, "overridden by option", cause}
       end
       Options[opt] = nil
+      if msg_opts[opt] then
+         Msg.opt_set (opt, nil)
+      end
    end
 end
 
@@ -213,7 +228,7 @@ local function opt_set_if (test_opt, ...)
 	 for i, opt in ipairs ({...}) do
 	    if not Options[opt] then
 	       Msg.show {level = 2, "Option", opt, "added due to option", test_opt}
-	       Options[opt] = true
+	       opt_set (opt, true)
 	    end
 	 end
       end
@@ -225,9 +240,8 @@ local function opt_clear_if (test_opt, ...)
    if test_opt then
       if Options[test_opt] then
 	 for i, opt in ipairs ({...}) do
-	    if Options[opt] then
-	       Msg.show {level = 2, "Option", opt, "cleared due to option", test_opt}
-	       Options[opt] = false
+       if Options[opt] then
+         opt_clear (opt, test_opt)
 	    end
 	 end
       end

@@ -67,13 +67,13 @@ debug.sethook (trace, "l")
 
 Package = require ("Package")
 Origin = require ("Origin")
-Options = require ("Options")
-PkgDb = require ("PkgDb")
-Msg = require ("Msg")
-Progress = require ("Progress")
-Distfile = require ("Distfile")
-Action = require ("Action")
-Exec = require ("Exec")
+local Options = require ("Options")
+local Msg = require ("Msg")
+local Progress = require ("Progress")
+local Distfile = require ("Distfile")
+local Action = require ("Action")
+local Exec = require ("Exec")
+local PkgDb = require ("PkgDb")
 
 -- ----------------------------------------------------------------------------------
 PROGRAM = arg[0]:gsub(".*/", "")
@@ -81,8 +81,6 @@ VERSION = "4.0.0a1" -- GLOBAL
 
 -- ----------------------------------------------------------------------------------
 stdin = io.stdin
-stdout = io.stdout
-stderr = io.stderr
 tracefd = nil
 
 -- ----------------------------------------------------------------------------------
@@ -1042,7 +1040,7 @@ local function ports_add_all_outdated ()
    end
    ports_update {
       filter_old_abi,
-      --filter_old_shared_libs,
+      filter_old_shared_libs,
       filter_is_required,
       filter_pass_all,
    }
@@ -1782,3 +1780,51 @@ net/openntpd					security/libressl:stage
 security/dsniff					security/libressl:stage
 
 --]]
+
+--[[
+Actions / Use Cases:
+   build (in base or jail)
+   deinstall old package (from base)
+   deinstall new package (from jail)
+   create new package (from base or jail)
+   create backup package (from base)
+   install from work directory (to base)
+   install from package file (to base or jail)
+   ignore
+   change origin
+   change package name
+
+Action States:
+   planned
+   built (in jail or base system)
+   installed (in base system)
+   skipped
+   failed
+
+Dependency Tracking State:
+   is build dependency
+   is run dependency
+   is run dependency of build dependency
+   is forced
+   is automatic (not directly requested by user)
+
+non-jailed/delay-installation:
+   build new port
+   create package file from just built port
+   install or upgrade from just built port
+   install or upgrade from package file
+   deinstall package
+   ignore locked, excluded or broken port
+   change port directory in package database
+   change package name in package database
+   states: patched, staged, installed
+
+jailed/repo-mode:
+   build new port in jail
+   create package file from port built in jail
+   install or upgrade from port built in jail
+   provide package file in jail as build dependency (or as run dependency of a build dependency)
+   deinstall build dependencies from jail after last use (before start of next port build)
+   ignore locked, excluded or broken port
+   states: patched, staged, package built, package installed to base system
+]]

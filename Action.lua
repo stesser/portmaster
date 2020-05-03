@@ -57,8 +57,7 @@ local function describe(action)
     local o_n = action.origin_new
     local p_n = action.pkg_new
     local a = action.action
-    TRACE("DESCRIBE", a, tostring (o_o), o_n.name, p_o, p_n)
-    TRACE("DESCRIBE2", table.concat (table.keys (o_o), ","))
+    TRACE("DESCRIBE", a, o_o, o_n, p_o, p_n)
     if a then
         if a == "delete" then
             return string.format("De-install %s built from %s", p_o.name,
@@ -342,7 +341,7 @@ local function perform_portbuild(action)
         to_tty = true,
         jailed = true,
         "NO_DEPENDS=1",
-        "DISABLE_CONFLICTS=!",
+        "DISABLE_CONFLICTS=1",
         "_OPTIONS_OK=1",
         "build",
         "stage"

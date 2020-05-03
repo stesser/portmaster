@@ -184,13 +184,17 @@ end
 
 -- clean work directory and special build depends (might also be delayed to just before program exit)
 local function port_clean (action)
-   local origin_new, special_depends = action.origin_new, action.special_depends or {}
-   table.insert (special_depends, origin_new.name)
-   for i, origin_target in ipairs (special_depends) do
+   local args = {to_tty = true, jailed = true, "-D", "NO_CLEAN_DEPENDS", "clean"}
+   local origin_new = action.origin_new
+   if not origin_new:port_make (args) then
+      return false
+   end
+   local special_depends = origin_new.special_depends or {}
+   for _, origin_target in ipairs (special_depends) do
       local target = target_part (origin_target)
       local origin = Origin.get (origin_target:gsub (":.*", ""))
       if target ~= "fetch" and target ~= "checksum" then
-	 return origin:port_make {to_tty = true, jailed = true, "-D", "NO_CLEAN_DEPENDS", "clean"}
+	      return origin:port_make (args)
       end
    end
 end
@@ -910,9 +914,28 @@ end
 --]]
 
 -- ----------------------------------------------------------------------------------
+-- extract and patch files, but do not try to fetch any missing dist files
+function provide_special_depends (special_depends)
+   TRACE ("SPECIAL_DEPENDS", table.unpack (special_depends or {}))
+   --local special_depends = action.origin_new.special_depends
+   for i, origin_target in ipairs (special_depends) do
+      --print ("SPECIAL_DEPENDS", origin_target)
+      local target = target_part (origin_target)
+      local origin = Origin:new (origin_target:gsub(":.*", "")) -- define function to strip the target ???
+      --assert (origin:wait_checksum ())
+      if target ~= "fetch" and target ~= "checksum" then
+	 -- extract from package if $target=stage and _packages is set? <se>
+	 if not origin:port_make {to_tty = true, jailed = true, "-D", "NO_DEPENDS", "-D", "DEFER_CONFLICTS_CHECK", "-D", "DISABLE_CONFLICTS", "FETCH_CMD=true", target} then
+	    return false
+	 end
+      end
+   end
+   return true
+end
+
+-- ----------------------------------------------------------------------------------
 -- perform all steps required to build a port (extract, patch, build, stage, opt. package)
 local function perform_portbuild (action)
-   local automatic
    local origin_new = action.origin_new
    local pkgname_new = action.pkg_new.name
    local special_depends = origin_new.special_depends
@@ -929,8 +952,11 @@ local function perform_portbuild (action)
    end
    -- <se> VERIFY THAT ALL DEPENDENCIES ARE AVAILABLE AT THIS POINT!!!
    -- extract and patch the port and all special build dependencies ($make_target=extract/patch)
-   if special_depends and not port_provide_special_depends (special_depends) then
-      return false
+   TRACE ("SPECIAL:", #special_depends, special_depends[1])
+   if #special_depends > 0 then
+      if not provide_special_depends (special_depends) then
+         return false
+      end
    end
    if not origin_new:port_make {to_tty = true, jailed = true, "-D", "NO_DEPENDS", "-D", "DEFER_CONFLICTS_CHECK", "-D", "DISABLE_CONFLICTS", "FETCH_CMD=true", "patch"} then
       return false
@@ -1240,7 +1266,7 @@ local function perform_upgrades ()
       end
       local result
       local verb = action.action
-      print ("DO", verb, action.pkg_new.name)
+      --print ("DO", verb, action.pkg_new.name)
       if verb == "delete" then
 	 result = perform_delete (action)
       elseif verb == "upgrade" then

@@ -684,6 +684,64 @@ end
 --
 ORIGIN_ALIAS = {}
 
+--
+local function get (name)
+   if name then
+      TRACE ("GET(o)", name)
+      local result = rawget (ORIGINS_CACHE, name)
+      if result == false then
+	 return get (ORIGIN_ALIAS[name])
+      end
+      TRACE ("GET(o)->", name, tostring(result))
+      return result
+   end
+end
+
+--
+local function delete (origin)
+   ORIGINS_CACHE[origin.name] = nil
+end
+
+-- DEBUGGING: DUMP INSTANCES CACHE
+local function dump_cache ()
+   local t = ORIGINS_CACHE
+   for i, v in ipairs (table.keys (t)) do
+      if t[v] then
+	 TRACE ("ORIGINS_CACHE", i, v, table.unpack (table.keys (t[v])))
+      else
+	 TRACE ("ORIGINS_CACHE", i, v, "ALIAS", ORIGIN_ALIAS[v])
+      end
+   end
+   local t = ORIGIN_ALIAS
+   for i, v in ipairs (table.keys (t)) do
+      TRACE ("ORIGIN_ALIAS", i, v, t[v])
+   end
+end
+
+--
+local Origin = {
+   --name = false,
+   new = new,
+   get = get,
+   check_excluded = check_excluded,
+   --check_path = check_path,
+   check_config_allow = check_config_allow,
+   checksum = checksum,
+   delete = delete,
+   --depends = depends,
+   install = install,
+   port_make = port_make,
+   port_var = port_var,
+   --origin_alias = origin_alias,
+   portdb_path = portdb_path,
+   wait_checksum = wait_checksum,
+   moved_cache_load = moved_cache_load,
+   lookup_moved_origin = lookup_moved_origin,
+   --list_prev_origins = list_prev_origins,
+   --load_default_versions = load_default_versions, -- MUST BE CALLED ONCE WITH ANY ORIGIN AS PARAMETER
+   dump_cache = dump_cache,
+}
+
 local function __index (origin, k)
    local function __port_vars (origin, k, recursive)
       local function check_origin_alias () -- origin is UPVALUE
@@ -910,20 +968,6 @@ local function __index (origin, k)
    return w
 end
 
---
-local function get (name)
-   if name then
-      TRACE ("GET(o)", name)
-      local result = rawget (ORIGINS_CACHE, name)
-      if result == false then
-	 return get (ORIGIN_ALIAS[name])
-      end
-      TRACE ("GET(o)->", name, tostring(result))
-      return result
-   end
-end
-
-
 local mt = {
    __index = __index,
    __newindex = __newindex, -- DEBUGGING ONLY
@@ -932,67 +976,22 @@ local mt = {
    end,
 }
 
---
-local function delete (origin)
-   ORIGINS_CACHE[origin.name] = nil
-end
-
--- DEBUGGING: DUMP INSTANCES CACHE
-local function dump_cache ()
-   local t = ORIGINS_CACHE
-   for i, v in ipairs (table.keys (t)) do
-      if t[v] then
-	 TRACE ("ORIGINS_CACHE", i, v, table.unpack (table.keys (t[v])))
-      else
-	 TRACE ("ORIGINS_CACHE", i, v, "ALIAS", ORIGIN_ALIAS[v])
-      end
-   end
-   local t = ORIGIN_ALIAS
-   for i, v in ipairs (table.keys (t)) do
-      TRACE ("ORIGIN_ALIAS", i, v, t[v])
-   end
-end
-
-local function new (origin, name)
+function Origin:new (name)
    --local TRACE = print -- TESTING
    if name then
       local O = get (name)
       if not O then
-	 O = {name = name}
-	 setmetatable (O, mt)
-	 TRACE ("NEW Origin", name)
-	 ORIGINS_CACHE[name] = O
+	      O = {name = name}
+	      setmetatable (O, mt)
+	      TRACE ("NEW Origin", name)
+	      ORIGINS_CACHE[name] = O
       else
-	 TRACE ("NEW Origin", name, "(cached)", O.name)
+	      TRACE ("NEW Origin", name, "(cached)", O.name)
       end
       return O
    end
    return nil
 end
-
---
-local Origin = {
-   --name = false,
-   new = new,
-   get = get,
-   check_excluded = check_excluded,
-   --check_path = check_path,
-   check_config_allow = check_config_allow,
-   checksum = checksum,
-   delete = delete,
-   --depends = depends,
-   install = install,
-   port_make = port_make,
-   port_var = port_var,
-   --origin_alias = origin_alias,
-   portdb_path = portdb_path,
-   wait_checksum = wait_checksum,
-   moved_cache_load = moved_cache_load,
-   lookup_moved_origin = lookup_moved_origin,
-   --list_prev_origins = list_prev_origins,
-   --load_default_versions = load_default_versions, -- MUST BE CALLED ONCE WITH ANY ORIGIN AS PARAMETER
-   dump_cache = dump_cache,
-}
 
 return Origin
 

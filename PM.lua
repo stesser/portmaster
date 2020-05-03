@@ -795,24 +795,6 @@ function choose_action (build_type, dep_type, origin_old, origin_new, pkgname_ol
 end
 --]]
 
--- ----------------------------------------------------------------------------------
--- extract and patch files, but do not try to fetch any missing dist files
-function port_provide_special_depends (special_depends)
-   for i, origin_target in ipairs (special_depends) do
-      --print ("SPECIAL_DEPENDS", origin_target)
-      local target = target_part (origin_target)
-      local origin = origin_target:gsub(":.*", "") -- define function to strip the target ???
-      assert (origin:wait_checksum ())
-      if target ~= "fetch" and target ~= "checksum" then
-	 -- extract from package if $target=stage and _packages is set? <se>
-	 if not origin:port_make {to_tty = true, jailed = true, "-D", "NO_DEPENDS", "-D", "DEFER_CONFLICTS_CHECK", "-D", "DISABLE_CONFLICTS", "FETCH_CMD=true", target} then
-	    return false
-	 end
-      end
-   end
-   return true
-end
-
 --# function port_identify_conflicts ()
 --#	local origin="$1"
 --#
@@ -1040,7 +1022,7 @@ local function ports_add_all_outdated ()
    end
    ports_update {
       filter_old_abi,
-      filter_old_shared_libs,
+      --filter_old_shared_libs,
       filter_is_required,
       filter_pass_all,
    }

@@ -196,9 +196,6 @@ local msg_opts = {
 local function opt_set (opt, value)
    TRACE ("OPT_SET", opt, value or tostring (value))
    Options[opt] = value
-   if msg_opts[opt] then
-      Msg.opt_set (opt, value)
-   end
 end
 
 -- append passed value to option string
@@ -215,9 +212,6 @@ local function opt_clear (opt, cause)
 	 Msg.show {level = 2, "Option", opt, "overridden by option", cause}
       end
       Options[opt] = nil
-      if msg_opts[opt] then
-         Msg.opt_set (opt, nil)
-      end
    end
 end
 
@@ -381,6 +375,9 @@ local function init ()
 
    -- check for incompatible options and adjust them
    opt_adjust ()
+
+   -- export reference to Options table into Msg module
+   Msg.copy_options (Options)
 
    -- remove options before port and package glob arguments
    for i = 1, current_i - 1 do

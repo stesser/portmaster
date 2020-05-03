@@ -45,8 +45,8 @@ State.sep = State.sep1
 -- local table for copies of 4 options that are used in this module
 local Options = {}
 
-local function opt_set (opt, value)
-	Options[opt] = value
+local function copy_options (options)
+	Options = options
 end
 
 -- print continuation line
@@ -128,7 +128,14 @@ local function show (args)
 	    State.at_start = true
 	 end
 	 -- print arguments
-	 local lines = split_lines (table.concat (args, " "))
+	 local format = args.format
+	 local text
+	 if format then
+		text = string.format (format, table.unpack (args))
+	 else
+		text = table.concat (args, " ")
+	 end
+	 local lines = split_lines (text)
 	 if lines then
 	    -- extra blank line if not a continuation and not following a blank line anyway
 	    if not (State.empty_line or not State.at_start) then
@@ -288,5 +295,5 @@ return {
    show = show,
    success_add = success_add,
    title_set = title_set,
-   opt_set = opt_set,
+   copy_options = copy_options,
 }

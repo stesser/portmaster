@@ -104,17 +104,17 @@ local function run(args)
     TRACE("run", "[" .. table.concat(table.keys(args), ",") .. "]",
           table.unpack(args))
     if JAILBASE and args.jailed then
-        table.insert(args, 1, CHROOT_CMD)
+        table.insert(args, 1, CMD.chroot)
         table.insert(args, 2, JAILBASE)
-        if not args.as_root and SUDO_CMD then -- chroot needs root but can then switch back to user
+        if not args.as_root and CMD.sudo then -- chroot needs root but can then switch back to user
             args.as_root = true
             table.insert(args, 2, "-u")
             table.insert(args, 3, USER)
         end
     end
-    if args.as_root and SUDO_CMD then
-        table.insert(args, 1, SUDO_CMD)
-        if args.env then
+    if args.as_root and CMD.sudo then
+        table.insert(args, 1, CMD.sudo)
+        if args.env then -- does not work with doas as CMD.sudo !!!
             for k, v in pairs(args.env) do
                 table.insert(args, 2, k .. "=" .. v)
             end
@@ -148,7 +148,7 @@ end
 
 -- run make command
 local function make(args)
-    table.insert(args, 1, MAKE_CMD)
+    table.insert(args, 1, CMD.make)
     if args.trace then
         table.insert(args, 1, "ktrace")
         table.insert(args, 2, "-dia")
@@ -172,7 +172,7 @@ local function pkg(args)
         args.jailed = nil
     end
     if Options.developer_mode then table.insert(args, 1, "--debug") end
-    table.insert(args, 1, PKG_CMD)
+    table.insert(args, 1, CMD.pkg)
     -- return shell (args)
     return run(args)
 end

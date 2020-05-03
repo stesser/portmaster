@@ -54,7 +54,7 @@ local access = P_US.access
 local function filename(args)
     local pkg = args[1]
     local pkgname = pkg.name
-    local base = args.base or PACKAGES
+    local base = args.base or PATH.packages
     local subdir = args.subdir or "All"
     local extension = args.ext or Options.package_format
     if string.sub(extension, 1, 1) ~= "." then extension = "." .. extension end
@@ -101,17 +101,17 @@ local function shlibs_backup(pkg)
         local ldconfig_lines = Exec.run {
             table = true,
             safe = true,
-            LDCONFIG_CMD,
+            CMD.ldconfig,
             "-r"
         } -- "RT?" ??? CACHE LDCONFIG OUTPUT???
         for i, line in ipairs(ldconfig_lines) do
-            local libpath, lib = string.match(line, " => (" .. LOCAL_LIB ..
+            local libpath, lib = string.match(line, " => (" .. PATH.local_lib ..
                                                   "*(lib.*%.so%..*))")
             if lib then
                 if stat_isreg(lstat(libpath).st_mode) then
                     for i, l in ipairs(pkg_libs) do
                         if l == lib then
-                            local backup_lib = LOCAL_LIB_COMPAT .. lib
+                            local backup_lib = PATH.local_lib_compat .. lib
                             if access(backup_lib, "r") then
                                 Exec.run {
                                     as_root = true,
@@ -142,7 +142,7 @@ local function shlibs_backup_remove_stale(pkg)
     if pkg_libs then
         local deletes = {}
         for i, lib in ipairs(pkg_libs) do
-            local backup_lib = LOCAL_LIB_COMPAT .. lib
+            local backup_lib = PATH.local_lib_compat .. lib
             if access(backup_lib, "r") then
                 table.insert(deletes, backup_lib)
             end
@@ -155,7 +155,7 @@ local function shlibs_backup_remove_stale(pkg)
                 "-f",
                 table.unpack(deletes)
             }
-            Exec.run {as_root = true, log = true, LDCONFIG_CMD, "-R"}
+            Exec.run {as_root = true, log = true, CMD.ldconfig, "-R"}
         end
         return true
     end
@@ -172,7 +172,7 @@ local function deinstall(package, make_backup)
             "create",
             "-q",
             "-o",
-            PACKAGES_BACKUP,
+            PATH.packages_backup,
             "-f",
             Options.backup_format,
             pkgname
@@ -204,7 +204,7 @@ local function install(pkg, abi)
     local env = {IGNORE_OSVERSION = "yes"}
     TRACE("INSTALL", abi, pkgfile)
     if string.match(pkgfile, ".*/pkg-[^/]+$") then -- pkg command itself
-        if not access(PKG_CMD, "x") then
+        if not access(CMD.pkg, "x") then
             env.ASSUME_ALWAYS_YES = "yes"
             Exec.run {
                 as_root = true,
@@ -238,7 +238,7 @@ local function category_links_create(pkg_new, categories)
     local extension = Options.package_format
     table.insert(categories, "Latest")
     for i, category in ipairs(categories) do
-        local destination = PACKAGES .. category
+        local destination = PATH.packages .. category
         if not is_dir(destination) then
             Exec.run {as_root = true, log = true, "mkdir", "-p", destination}
         end
@@ -262,7 +262,7 @@ local function recover(pkg)
             safe = true,
             "ls",
             "-1t",
-            pkg:filename{base = PACKAGES_BACKUP, subdir = "", ext = ".*"}
+            pkg:filename{base = PATH.packages_backup, subdir = "", ext = ".*"}
         }[1] -- XXX replace with glob and sort by modification time ==> pkg.bakfile
     end
     if pkgfile and access(pkgfile, "r") then
@@ -270,7 +270,7 @@ local function recover(pkg)
         if install(pkgfile, pkg.pkgfile_abi) then
             if pkg.is_automatic == 1 then pkg:automatic_set(true) end
             shlibs_backup_remove_stale(pkg)
-            -- Exec.run {as_root = true, log = true, "/bin/unlink", PACKAGES_BACKUP .. pkgname .. ".t??"} -- required ???
+            -- Exec.run {as_root = true, log = true, "/bin/unlink", PATH.packages_backup .. pkgname .. ".t??"} -- required ???
             return true
         end
     end
@@ -311,7 +311,7 @@ end
 local function backup_delete(pkg)
     local g = filename {subdir = "portmaster-backup", ext = ".t??", pkg}
     for i, backupfile in pairs(glob(g) or {}) do
-        TRACE("BACKUP_DELETE", backupfile, PACKAGES .. "portmaster-backup/")
+        TRACE("BACKUP_DELETE", backupfile, PATH.packages .. "portmaster-backup/")
         Exec.run {as_root = true, log = true, "/bin/unlink", backupfile}
     end
 end
@@ -507,6 +507,31 @@ local function installed_pkgs()
     return result
 end
 
+-- ----------------------------------------------------------------------------------
+local Package = {
+    name = false,
+    new = new,
+    get = get,
+    installed_pkgs = installed_pkgs,
+    backup_delete = backup_delete,
+    -- backup_create = backup_create,
+    delete_old = delete_old,
+    recover = recover,
+    category_links_create = category_links_create,
+    file_search = file_search,
+    -- file_get_abi = file_get_abi,
+    -- check_use_package = check_use_package,
+    check_excluded = check_excluded,
+    message = message,
+    deinstall = deinstall,
+    install = install,
+    shlibs_backup = shlibs_backup,
+    shlibs_backup_remove_stale = shlibs_backup_remove_stale,
+    automatic_set = automatic_set,
+    packages_cache_load = packages_cache_load,
+    dump_cache = dump_cache
+}
+
 --
 local function __newindex(pkg, n, v)
     TRACE("SET(p)", pkg.name, n, v)
@@ -616,7 +641,7 @@ local function __index(pkg, k)
                 w = false
             end
         else
-            error("illegal field requested: Package." .. k)
+            --error("illegal field requested: Package." .. k)
         end
         TRACE("INDEX(p)->", pkg, k, w)
     else
@@ -637,7 +662,9 @@ end
 local mt = {
     __index = __index,
     __newindex = __newindex, -- DEBUGGING ONLY
-    __tostring = function(pkg) return pkg.name end
+    __tostring = function(self)
+        return self.name
+    end
 }
 
 -- create new Package object or return existing one for given name
@@ -659,30 +686,9 @@ local function new(pkg, name)
     return nil
 end
 
--- ----------------------------------------------------------------------------------
-return {
-    name = false,
-    new = new,
-    get = get,
-    installed_pkgs = installed_pkgs,
-    backup_delete = backup_delete,
-    -- backup_create = backup_create,
-    delete_old = delete_old,
-    recover = recover,
-    category_links_create = category_links_create,
-    file_search = file_search,
-    -- file_get_abi = file_get_abi,
-    -- check_use_package = check_use_package,
-    check_excluded = check_excluded,
-    message = message,
-    deinstall = deinstall,
-    install = install,
-    shlibs_backup = shlibs_backup,
-    shlibs_backup_remove_stale = shlibs_backup_remove_stale,
-    automatic_set = automatic_set,
-    packages_cache_load = packages_cache_load,
-    dump_cache = dump_cache
-}
+Package.new = new
+
+return Package
 
 --[[
    Instance variables of class Package:

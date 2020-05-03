@@ -54,15 +54,6 @@ local function title_set(...)
     end
 end
 
--- split string on line boundaries and return as table
-local function split_lines(str)
-    local result = {}
-    for line in string.gmatch(str, "([^\n]*)\n?") do
-        table.insert(result, line)
-    end
-    return result
-end
-
 --
 local function show(args)
     -- TRACE ("MSG_SHOW", table.unpack (table.keys (args)), table.unpack (args))
@@ -167,47 +158,6 @@ local function display()
     end
     PKGMSG = nil -- required ???
 end
-
---[[
--- ----------------------------------------------------------------------------------
--- add line to success message to display at the end -- move message_*() to Msg module ???
-SUCCESS_MSGS = {} -- GLOBAL
-PKGMSG = {}
-
-local function message_success_add(text, seconds)
-    if Options.dry_run then return end
-    if not strpfx(text, "Provide ") then
-        table.insert(SUCCESS_MSGS, text)
-        if seconds then seconds = "in " .. seconds .. " seconds" end
-        Progress.show(text, "successfully completed", seconds)
-        Msg.show {} -- or is Msg.show {""} required ???
-    end
-end
-
--- display all package messages that are new or have changed
-local function messages_display()
-    local packages = {}
-    if Options.repo_mode then packages = table.keys(PKGMSG) end
-    if packages or SUCCESS_MSGS then
-        -- preserve current stdout and locally replace by pipe to "more" ???
-        for i, pkgname in ipairs(packages) do
-            local pkgmsg = PkgDb.query {table = true, "%M", pkgname} -- tail +2
-            if pkgmsg then
-                Msg.show {
-                    start = true,
-                    "Post-install message for",
-                    pkgname .. ":"
-                }
-                Msg.show {}
-                Msg.show {verbatim = true, table.concat(pkgmsg, "\n", 2)}
-            end
-        end
-        Msg.show {start = true, "The following actions have been performed:"}
-        for i, line in ipairs(SUCCESS_MSGS) do Msg.show {line} end
-    end
-    PKGMSG = nil -- required ???
-end
---]]
 
 -- ----------------------------------------------------------------------------------
 -- print abort message at level 0

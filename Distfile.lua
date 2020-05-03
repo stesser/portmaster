@@ -206,7 +206,7 @@ end
 
 -- create file with port origins and distfiles required by each port
 function update_list ()
-   chdir (PORTSDIR)
+   chdir (PATH.portsdir)
    local result = {}
    local origins = {}
    local origin_list = PkgDb.query {"%o"}
@@ -274,13 +274,13 @@ end
 
 -- offer to delete old distfiles that are no longer required by any port
 local function clean_stale ()
-   if chdir (DISTDIR) then
+   if chdir (PATH.distdir) then
       Msg.show {start = true, "Gathering list of distribution files for installed ports ..."}
       -- create list of current distfiles for installed ports
       local act_distfiles = Distfile.update_list ()
       -- query user whether distfiles are to be deleted
-      -- local stale_distfiles = shell ("find", {"-x", ".", "-type", "f", "|", "sed", "-e", "s![.]/!!", "|", "sort", "|", GREP_CMD, "-vF", "-f", DISTFILES_LIST})
-      local distfiles = scan_dir (DISTDIR)
+      -- local stale_distfiles = shell ("find", {"-x", ".", "-type", "f", "|", "sed", "-e", "s![.]/!!", "|", "sort", "|", CMD.grep, "-vF", "-f", DISTFILES_LIST})
+      local distfiles = scan_dir (PATH.distdir)
       if distfiles then
 	 local stale_distfiles = {}
 	 for i, f in ipairs (distfiles) do
@@ -295,14 +295,14 @@ local function clean_stale ()
 	    Msg.show {"No stale distfiles found"}
 	 end
       end
-      Exec.run {"find", "-x", DISTDIR, "-type", "d", "-empty", "-delete"}
+      Exec.run {CMD.find, "-x", PATH.distdir, "-type", "d", "-empty", "-delete"}
    end
 end
 --]]
 
 return {
     -- fetch = fetch,
-    fetch = dist_fetch,
+    fetch = dist_fetch, -- TESTING ONLY XXX
     fetch_finish = fetch_finish
     -- update_list = update_list,
     -- clean_stale = clean_stale,

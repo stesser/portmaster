@@ -39,6 +39,10 @@ local getpid = P_US.getpid
 local ttyname = P_US.ttyname
 
 -- ----------------------------------------------------------------------------------
+local PROGRAM = arg[0]:gsub(".*/", "")
+local VERSION = "4.0.0a1" -- GLOBAL
+
+-- ----------------------------------------------------------------------------------
 -- options and rc file processing
 local Options = {}
 local LONGOPT = {}

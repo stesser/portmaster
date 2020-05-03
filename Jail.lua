@@ -273,7 +273,7 @@ local function setup_etc(jaildir)
     -- further required files are copied unmodified
     provide_file(jaildir, "/etc/shells", "/etc/rc.subr", "/etc/make.conf",
                  "/etc/src.conf", "/etc/rc.d", "/etc/defaults")
-    provide_file(jaildir, LOCALBASE .. "/etc/pkg.conf", LOCALBASE .. "/etc/pkg",
+    provide_file(jaildir, PATH.localbase .. "/etc/pkg.conf", PATH.localbase .. "/etc/pkg",
                  "/var/log/utx.log")
 end
 
@@ -285,7 +285,7 @@ local function setup_var_run(jaildir)
         "ldconfig",
         "/lib",
         "/usr/lib",
-        LOCALBASE .. "/lib"
+        PATH.localbase .. "/lib"
     }
     Exec.run {
         as_root = true,
@@ -294,12 +294,12 @@ local function setup_var_run(jaildir)
         "ldconfig",
         "-32",
         "/usr/lib32",
-        LOCALBASE .. "/lib32"
+        PATH.localbase .. "/lib32"
     }
 end
 
 local function setup_usr_local(jaildir)
-    provide_file(jaildir, LOCALBASE .. "/etc/portmaster.rc")
+    provide_file(jaildir, PATH.localbase .. "/etc/portmaster.rc")
 end
 
 -- ---------------------------------------------------------------------------

@@ -31,7 +31,7 @@ local Exec = require("Exec")
 -- ----------------------------------------------------------------------------------
 -- query package DB for passed origin (with optional flavor) or passed package name
 -- <se> actually not working for origin with flavor due to lack of transparent support in "pkg"
-local function query(args) -- optional extra argument: pkgname or origin
+local function query(args)
     if args.cond then
         table.insert(args, 1, "-e")
         table.insert(args, 2, args.cond)

@@ -39,10 +39,14 @@ local sleep = P_US.sleep
 
 -- ----------------------------------------------------------------------------------
 -- return port name without flavor
-local function port(origin) return (string.match(origin.name, "^[^:@%%]+")) end
+local function port(origin)
+    return (string.match(origin.name, "^[^:@%%]+"))
+end
 
 -- return full path to the port directory
-local function path(origin) return PORTSDIR .. port(origin) end
+local function path(origin)
+    return PATH.portsdir .. port(origin)
+end
 
 --
 local function check_port_exists(origin)
@@ -51,7 +55,8 @@ end
 
 -- return flavor of passed origin or nil
 local function flavor(origin) return
-    (string.match(origin.name, "%S+@([^:%%]+)")) end
+    (string.match(origin.name, "%S+@([^:%%]+)"))
+end
 
 --
 -- return flavor of passed origin or nil
@@ -62,7 +67,7 @@ end
 -- return path to the portdb directory (contains cached port options)
 local function portdb_path(origin)
     local dir = port(origin)
-    return PORT_DBDIR .. dir:gsub("/", "_")
+    return PATH.port_dbdir .. dir:gsub("/", "_")
 end
 
 -- call make for origin with arguments used e.g. for variable queries (no state change)
@@ -70,8 +75,9 @@ local function port_make(origin, args)
     local flavor = flavor(origin)
     if flavor then table.insert(args, 1, "FLAVOR=" .. flavor) end
     local dir = path(origin)
-    --[[ -- only valid for port_var, not generic port_make !!!
-   if args.jailed and JAILBASE then
+    --[[
+    -- only valid for port_var, not generic port_make !!!
+    if args.jailed and JAILBASE then
       dir = JAILBASE .. dir
       args.jailed = false
    end
@@ -152,7 +158,7 @@ local function wait_checksum(origin)
     if TMPFILE_FETCH_ACK then
         local status = Exec.run {
             safe = true,
-            GREP_CMD,
+            CMD.grep,
             "-m",
             "1",
             "OK " .. dir .. " ",
@@ -168,7 +174,7 @@ local function wait_checksum(origin)
                 }
                 status = Exec.run {
                     safe = true,
-                    GREP_CMD,
+                    CMD.grep,
                     "-m",
                     "1",
                     "OK " .. dir .. " ",
@@ -243,7 +249,7 @@ local function moved_cache_load()
     if not MOVED_CACHE then
         MOVED_CACHE = {}
         MOVED_CACHE_REV = {}
-        local filename = PORTSDIR .. "MOVED" -- allow override with configuration parameter ???
+        local filename = PATH.portsdir .. "MOVED" -- allow override with configuration parameter ???
         Msg.show {
             level = 2,
             start = true,
@@ -285,7 +291,7 @@ local function lookup_moved_origin(origin)
                 local f = f ~= o_f and f or n_f
                 local r = reason .. " on " .. date
                 TRACE("MOVED->", o(p, f), r)
-                if not p or access(PORTSDIR .. p .. "/Makefile", "r") then
+                if not p or access(PATH.portsdir .. p .. "/Makefile", "r") then
                     return p, f, r
                 end
                 return locate_move(p, f, i + 1)
@@ -417,30 +423,28 @@ local function dump_cache()
     for i, v in ipairs(table.keys(t)) do TRACE("ORIGIN_ALIAS", i, v, t[v]) end
 end
 
+-- ----------------------------------------------------------------------------------
 --
 local Origin = {
     -- name = false,
     new = new,
     get = get,
     check_excluded = check_excluded,
-    -- check_path = check_path,
     check_config_allow = check_config_allow,
     checksum = checksum,
     delete = delete,
-    -- depends = depends,
     install = install,
     port_make = port_make,
     port_var = port_var,
-    -- origin_alias = origin_alias,
     portdb_path = portdb_path,
     wait_checksum = wait_checksum,
     moved_cache_load = moved_cache_load,
     lookup_moved_origin = lookup_moved_origin,
-    -- list_prev_origins = list_prev_origins,
-    -- load_default_versions = load_default_versions, -- MUST BE CALLED ONCE WITH ANY ORIGIN AS PARAMETER
     dump_cache = dump_cache
 }
 
+-- ----------------------------------------------------------------------------------
+--
 local function __index(origin, k)
     local function __port_vars(origin, k, recursive)
         local function check_origin_alias() -- origin is UPVALUE
@@ -646,13 +650,18 @@ local function __index(origin, k)
     return w
 end
 
+-- ----------------------------------------------------------------------------------
+--
 local mt = {
     __index = __index,
     __newindex = __newindex, -- DEBUGGING ONLY
-    tostring = function(self) return self.name end
+    __tostring = function(self)
+        return self.name
+    end
 }
 
-function Origin:new(name)
+--
+local function new(origin, name)
     -- local TRACE = print -- TESTING
     if name then
         local O = get(name)
@@ -668,6 +677,8 @@ function Origin:new(name)
     end
     return nil
 end
+
+Origin.new = new
 
 return Origin
 

@@ -26,11 +26,11 @@ SUCH DAMAGE.
 --]]
 
 -- ----------------------------------------------------------------------------------
---local Origin = require ("Origin")
---local PkgDb = require ("PkgDb")
---local Msg = require ("Msg")
---local Distfile = require ("Distfile")
-local Exec = require ("Exec")
+-- local Origin = require ("Origin")
+-- local PkgDb = require ("PkgDb")
+-- local Msg = require ("Msg")
+-- local Distfile = require ("Distfile")
+local Exec = require("Exec")
 
 -- ----------------------------------------------------------------------------------
 --[[
@@ -62,55 +62,64 @@ SHA256 (bash/bash-5.0.tar.gz) = b4a80f2ac66170b2913efbfb9f2594f1f76c7b1afd11f799
 SIZE (bash/bash-5.0.tar.gz) = 10135110
 --]]
 
-local function parse_distinfo (di_filename)
-	local result = {}
-	local timestamp
-	di_file = io.open (di_filename, "r")
-	if di_file then --  meta-ports do not have a distinfo file
-	for line in di_file:lines() do
-		local key, file, value = string.match (line, "(%S+) %((%S+)%) = (%S+)")
-		if key then
-			t = result[file]
-			if not t then
-				t = {TIMESTAMP = timestamp}
-			end
-			t[key] = value
-			TRACE ("DISTINFO", key, file, value)
-			result[file] = t
-		else
-			timestamp = string.match (line, "TIMESTAMP = %d+")
-		end
-	end
-	di_file:close()
-	return result
-end
+local function parse_distinfo(di_filename)
+    local result = {}
+    local timestamp
+    di_file = io.open(di_filename, "r")
+    if di_file then --  meta-ports do not have a distinfo file
+        for line in di_file:lines() do
+            local key, file, value = string.match(line,
+                                                  "(%S+) %((%S+)%) = (%S+)")
+            if key then
+                t = result[file]
+                if not t then t = {TIMESTAMP = timestamp} end
+                t[key] = value
+                TRACE("DISTINFO", key, file, value)
+                result[file] = t
+            else
+                timestamp = string.match(line, "TIMESTAMP = %d+")
+            end
+        end
+        di_file:close()
+        return result
+    end
 end
 
 -- perform "make checksum", analyse status message and write success status to file (meant to be executed in a background task)
-local function dist_fetch (origin)
-   --   Msg.show {level = 3, "Fetch distfiles for '" .. port .. "'"}
-   TRACE ("DIST_FETCH", origin and origin.name or "<nil>")
-   if not origin then
-      return
-   end
-   local distinfo = parse_distinfo (origin.distinfo_file)
-   local port = origin.port
-   local result = ""
-   local lines = origin:port_make {as_root = DISTDIR_RO, table = true, "FETCH_BEFORE_ARGS=-v", "-D", "NO_DEPENDS", "-D", "DISABLE_CONFLICTS", "-D", "DISABLE_LICENSES", "DEV_WARNING_WAIT=0", "checksum"} -- as_root?
-   for _, l in ipairs (lines) do
-      TRACE ("FETCH:", l)
-      local files = string.match (l, "Giving up on fetching files: (.*)")
-      if files then
-	 for i, file in ipairs (split_words (files)) do
-	    result = result .. " " ..  file
-	 end
-      end
-   end
-   if result ~= "" then
-      --Msg.show {level = 3, "Fetching distfiles for '" .. port .. "' failed:", result}
-      return "NOTOK " .. port .. " missing/wrong checksum: " .. result
-   end
-   return "OK " .. port .. " "
+local function dist_fetch(origin)
+    --   Msg.show {level = 3, "Fetch distfiles for '" .. port .. "'"}
+    TRACE("DIST_FETCH", origin and origin.name or "<nil>")
+    if not origin then return end
+    local distinfo = parse_distinfo(origin.distinfo_file)
+    local port = origin.port
+    local result = ""
+    local lines = origin:port_make{
+        as_root = DISTDIR_RO,
+        table = true,
+        "FETCH_BEFORE_ARGS=-v",
+        "-D",
+        "NO_DEPENDS",
+        "-D",
+        "DISABLE_CONFLICTS",
+        "-D",
+        "DISABLE_LICENSES",
+        "DEV_WARNING_WAIT=0",
+        "checksum"
+    } -- as_root?
+    for _, l in ipairs(lines) do
+        TRACE("FETCH:", l)
+        local files = string.match(l, "Giving up on fetching files: (.*)")
+        if files then
+            for i, file in ipairs(split_words(files)) do
+                result = result .. " " .. file
+            end
+        end
+    end
+    if result ~= "" then
+        -- Msg.show {level = 3, "Fetching distfiles for '" .. port .. "' failed:", result}
+        return "NOTOK " .. port .. " missing/wrong checksum: " .. result
+    end
+    return "OK " .. port .. " "
 end
 
 --[[
@@ -180,12 +189,12 @@ end
 --]]
 
 --
-local function fetch_finish ()
-   if fetchq then
-      fetchq:write ("\n\n")
-      fetchq:close ()
-      fetchq = nil
-   end
+local function fetch_finish()
+    if fetchq then
+        fetchq:write("\n\n")
+        fetchq:close()
+        fetchq = nil
+    end
 end
 
 --[[
@@ -292,9 +301,9 @@ end
 --]]
 
 return {
-   --fetch = fetch,
-   fetch = dist_fetch,
-   fetch_finish = fetch_finish,
-   --update_list = update_list,
-   --clean_stale = clean_stale,
+    -- fetch = fetch,
+    fetch = dist_fetch,
+    fetch_finish = fetch_finish
+    -- update_list = update_list,
+    -- clean_stale = clean_stale,
 }

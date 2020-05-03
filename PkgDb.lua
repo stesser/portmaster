@@ -26,94 +26,90 @@ SUCH DAMAGE.
 --]]
 
 -- ----------------------------------------------------------------------------------
-local Exec = require ("Exec")
+local Exec = require("Exec")
 
 -- ----------------------------------------------------------------------------------
 -- query package DB for passed origin (with optional flavor) or passed package name
 -- <se> actually not working for origin with flavor due to lack of transparent support in "pkg"
-local function query (args) -- optional extra argument: pkgname or origin
-   if args.cond then
-      table.insert (args, 1, "-e")
-      table.insert (args, 2, args.cond)
-   end
-   if args.pkgfile then
-      table.insert (args, 1, "-F")
-      table.insert (args, 2, args.pkgfile)
-   end
-   if args.glob then
-      table.insert (args, 1, "-g")
-   end
-   table.insert (args, 1, "query")
-   args.safe = true
-   return Exec.pkg (args)
+local function query(args) -- optional extra argument: pkgname or origin
+    if args.cond then
+        table.insert(args, 1, "-e")
+        table.insert(args, 2, args.cond)
+    end
+    if args.pkgfile then
+        table.insert(args, 1, "-F")
+        table.insert(args, 2, args.pkgfile)
+    end
+    if args.glob then table.insert(args, 1, "-g") end
+    table.insert(args, 1, "query")
+    args.safe = true
+    return Exec.pkg(args)
 end
 
 -- get package information from pkgdb
-local function info (...)
-   return Exec.pkg {safe = true, table = true, "info", "-q", ...}
+local function info(...)
+    return Exec.pkg {safe = true, table = true, "info", "-q", ...}
 end
 
 -- set package attribute for specified ports and/or packages
-local function set (...)
-   return Exec.pkg {as_root = true, "set", "-y", ...}
-end
+local function set(...) return Exec.pkg {as_root = true, "set", "-y", ...} end
 
 -- get the annotation value (e.g. flavor), if any
-local function annotate_get (var, name)
-   assert (var, "no var passed")
-   return Exec.pkg {safe = true, "annotate", "-Sq", name, var}
+local function annotate_get(var, name)
+    assert(var, "no var passed")
+    return Exec.pkg {safe = true, "annotate", "-Sq", name, var}
 end
 
 -- set the annotation value, or delete it if "$value" is empty
-local function annotate_set (var, name, value)
-   local opt = value and #value > 0 and "-M" or "-D"
-   return Exec.pkg {as_root = true, "annotate", "-qy", opt, name, var, value}
+local function annotate_set(var, name, value)
+    local opt = value and #value > 0 and "-M" or "-D"
+    return Exec.pkg {as_root = true, "annotate", "-qy", opt, name, var, value}
 end
 
 -- ---------------------------------------------------------------------------
 -- lookup flavor of given package in the package database
-local function flavor_get (pkgname)
-   local result = annotate_get ("flavor", pkgname)
-   if result ~= "" then
-      return result
-   end
+local function flavor_get(pkgname)
+    local result = annotate_get("flavor", pkgname)
+    if result ~= "" then return result end
 end
 
 -- set flavor of given package in the package database
-local function flavor_set (pkgname, flavor)
-   annotate_set ("flavor", pkgname, flavor)
+local function flavor_set(pkgname, flavor)
+    annotate_set("flavor", pkgname, flavor)
 end
 
 -- check flavor of given package in the package database
-local function flavor_check (pkgname, flavor)
-   return flavor_get (pkgname) == flavor
-end
+local function flavor_check(pkgname, flavor) return
+    flavor_get(pkgname) == flavor end
 
 -- register new origin in package registry (must be performed before package rename, if any)
-local function update_origin (old, new, pkgname)
-   local dir_old = old:port ()
-   local dir_new = new:port ()
-   local flavor = new:flavor ()
+local function update_origin(old, new, pkgname)
+    local dir_old = old:port()
+    local dir_new = new:port()
+    local flavor = new:flavor()
 
-   if dir_old ~= dir_new then
-      if not set ("--change-origin", dir_old .. ":" .. dir_new, pkgname) then
-	 return false, "Could not change origin of " .. tostring (pkgname) .. " from " .. dir_old .. " to " .. dir_new
-      end
-   end
-   if not flavor_check (pkgname, flavor) then
-      if not flavor_set (pkgname, flavor) then
-	 return false, "Could not set flavor of " .. tostring (pkgname) .. " to " .. flavor
-      end
-   end
-   return true
+    if dir_old ~= dir_new then
+        if not set("--change-origin", dir_old .. ":" .. dir_new, pkgname) then
+            return false,
+                   "Could not change origin of " .. tostring(pkgname) ..
+                       " from " .. dir_old .. " to " .. dir_new
+        end
+    end
+    if not flavor_check(pkgname, flavor) then
+        if not flavor_set(pkgname, flavor) then
+            return false, "Could not set flavor of " .. tostring(pkgname) ..
+                       " to " .. flavor
+        end
+    end
+    return true
 end
 
 return {
-   query = query,
-   info = info,
-   set = set,
-   flavor_get = flavor_get,
-   flavor_set = flavor_set,
-   flavor_check = flavor_check,
-   update_origin = update_origin,
+    query = query,
+    info = info,
+    set = set,
+    flavor_get = flavor_get,
+    flavor_set = flavor_set,
+    flavor_check = flavor_check,
+    update_origin = update_origin
 }

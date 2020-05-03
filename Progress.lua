@@ -26,59 +26,55 @@ SUCH DAMAGE.
 --]]
 
 -- ----------------------------------------------------------------------------------
-local Msg = require ("Msg")
+local Msg = require("Msg")
 
 -- ----------------------------------------------------------------------------------
-local PROGRESS = {
-   count = 0,
-   max = nil,
-   state = nil,
-}
+local PROGRESS = {count = 0, max = nil, state = nil}
 
 -- set the upper limit for counter ranges
-local function set_max (max)
-   PROGRESS.count = 0
-   PROGRESS.max = max
-   PROGRESS.state = ""
+local function set_max(max)
+    PROGRESS.count = 0
+    PROGRESS.max = max
+    PROGRESS.state = ""
 end
 
 -- increment the progress counter
-local function incr ()
-   PROGRESS.count = PROGRESS.count + 1
-   PROGRESS.state = PROGRESS.count
-   if PROGRESS.max then
-      PROGRESS.state = "[" .. PROGRESS.state .. "/" .. PROGRESS.max .. "]"
-   else
-      PROGRESS.state = "[" .. PROGRESS.state .. "]"
-   end
+local function incr()
+    PROGRESS.count = PROGRESS.count + 1
+    PROGRESS.state = PROGRESS.count
+    if PROGRESS.max then
+        PROGRESS.state = "[" .. PROGRESS.state .. "/" .. PROGRESS.max .. "]"
+    else
+        PROGRESS.state = "[" .. PROGRESS.state .. "]"
+    end
 end
 
 -- reset the upper limit and clear the window title
-local function clear ()
-   set_max (nil)
-   Msg.title_set ("")
+local function clear()
+    set_max(nil)
+    Msg.title_set("")
 end
 
 -- print a progress message and display it in the terminal window
-local function show (...)
-   Msg.show {...}
-   -- title_set (PROGRESS.state, ...)
+local function show(...)
+    Msg.show {...}
+    -- title_set (PROGRESS.state, ...)
 end
 
 -- increment counter and print a header line for new task
-local function show_task (...)
-   incr ()
-   TRACE ("SHOW_TASK", ...)
-   Msg.show {PROGRESS.state, ...} -- or better msg_start () ???
-   Msg.title_set (PROGRESS.state, ...)
+local function show_task(...)
+    incr()
+    TRACE("SHOW_TASK", ...)
+    Msg.show {PROGRESS.state, ...} -- or better msg_start () ???
+    Msg.title_set(PROGRESS.state, ...)
 end
 
 return {
-   clear = clear,
-   --num_incr = incr,
-   --num_decr = decr,
-   show = show,
-   show_task = show_task,
-   --list = list,
-   set_max = set_max,
+    clear = clear,
+    -- num_incr = incr,
+    -- num_decr = decr,
+    show = show,
+    show_task = show_task,
+    -- list = list,
+    set_max = set_max
 }

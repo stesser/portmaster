@@ -103,32 +103,6 @@ local function unmount_all (jaildir)
    end
 end
 
--- ---------------------------------------------------------------------------
--- return mountpoint of the file system the directory resides in on the host (outside jail)
-local function mountpoint (dir)
-   TRACE ("MOUNTPOINT", dir)
-   assert (dir)
-   local df_lines = Exec.run {table = true, "df", dir}
-   if #df_lines == 2 then
-      local mnt_pnt = string.match (df_lines[2], "(%S+)$")
-      if mnt_pnt then
-	 if mnt_pnt == "/" then
-	    mnt_pnt = dir
-	 end
-	 TRACE ("MOUNTPOINT->", dir, mnt_pnt)
-	 return mnt_pnt
-      end
-   end
-end
-
---[[
--- ---------------------------------------------------------------------------
-local function dir_is_fsroot (dir)
-   TRACE ("IS_FSROOT", dir)
-   return dir == mountpoint (dir)
-end
---]]
-
 -- (UTIL)
 local function do_mount (fs_type, from, onto, param)
    local args = {as_root = true, log = true, "mount"}
@@ -171,31 +145,6 @@ local function mount_tmp (fs_type, what, where, param)
    param = param or "size=4g" -- make tunable ...
    return do_mount ("tmp", what, where, param .. ",mode=1777")
 end
-
---[[ -- not required / not updated to actually work --
-local function mount_union (fs_type, what, where, param)
-   param = param or "size=4G" -- make tunable ...
-   local real_fs = real_path (mnt_point)
-   if dir_is_fsroot (real_fs) then
-      if not do_mount ("union", real_fs, path_concat (jaildir, mnt_point), param) then
-	 return false
-      end
-      local md_dev = Exec.run {as_root = true, table = true, "mdconfig", "-a", "-s", param}
-      if md_dev == "" then
-	 Exec.run {as_root = true, "umount", mnt_point}
-	 return nil -- error exit
-      end
-      Exec.run {as_root = true, table = true, "newfs", "-i", "10000", "-b", "4096", "-f", "4096", "/dev/" .. md_dev} -- make tunable ...
-      if not do_mount (nil, "/dev/" .. md_dev, path_concat (jaildir, mnt_point), "union") then
-	 return false
-   end
-      for i, line in ipairs (Exec.run {table = true, "/bin/sh", "-c", "find -x " .. mnt_point .. " -type d -print0 | xargs -0 -n1 -I% mkdir -p " .. jaildir .. "%"}) do
-	 -- do nothing
-      end
-   end
-   return true
-end
---]]
 
 -- ---------------------------------------------------------------------------
 -- mount one filesystem of given fs_type

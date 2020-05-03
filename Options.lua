@@ -471,59 +471,6 @@ local function restart_file_name ()
    return "/tmp/pm.restart." .. id .. ".rc"
 end
 
--- print upgrade specifier line
-local function restart_file_print_upgrade (build_type, origin_new)
-   local origin_old, pkgname_old, pkgname_new, pkgfile, special_depends
-   pkgname_new = PKGNAME_NEW[origin_new]
-   if build_type == "pkg" then
-      special_depends = nil
-      pkgfile = nil
-   else
-      origin_old = ORIGIN_OLD[origin_new]
-      pkgname_old = PKGNAME_OLD[origin_new]
-      special_depends = SPECIAL_DEPENDS[origin_new]
-      pkgfile = USEPACKAGE[origin_new] or "-" -- DEBUGGING ONLY - COMPATIBILITY WITH SHELL VERSION
-   end
-   if special_depends and not pkgfile then
-      pkgfile = "-"
-   end
-   local line
-   if pkgname_old then
-      origin_old = origin_old or origin_new
-   else
-      origin_old = {name = "-"}
-      pkgname_old = "-"
-   end
-   line = table.concat ({"#: Upgrade_" .. build_type, origin_old, origin_new, pkgname_old, pkgname_new}, " ")
-   if pkgfile then
-      line = line .. " " .. pkgfile
-   end
-   if special_depends then
-      line = line .. " " .. table.concat (spcial_depends, " ")
-   end
-   return line .. "\n"
-end
-
--- print "delete after" line
-local function restart_file_print_delafter (cond, origin_new)
-   local last_use = {}
-   if cond == "build" then
-      last_use = DEP_DEL_AFTER_BUILD[origin_new]
-   else
-      last_use = DEP_DEL_AFTER_RUN[origin_new]
-   end
-   --[[
-   if last_use then
-      for i, origin in ipairs (last_use) do
-	 return "#: Purge_after_" .. cond .. " - " .. origin_new .. " - - - " .. origin .. "\n"
-      end
-   end
-   --]]
-   if last_use then
-      return "#: Purge_after_" .. cond .. " - " .. origin_new .. " - - - " .. table.concat (last_use, " ") .. "\n"
-   end
-end
-
 -- write all outstanding tasks to a file to allow to resume after an error
 local function save ()
    local tmpf
@@ -575,31 +522,6 @@ local function save ()
       tmpf:write ("verbose=yes\n")
    end
    w ("")
-   --[[
-   for i, pkgname_old in ipairs (DELETES) do
-      w ("#: Delete - - %s", pkgname_old)
-   end
-   for i, origin_new in ipairs (MOVES) do
-      w ("#: Move %s %s %s", ORIGIN_OLD[origin_new], origin_new, PKGNAME_OLD[origin_new])
-   end
-   for i, origin_new in ipairs (PKG_RENAMES) do
-      w ("#: Rename - %s %s %s", origin_new, PKGNAME_OLD[origin_new], PKGNAME_NEW[origin_new])
-   end
-   for i, origin_new in ipairs (WORKLIST) do
-      if BUILDDEP[origin_new] then
-	 tmpf:write (restart_file_print_upgrade ("build", origin_new))
-      end
-      tmpf:write (restart_file_print_delafter ("build", origin_new))
-      if RUNDEP[origin_new] then
-	 tmpf:write (restart_file_print_upgrade ("run", origin_new))
-      end
-      tmpf:write (restart_file_print_delafter ("del", origin_new))
-   end
-   PHASE = "install"
-   for i, origin_new in ipairs (DELAYED_INSTALL_LIST) do
-      tmpf:write (restart_file_print_upgrade ("pkg", origin_new))
-   end
-   --]]
 
    local filename = restart_file_name ()
    os.remove (filename)
@@ -705,5 +627,6 @@ end
 
 Options.init = init
 Options.save = save
+Options.restart_file_load = restart_file_load
 
 return Options

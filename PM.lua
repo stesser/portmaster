@@ -91,28 +91,10 @@ setenv ("CASE_SENSITIVE_MATCH", "yes")
 setenv ("LOCK_RETRIES", "120")
 -- setenv ("WRKDIRPREFIX", "/usr/work") -- ports_var ???
 
---[[
--- ----------------------------------------------------------------------------------
-NUM = { -- GLOBAL
-   actions = 0,
-   deletes = 0,
-   moves = 0,
-   renames = 0,
-   installs = 0,
-   reinstalls = 0,
-   upgrades = 0,
-   delayed = 0,
-   builds = 0,
-   provides = 0,
-}
-]]
-
 -- ----------------------------------------------------------------------------------
 -- clean up when script execution ends
 local function exit_cleanup (exit_code)
    exit_code = exit_code or 0
-   -- echo EXIT_CLEANUP PID=$$ MASTER_PID=$PID >&3
-   --  "$$" = "$PID" ] || exit 0
    Progress.clear ()
    Distfile.fetch_finish ()
    tempfile_delete ("FETCH_ACK")
@@ -134,8 +116,8 @@ function fail (...)
    -- not reached
 end
 
+--
 local STARTTIMESECS = os.time ()
--- trivial trace function printing to stdout (UTIL)
 local tracefd
 
 function TRACE (...)
@@ -280,25 +262,6 @@ end
 
 --
 JAILBASE = nil -- GLOBAL
-
--- ----------------------------------------------------------------------------------
--- some important paths and global parameters, can be overridden in the config file
-
---# set global variable to first parameter that is an executable command file and accepts option "-f /dev/stdin"
--- init_grep_cmd () {
--- 	global_var="$1"
--- 	shift
---
--- 	[ -n "$(getvar "$global_var")" ] && return
--- 	for cmd; do
--- 		if [ -f "$cmd" -a -x "$cmd" ]; then
--- 			echo "root" | $cmd -q -m 1 -f /dev/stdin /etc/passwd || continue
--- 			setvar "$global_var" "$cmd"
--- 			return 0
--- 		fi
--- 	done
--- 	fail_bug "Required parameter $global_var cannot be initialised."
--- }
 
 -- concatenate file path, first element must not be empty
 function path_concat (result, ...)
@@ -503,27 +466,6 @@ local function init_environment ()
    setenv ("DEV_WARNING_WAIT", "0")
 end
 
---#pkgdb_pkgname_from_origin_jailed () {
---#	local origin="$1"
---#	local dir=$(dir_part "$origin")
---#	local flavor=$(flavor_part "$origin")
---#	local pkgname tag value result
---#
---#	[ -z "$dir" ] && return 1
---#
---##	if [ -n "$flavor" ]; then
---##		# <se> PKGNAME_OLD is only pre-loaded if CACHED_FLAVORS is set
---##		dict_get PKGNAME_OLD "$origin" && return 0
---##	fi
---#	for pkgname in $(PkgDb.query_jailed "%n-%v" "$dir"); do
---#		if pkgdb_flavor_check "$pkgname" "$flavor"; then
---#			echo "$pkgname"
---#			return 0
---#		fi
---#	done
---#	return 1
---#}
-
 -- set pkgname_old in outer frame based on origin_new
 function pkgname_old_from_origin_new (origin_new)
    -- [ -n "$OPT_jailed" ] && return 1 # assume PHASE=build: the jails are empty, then
@@ -583,173 +525,6 @@ function messages_display ()
    PKGMSG = nil -- required ???
 end
 
---[[
--- try to find matching port origin (directory and optional flavor) given a passed in new origin and current package name
-function origin_from_dir_and_pkg (origin_new, pkgname_old) -- move to Action module ???
--- 	local pkgname_new pkgname_base pkgname_major dir flavors flavor
---
-   -- determine package name for given origin
-   local pkgname_new = origin_new.pkg_new.name
-   if pkgname_new then
-      -- compare package names including major version numbers
-      -- <se> TEST IST NOT CORRECT, E.G. for markdown-mode.el-emacs25-2.3_4 ==> markdown-mode
-      local pkgname_major = pkgname_old.name_base_major
-      if pkgname_major == pkgname_new.base_name_major then
-	 return origin_new
-      end
-      -- try available flavors in search for a matching package name with same major version
-      local dir = origin_new.port
-      local flavors = port_flavors_get (origin_new)
-      if flavors then
-	 for i, flavor in ipairs (flavors) do
-	    local origin_new = Origin:new (dir .. "@" .. flavor)
-	    local pkgname_new = origin_new.pkg_new
-	    -- compare package names including major version numbers
-	    if pkgname_major == pkgname_new.name_base_major then
-	       return origin_new
-	    end
-	    origin_new.pkg_new = nil
-	 end
-	 -- try available flavors in search for a matching package name ignoring the version number (in case major version has been incremented)
-	 local pkgname_base = pkgname_old.name_base_major
-	 if pkgname_base == pkgname_new.name_base then
-	    return PkgDb.query {"%o", pkgname_old} -- is this correct ???
-	 end
-	 -- <se> is this additional search loop required? Better to fail if no packages with same major version?
-	 local flavor = origin_new:flavor ()
-	 if flavor then flavors:insert (1) end
-	 for i, flavor in ipairs (flavors) do
-	    local origin_new = Origin:new (dir .. "@" .. flavor)
-	    local pkgname_new = origin_new.pkg_new
-	    -- compare package names with version numbers stripped off
-	    if pkgname_base == pkgname_new.name_base_major then
-	       return origin_new
-	    end
-	    origin_new.pkg_new = nil
-	 end
-	 --
-	 return Origin:new (origin_old:port_var {"PKGORIGIN"}) -- ???
-      end
-   end
-   origin_new.pkg_new = nil
-end
---]]
-
---[[ OBSOLETE ???
--- try to find origin in list of moved or deleted ports, returns new origin or "" followed by reason text
-function origin_find_moved (origin_new)
-   local origin = origin_new.name
-   assert (origin, "origin is nil")
-   -- passed in origin is default return value
-   local lineno = 1
-   local reason
-   --TRACE ("grep", "-n", "'^" .. origin_new .. "|'", PORTSDIR .. "MOVED")
-   while true do
-      local line
-      for l in Exec.run_pipe ("tail +" .. lineno, PORTSDIR .. "MOVED", "|", GREP_CMD, "-n", "'^" .. origin .. "|'") do
-	 line = l
-      end
-      if not line then
-	 break
-      end
-      lineno, origin, reason = line:match ("^(%d+):[%w-_/]+|([%w-_/^|]*)|[%d-]+|(.*)")
-      lineno = tonumber (lineno) + 1
-   end
---   if origin_new == "" then
---      origin_new = nil
---   end
-   return Origin:new (origin), reason
-end
-
--- set variable origin_new in external frame to new origin@flavor (if any) for given old origin@flavor (or to the old origin as default)
-function origin_new_from_old (origin_old, pkgname_old)
-   assert (pkgname_old, "Need pkgname_old for origin " .. origin_old.name)
-   -- just check whether old origin builds package with same name and major version number
-   local origin_new = origin_from_dir_and_pkg (origin_old, pkgname_old)
-   if not origin_new then
-      origin_new, reason = origin_find_moved (origin_old)
-      -- return passed in origin if no entry in MOVED applied
-      if origin_new.name ~= origin_old.name then
-	 if not reason then
-	    Msg.cont (0, "The origin of", pkgname_old.name, "in the ports system cannot be found.")
-	 else
-	    -- empty origin_new means that the port has been removed
-	    local text = "removed"
-	    if origin_new.name then
-	       text = "moved to " .. origin_new.name
-	    end
-	    Msg.cont (1, "The", origin_old.name, "port has been", text)
-	    Msg.cont (1, "Reason:", reason)
-	 end
-      end
-   end
-   return origin_new
-end
-
--- return origin corresponding to given relative or absolute directory
-function origin_from_dir (dir_glob)
-   local result = {}
-   for i, dir in Exec.run_pipe ("/bin/sh", "-c", "cd", PORTSDIR, ";", "echo", dir_glob) do
-      local origin = Origin:new (dir:gsub(".*/([^/]+/([^/]+)$", "%1"))
-      local name = origin:port_var {"PKGORIGIN"}
-      if name then
-	 result:insert (origin)
-      end
-   end
-   return result
-end
---]]
-
---[[
--- ----------------------------------------------------------------------------------
--- return all origin@flavor for port(s) in relative or absolute directory "$dir" (<se> TOO EXPENSIVE!!!) -- move to Origin module ???
-function origin_old_from_port (port_glob)
-   local dir_glob = port_glob:port ()
-   local flavors = port_glob:flavor ()
-   local origins = origin_from_dir (dir_glob)
-   local result = {}
-   for i, origin in ipairs (origins) do
-      if flavors ~= "" then
-	 for i, flavor in ipairs (flavors) do
-	    table.insert (result, Origin:new (origin .. "@" .. flavor))
-	 end
-      else
-	 table.insert (result, Origin:new (origin))
-      end
-   end
-   return result
-end
---]]
-
---[[ OBSOLETE
---## return old pkgname for given new origin@flavor
---# function pkgnames_old_from_moved_to_origin ()
---#	local origin="$1"
---#	local line matched
---#
---#	TRACE grep "^[^|]*|${origin}|" "$PORTSDIR/MOVED"
---#	matched=""
---#	for line in "$(${GREP_CMD} "^[^|]*|${origin}|" "$PORTSDIR/MOVED")"; do
---#                PkgDb.query "%n-%v" "${line%%|*}" && matched=yes
---#	done
---#	test "$matched" = yes
---#}
-
--- return old origin@flavor for given new origin@flavor
-function origin_old_from_moved_to_origin (origin_new)
---#	[ -n "$OPT_jailed" ] && return 1 # assume PHASE=build: the jail is empty, then
-   local moved_file = PORTSDIR .. "MOVED"
-   local lastline = ""
-   for line in Exec.run_pipe (GREP_CMD, "'^[^|]+|" .. origin_new.name .. "|'", moved_file) do
-      lastline = line
-   end
-   if lastline then
-      local origin_old = string.match (lastline, "^([^|]+)|")
-      return Origin:new (origin_old)
-   end
-end
---]]
-
 -- ----------------------------------------------------------------------------------
 -- split string on line boundaries and return as table
 function split_lines (str)
@@ -771,73 +546,6 @@ function split_words (str)
    end
 end
 
---[[
--- return checksum status without attempting to fetch any files -- is the test sufficient ???
-function dist_checksums_ok (origin)
-   print ("dist_checksums_ok", origin)
-   local result = origin:port_make {table = true, safe = true, "-D", "NO_DEPENDS", "-D", "DEFER_CONFLICTS_CHECK", "-D", "DISABLE_CONFLICTS", "FETCH_CMD=true", "DEV_WARNING_WAIT=0", "checksum"}
-   for i, line in ipairs (result) do
-      if strpfx (line, "*** Error") then
-	 return false
-      end
-   end
-   return true
-end
---]]
-
---[[
--- <se> use "make flavors-package-names" to list all package names for all (relevant) flavors
--- build_type: one of: auto, user, force, provide
--- dep_type: one of: build, run, base
-function choose_action (build_type, dep_type, origin_old, origin_new, pkgname_old)
-   TRACE ("\n----\nCHOOSE_ACTION", build_type, dep_type, tostring (origin_old), origin_new, pkgname_old)
-   return Action:new {build_type = build_type, dep_type = dep_type, origin_old = Origin:new (origin_old), origin_new = Origin:new (origin_new), pkg_old = Package:new (pkgname_old)}
-end
---]]
-
---# function port_identify_conflicts ()
---#	local origin="$1"
---#
---#	port_make "$origin"  -D BATCH -D NO_DEPENDS identify-install-conflicts
---#}
-
---[[
--- add the one port identified by the installed package name to the worklist
-local function add_one_pkg (pkgname_old, origin_new) -- 2nd parameter is optional
-   local build_type = Options.force and "force" or "auto"
-   -- call choose_action with old origin and package name (new origin only if passed with -o)
-   choose_action (build_type, "run", nil, origin_new, pkgname_old)
-end
-
--- expand passed in pkgname or port glob (port glob with optional flavor)
-local function add_with_globbing (args)
-   local build_type = args.force and "force"
-   local origin_new = args.origin_new -- ??? origin_new is actually never passed ...
-   local origin_glob = args[1]
-   local dir_glob = dir_part (origin_glob)
-   local flavor = flavor_part (origin_glob)
-   Msg.show {level = 1, start = true, "Checking upgrades for", origin_glob, "and ports it depends on ..."}
-   -- first try to find installed packages matching the glob pattern
-   local matches = PkgDb.query {table = true, glob = true, "%n-%v", dir_glob}
-   if matches then
-      for i, name in ipairs (matches) do
-	 if not flavor or PkgDb.flavor_check (name, flavor) then
-	    add_one_pkg (name, origin_new)
-	 end
-      end
-      return matches
-   end
-   -- else try parameter as port directory or origin of uninstalled port(s)
-   matches = {}
-   for i, origin_new in ipairs (origin_from_dir (origin_glob)) do -- origin_from_dir should nsupport globs and return a list ???
-      if choose_action (build_type, "run", "", origin_new) then
-	 matches:insert (origin_new)
-      end
-   end
-   return matches
-end
---]]
-
 -- replace passed package or port with one built from the new origin
 local function ports_add_changed_origin (build_type, name, origin_new) -- 3rd arg is NOT optional
    if Options.force then
@@ -850,85 +558,6 @@ local function ports_add_changed_origin (build_type, name, origin_new) -- 3rd ar
       choose_action (build_type, "run", origin_old, origin_new) -- && matched=1
    end
 end
-
---[[
--- find origin of a port that depends on the origin passed as second parameter
-local function origin_new_from_dependency (origin_old, origin_dep)
-   assert (origin_dep)
-   local depends = origin_old:depends ("all") --  "all" vs. "run" ???
-   if table.index (depends, origin_dep) then
-      return origin_old
-   end
-   local flavors = port_flavors_get (origin_old)
-   if flavors then
-      local dir = dir_part (origin_old)
-      for i, flavor in ipairs (flavors) do
-	 local origin = dir .. "@" .. flavor
-	 depends = origin:depends ("run")
-	 if table.index (depends, origin_dep) then
-	    return origin
-	 end
-      end
-   else -- EXPERIMENTAL <se> ???
-      local flavor = flavor_part (origin_dep) or origin_dep:match (".*/(%w+)-.*")
-      if flavor then
-	 local origin = origin_old:match ("([^/]+/)") .. flavor .. origin_dep:match (".*/%w+-(.*)")
-	 if origin ~= origin_old then
-	    depends = origin:depends ("run")
-	    if table.index (depends, origin_dep) then
-	       return origin
-	    end
-	 end
-      end
-   end
-   return nil
-end
-
--- add installed package and all dependencies for the given origin (with optional flavor)
-local function ports_add_recursive (name, origin_new) -- 2nd parameter is optional
--- 	local pkgnames pkgname pkgname_dep origin_old origin_old2 origin_new2
---
-   Package.package_cache_load () -- initialize ORIGIN_OLD (with flavor) and PKGNAME_OLD
-   Msg.show {level = 1, start = true, "Rebuilding", name, "and ports that depend on it, and upgrading ports they depend on ..."}
-   local pkgnames = PkgDb.query {table = true, "%n-%v", name} or PkgDb.query {table = true, glob = true, "%n-%v", name .. "*"}
-   assert (pkgnames, "Could not find package or port matching " .. name)
-   --
-   if origin_new then
-      for i, pkgname in ipairs (pkgnames) do
-	 local origin_old = PkgDb.origin_from_pkgname (pkgname)
-	 FORCED_ORIGIN[origin_old] = origin_new
-	 local depends = PkgDb.info ("-r", pkgname)
-	 for i, pkgname_dep in ipairs (depends) do
-	    local origin_old2 = PkgDb.origin_from_pkgname (pkgname_dep)
-	    local origin_new2 = origin_new_from_dependency (origin_old2, origin_new)
-	    if origin_new2 then
-	       FORCED_ORIGIN[origin_old2] = origin_new2
-	    end
-	 end
-      end
-   end
-   --
-   local origins = table.keys (FORCED_ORIGIN)
-   for i, origin_old in ipairs (origins) do
-      -- log (0, "USE FORCED_ORIGIN", origin_old)
-      choose_action ("force", "run", origin_old, FORCED_ORIGIN[origin_old], PkgDb.pkgname_from_origin (origin_old))
-   end
-   --
-   for i, pkgname in ipairs (pkgnames) do
-      local origin_old = PkgDb.origin_from_pkgname (pkgname)
-      choose_action ("force", "run", origin_old, origin_new, pkgname)
-   end
-   -- <se> ToDo: if $origin_new is set, then the dependencies must be relative to the version built from that origin!!!
-   for i, pkgname in ipairs (pkgnames) do
-      local depends = PkgDb.info ("-r", pkgname)
-      for j, pkgname_dep in ipairs (depends) do
-	 local origin_old = PkgDb.origin_from_pkgname (pkgname_dep)
-	 local origin_new2 = FORCED_ORIGIN[origin_old]
-	 choose_action ("force", "run", origin_old, origin_new2, pkgname_dep)
-      end
-   end
-end
---]]
 
 --
 local function ports_update (filters)
@@ -1099,91 +728,8 @@ function ask_and_delete_directory (prompt, ...) -- move to Msg module -- convert
    end
 end
 
---# ----------------------------------------------------------------------------------
---# delete named package file in all direct sub-directories of $PACKAGES except in the portmaster-backup directory
---# function #delete_package ()
---#	(
---#		local pkgname="$1"
---#
---#		cd $PACKAGES
---#		ask_and_delete "stale package" $(find $(/bin/ls -1 | ${GREP_CMD} -E -v '^portmaster-backup$') -depth 1 -name "$pkgname.*")
---#	)
---#}
-
--- list package files in current directory (e.g. portmaster-backup) except for the newest one for each package
-local function list_old_package_files ()
-   -- create a list of packages with more than one package backup file
--- 	files = ls (-1Lt *-*.t?? 2>/dev/null)
--- 	duplicate_packages = echo ("$files" | sed -E 's|-[^-]*\.t..|-[^-]*\.t..|' | sort | uniq -d)
--- 	# for each package with multiple backups return names of all but the last modified file
--- 	for pattern in $duplicate_packages; do
--- 		echo "$files" | ${GREP_CMD} "^$pattern\$" | tail +2
--- 	done
--- }
-   error("NYI")
-end
-
--- # list package files for old versions in sub-directories of the current directory
-local function list_stale_package_files ()
--- 	local tmpfile packages_pattern
---
--- 	tmpfile = tempfile_create (PKGS)
--- 	trap "unlink $tmpfile; Msg.start 0 'Aborted'; exit 0" INT
---
--- 	# create list of all package files (except those in directory portmaster-backup)
--- 	find $(/bin/ls -1 | ${GREP_CMD} -E -v '^portmaster-backup$') -type f -name "*-*.t??" | sort > "$tmpfile"
---
--- 	# create list of package files not corresponding to installed packages
--- 	packages_pattern = PkgDb.query ("%n-%v" | sed -E 's|^|/|;s!(\.|\[|\]|\{|\})!\\\1!g;s|$|\\.t..$|')
---
--- 	# the following "grep" takes an extremely long time to run with LANG=C and/or LC_CTYPE=C (affects only the GNU grep in FreeBSD!)
--- 	echo "$packages_pattern" | ${GREP_CMD} -vf /dev/stdin "$tmpfile"
--- 	unlink "$tmpfile"
--- }
-   error("NYI")
-end
-
 -- # delete package files that do not belong to any currently installed port (except portmaster backup packages)
 local function packagefiles_purge () -- move to new PackageFile module ???
--- 	(
--- 		local stale_packages dir
---
--- 		cd "$PACKAGES" || fail "No packages directory $PACKAGES found"
---
--- 		Msg.start 0 "Scanning $PACKAGES for stale package files ..."
--- 		stale_packages = list_stale_package_files)
--- (
--- 		if [ -n "$stale_packages" ]; then
--- 			ask_and_delete "stale package file" $stale_packages
--- 		else
--- 			msg 0 "No stale package files found"
--- 		fi
--- 		# only keep the newest file fir each package
--- 		for dir in *; do
--- 			[ -d "$dir" ] || continue
--- 			[ "$dir" = "portmaster-backup" ] && continue
--- 			(
--- 				cd "$dir"
--- 				list_old_package_files | xargs -n1 unlink
--- 			)
--- 		done
---
--- 		# silently delete stale symbolic links pointing to now deleted package files
--- 		RUN_SU ${FIND_CMD} . -type l | xargs -n1 -I% sh -c '[ -e "%" ] || unlink "%"'
--- 		# delete empty package sub-directories
--- 		RUN_SU ${FIND_CMD} . -type d -empty -delete
---
--- 		cd "$PACKAGES/portmaster-backup" 2>/dev/null || return
---
--- 		Msg.start 0 "Scanning $PACKAGES/portmaster-backup for stale backup package files ..."
--- 		stale_packages = list_old_package_files)
--- 		(if [ -n "$stale_packages" ]; then
--- 			ask_and_delete "stale package backup file" $stale_packages
--- 		else
--- 			msg 0 "No stale backup packages found"
--- 		fi
--- 	)
--- }
    error("NYI")
 end
 
@@ -1445,46 +991,6 @@ local function main ()
 end
 
 tracefd = io.open ("/tmp/pm.log", "w")
-
--- --[[
--- ---------------------------------------------------------------------------
--- TESTING
-function TEST_ ()
-   local function table_values (t) return "[" .. table.concat (t, ",") .. "]" end
-   local o = Origin:new ("devel/py-setuptools@py27")
-   print ("TEST:", o, o.pkg_new, o.is_broken, o.is_ignore, o.is_forbidden, table_values (o.flavors), o.flavor)
-   local o = Origin:new ("devel/py-setuptools@py36")
-   Action:new {build_type = "user", dep_type = "run", origin_new = o}
-   print ("OLD ORIGINS:", table_values (o:list_prev_origins()))
-
-   --[[
-   local o = Origin:new ("devel/ada-util")
-   print ("TEST:", o, table_values (o.old_pkgs), o.pkg_new, o.is_broken, o.is_ignore, o.is_forbidden, table_values (o.flavors), o.flavor)
-   print ("TEST:", o, table_values (o.old_pkgs), o.pkg_new, o.is_broken, o.is_ignore, o.is_forbidden, table_values (o.flavors), o.flavor)
-   local o = Origin:new ("devel/py-setuptools@py27")
-   print ("TEST:", o, table_values (o.old_pkgs), o.pkg_new, o.is_broken, o.is_ignore, o.is_forbidden, table_values (o.flavors), o.flavor, table_values (o.conflicts))
-   local p = table_values (o.old_pkgs)
-   print ("TEST2:", o, p, p.origin, p.is_locked, p.is_automatic, p.num_dependencies, p.num_depending, p.abi, table_values (p.categories), table_values (p.shlibs))
-   print (table_values (p.files), table_values (o.build_depends), table_values (o.run_depends))
-   local o = Origin:new ("math/gnubc")
-   print ("TEST3:", o, table_values (o.old_pkgs), o.pkg_new, o.is_broken, o.is_ignore, o.is_forbidden, table_values (o.flavors), o.flavor, table_values (o.conflicts), o.distinfo_file, o.license)
-   local o = Origin:new ("multimedia/ffmpeg")
-   print ("TEST4:", table_values (o.all_options), table_values (o.port_options))
-   --]]
-   local o = Origin:new ("devel/py-setuptools27")
-   print ("M", o, o:lookup_moved_origin())
-   local o = Origin:new ("www/py-blogofile")
-   print ("M", o, o:lookup_moved_origin())
-   local o = Origin:new ("devel/qca@qt5")
-   print ("M", o, o:lookup_moved_origin())
-   local o = Origin:new ("devel/eric6@qt4_py37")
-   print ("M", o, o:lookup_moved_origin())
-   local o = Origin:new ("archivers/par2cmdline-tbb")
-   print ("M", o, o:lookup_moved_origin())
-   local o = Origin:new ("shells/bash")
-   print ("M", o, o:lookup_moved_origin())
-end
---]]
 
 local success, errmsg = xpcall (main, debug.traceback)
 if not success then

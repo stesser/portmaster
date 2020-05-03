@@ -101,26 +101,6 @@ local function check_port (port)
    end
 end
 
---[[
--- ----------------------------------------------------------------------------------
--- check parameter against excludes list
-function check (...)
-   print ("EXCLUDES_CHECK", ...)
-   for i, pattern in ipairs {...} do
-      if string.match (pattern, "/") then
-	 if Origin.check_excluded (pattern) then
-	    return true
-	 end
-      else
-	 if Package.check_excluded (pattern) then
-	    return true
-	 end
-      end
-   end
-   return false
-end
---]]
-
 --
 local function list ()
    local result = EXCLUDED_PKG

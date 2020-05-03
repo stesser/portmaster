@@ -50,37 +50,6 @@ local execp = P_US.execp
 local fork = P_US.fork
 local pipe = P_US.pipe
 
---[[ unused - only left as working example of a coroutine
--- return an iterator usable in for loops that returns shell command result lines
--- usage: for line in shell_pipe (<shell cmd>) do ... end
-local function shell_pipe (args)
-
-   local function pp (cmd)
-      local r = io.popen (cmd, "r") --  should take argument vector and environment table
-      repeat
-	 local line = r:read ()
-	 if line then
-	    coroutine.yield (line)
-	 end
-      until not line
-      r:close ()
-   end
-
-   local function p (cmd)
-      local co = coroutine.create (function () pp (cmd) end)
-      return function ()
-	 local code, res = coroutine.resume (co)
-	 TRACE ("-->", res)
-	 return res
-      end
-   end
-
-   local cmd = table.concat (args, " ")
-   TRACE (cmd)
-   return (p (cmd))
-end
---]]
-
 -- execute shell command and return its standard output (UTIL) -- not exported !!!
 -- the return value is a list with one entry per line without the trailing new-line
 local function shell (args)

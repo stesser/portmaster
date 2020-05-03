@@ -97,6 +97,51 @@ local function pkg_strip_minor (pkg)
 end
 
 -- ----------------------------------------------------------------------------------
+-- remove from shlib backup directory all shared libraries replaced by new versions
+-- preserve currently installed shared libraries // <se> check name of control variable
+local function shlibs_backup (pkg)
+   local pkg_libs = pkg.shared_libs
+   if pkg_libs then
+      local ldconfig_lines = Exec.run {table = true, safe = true, LDCONFIG_CMD, "-r"} -- "RT?" ??? CACHE LDCONFIG OUTPUT???
+      for i, line in ipairs (ldconfig_lines) do
+	 local libpath, lib = string.match (line, " => (" .. LOCAL_LIB .. "*(lib.*%.so%..*))")
+	 if lib then
+	    if stat_isreg (lstat (libpath).st_mode) then
+	       for i, l in ipairs (pkg_libs) do
+		  if l == lib then
+		     local backup_lib = LOCAL_LIB_COMPAT .. lib
+		     if access (backup_lib, "r") then
+			Exec.run {as_root = true, log = true, to_tty = true, "/bin/unlink", backup_lib}
+		     end
+		     Exec.run {as_root = true, log = true, "/bin/cp", libpath, backup_lib}
+		  end
+	       end
+	    end
+	 end
+      end
+   end
+end
+
+-- remove from shlib backup directory all shared libraries replaced by new versions
+local function shlibs_backup_remove_stale (pkg)
+   local pkg_libs = pkg.shared_libs
+   if pkg_libs then
+      local deletes = {}
+      for i, lib in ipairs (pkg_libs) do
+	 local backup_lib = LOCAL_LIB_COMPAT .. lib
+	 if access (backup_lib, "r") then
+	    table.insert (deletes, backup_lib)
+	 end
+      end
+      if #deletes > 0 then
+	 Exec.run {as_root = true, log = true, "/bin/rm", "-f", table.unpack (deletes)}
+	 Exec.run {as_root = true, log = true, LDCONFIG_CMD, "-R"}
+      end
+      return true
+   end
+end
+
+-- ----------------------------------------------------------------------------------
 -- deinstall named package (JAILED)
 local function deinstall (package, make_backup)
    local pkgname = package.name
@@ -234,51 +279,6 @@ local function delete_old (pkg)
       if pkgfile ~= bakfile then
 	 Exec.run {as_root = true, log = true, "/bin/unlink", pkgfile}
       end
-   end
-end
-
--- ----------------------------------------------------------------------------------
--- remove from shlib backup directory all shared libraries replaced by new versions
--- preserve currently installed shared libraries // <se> check name of control variable
-function shlibs_backup (pkg)
-   local pkg_libs = pkg.shared_libs
-   if pkg_libs then
-      local ldconfig_lines = Exec.run {table = true, safe = true, LDCONFIG_CMD, "-r"} -- "RT?" ??? CACHE LDCONFIG OUTPUT???
-      for i, line in ipairs (ldconfig_lines) do
-	 local libpath, lib = string.match (line, " => (" .. LOCAL_LIB .. "*(lib.*%.so%..*))")
-	 if lib then
-	    if stat_isreg (lstat (libpath).st_mode) then
-	       for i, l in ipairs (pkg_libs) do
-		  if l == lib then
-		     local backup_lib = LOCAL_LIB_COMPAT .. lib
-		     if access (backup_lib, "r") then
-			Exec.run {as_root = true, log = true, to_tty = true, "/bin/unlink", backup_lib}
-		     end
-		     Exec.run {as_root = true, log = true, "/bin/cp", libpath, backup_lib}
-		  end
-	       end
-	    end
-	 end
-      end
-   end
-end
-
--- remove from shlib backup directory all shared libraries replaced by new versions
-local function shlibs_backup_remove_stale (pkg)
-   local pkg_libs = pkg.shared_libs
-   if pkg_libs then
-      local deletes = {}
-      for i, lib in ipairs (pkg_libs) do
-	 local backup_lib = LOCAL_LIB_COMPAT .. lib
-	 if access (backup_lib, "r") then
-	    table.insert (deletes, backup_lib)
-	 end
-      end
-      if #deletes > 0 then
-	 Exec.run {as_root = true, log = true, "/bin/rm", "-f", table.unpack (deletes)}
-	 Exec.run {as_root = true, log = true, LDCONFIG_CMD, "-R"}
-      end
-      return true
    end
 end
 
@@ -456,18 +456,6 @@ local function installed_pkgs ()
    end
    return result
 end
-
---[[]]
---
-local function get_attribute (pkg, k)
-   for i, v in ipairs (PkgDb.query {table = true, "%At %Av", pkg.name}) do
-      local result = string.match (v, "^" .. k .. " (.*)")
-      if result then
-	 return result
-      end
-   end
-end
---]]
 
 --
 local function __newindex (pkg, n, v)

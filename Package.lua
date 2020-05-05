@@ -507,31 +507,6 @@ local function installed_pkgs()
     return result
 end
 
--- ----------------------------------------------------------------------------------
-local Package = {
-    name = false,
-    new = new,
-    get = get,
-    installed_pkgs = installed_pkgs,
-    backup_delete = backup_delete,
-    -- backup_create = backup_create,
-    delete_old = delete_old,
-    recover = recover,
-    category_links_create = category_links_create,
-    file_search = file_search,
-    -- file_get_abi = file_get_abi,
-    -- check_use_package = check_use_package,
-    check_excluded = check_excluded,
-    message = message,
-    deinstall = deinstall,
-    install = install,
-    shlibs_backup = shlibs_backup,
-    shlibs_backup_remove_stale = shlibs_backup_remove_stale,
-    automatic_set = automatic_set,
-    packages_cache_load = packages_cache_load,
-    dump_cache = dump_cache
-}
-
 --
 local function __newindex(pkg, n, v)
     TRACE("SET(p)", pkg.name, n, v)
@@ -629,7 +604,7 @@ local function __index(pkg, k)
     }
 
     TRACE("INDEX(p)", pkg, k)
-    local w = Package[k]
+    local w = rawget(pkg.__class, k)
     if w == nil then
         rawset(pkg, k, false)
         local f = dispatch[k]
@@ -668,13 +643,14 @@ local mt = {
 }
 
 -- create new Package object or return existing one for given name
-local function new(pkg, name)
+local function new(Package, name)
     -- local TRACE = print -- TESTING
     -- assert (type (name) == "string", "Package:new (" .. type (name) .. ")")
     if name then
         local P = PACKAGES_CACHE[name]
         if not P then
             P = {name = name}
+            P.__class = Package
             setmetatable(P, mt)
             PACKAGES_CACHE[name] = P
             TRACE("NEW Package", name)
@@ -686,9 +662,31 @@ local function new(pkg, name)
     return nil
 end
 
-Package.new = new
+-- ----------------------------------------------------------------------------------
+return {
+    name = false,
+    new = new,
+    get = get,
+    installed_pkgs = installed_pkgs,
+    backup_delete = backup_delete,
+    -- backup_create = backup_create,
+    delete_old = delete_old,
+    recover = recover,
+    category_links_create = category_links_create,
+    file_search = file_search,
+    -- file_get_abi = file_get_abi,
+    -- check_use_package = check_use_package,
+    check_excluded = check_excluded,
+    message = message,
+    deinstall = deinstall,
+    install = install,
+    shlibs_backup = shlibs_backup,
+    shlibs_backup_remove_stale = shlibs_backup_remove_stale,
+    automatic_set = automatic_set,
+    packages_cache_load = packages_cache_load,
+    dump_cache = dump_cache
+}
 
-return Package
 
 --[[
    Instance variables of class Package:

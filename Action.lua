@@ -1278,21 +1278,6 @@ local function dump_cache()
     end
 end
 
--- ----------------------------------------------------------------------------------
---
-local Action = {
-    --new = new,
-    execute = execute,
-    packages_delete_stale = packages_delete_stale,
-    --register_delayed_installs = register_delayed_installs,
-    sort_list = sort_list,
-    --add_missing_deps = add_missing_deps,
-    check_licenses = check_licenses,
-    check_conflicts = check_conflicts,
-    port_options = port_options,
-    dump_cache = dump_cache
-}
-
 --
 local function add_missing_deps()
     for i, a in ipairs(ACTION_LIST) do
@@ -1347,8 +1332,6 @@ local function add_missing_deps()
     end
 end
 
-Action.add_missing_deps = add_missing_deps
-
 -- ----------------------------------------------------------------------------------
 local function __newindex(action, n, v)
     TRACE("SET(a)",
@@ -1389,7 +1372,7 @@ local function __index(action, k)
     }
 
     TRACE("INDEX(a)", k)
-    local w = Action[k]
+    local w = rawget(action.__class, k)
     if w == nil then
         rawset(action, k, false)
         local f = dispatch[k]
@@ -1455,6 +1438,7 @@ local function new(Action, args)
             end
         else
             action = args
+            action.__class = Action
             setmetatable(action, mt)
         end
         if not action_enrich(action) then
@@ -1482,9 +1466,20 @@ local function new(Action, args)
     end
 end
 
-Action.new = new
-
-return Action
+-- ----------------------------------------------------------------------------------
+--
+return {
+    new = new,
+    execute = execute,
+    packages_delete_stale = packages_delete_stale,
+    --register_delayed_installs = register_delayed_installs,
+    sort_list = sort_list,
+    add_missing_deps = add_missing_deps,
+    check_licenses = check_licenses,
+    check_conflicts = check_conflicts,
+    port_options = port_options,
+    dump_cache = dump_cache
+}
 
 --[[
    Instance variables of class Action:

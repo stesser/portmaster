@@ -425,26 +425,6 @@ end
 
 -- ----------------------------------------------------------------------------------
 --
-local Origin = {
-    -- name = false,
-    new = new,
-    get = get,
-    check_excluded = check_excluded,
-    check_config_allow = check_config_allow,
-    checksum = checksum,
-    delete = delete,
-    install = install,
-    port_make = port_make,
-    port_var = port_var,
-    portdb_path = portdb_path,
-    wait_checksum = wait_checksum,
-    moved_cache_load = moved_cache_load,
-    lookup_moved_origin = lookup_moved_origin,
-    dump_cache = dump_cache
-}
-
--- ----------------------------------------------------------------------------------
---
 local function __index(origin, k)
     local function __port_vars(origin, k, recursive)
         local function check_origin_alias() -- origin is UPVALUE
@@ -629,7 +609,7 @@ local function __index(origin, k)
     }
 
     TRACE("INDEX(o)", origin, k)
-    local w = Origin[k] -- rawget (origin.__class, k)
+    local w = rawget(origin.__class, k)
     if w == nil then
         rawset(origin, k, false)
         local f = dispatch[k]
@@ -661,12 +641,13 @@ local mt = {
 }
 
 --
-local function new(origin, name)
+local function new(Origin, name)
     -- local TRACE = print -- TESTING
     if name then
         local O = get(name)
         if not O then
             O = {name = name}
+            O.__class = Origin
             setmetatable(O, mt)
             TRACE("NEW Origin", name)
             ORIGINS_CACHE[name] = O
@@ -678,9 +659,25 @@ local function new(origin, name)
     return nil
 end
 
-Origin.new = new
-
-return Origin
+-- ----------------------------------------------------------------------------------
+--
+return {
+    -- name = false,
+    new = new,
+    get = get,
+    check_excluded = check_excluded,
+    check_config_allow = check_config_allow,
+    checksum = checksum,
+    delete = delete,
+    install = install,
+    port_make = port_make,
+    port_var = port_var,
+    portdb_path = portdb_path,
+    wait_checksum = wait_checksum,
+    moved_cache_load = moved_cache_load,
+    lookup_moved_origin = lookup_moved_origin,
+    dump_cache = dump_cache
+}
 
 --[[
    Instance variables of class Origin:

@@ -63,7 +63,11 @@ local function shell(args)
     assert(pid, errmsg)
     if pid == 0 then
         -- child process
-        if args.env then for k, v in pairs(args.env) do setenv(k, v) end end
+	if args.env then
+	    for k, v in pairs(args.env) do
+		setenv(k, v)
+	    end
+	end
         if not args.to_tty then
             close(fd1r)
             dup2(fd1w, fileno(io.stdout)) -- stdout

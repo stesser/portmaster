@@ -449,16 +449,11 @@ local function init_environment()
     setenv("PATH", "/bin:/sbin:/usr/bin:/usr/sbin:" .. PATH.localbase .. "bin:" ..
                PATH.localbase .. "sbin") -- DUPLICATE ???
     -- cache some build variables in the environment (cannot use ports_var due to its use of "-D BEFOREPORTMK")
-    local env_param = Exec.run {
-        safe = true,
-        "make",
-        "-f",
-        "/usr/ports/Mk/bsd.port.mk",
-        "-V",
-        "PORTS_ENV_VARS"
-    } -- || fail "$output" -- convert to port_var with extra parameter for the -f option argument XXX
+    local env_param = ports_var {needbeforemk = true, "PORTS_ENV_VARS"} -- || fail "$output" -- convert to port_var with extra parameter for the -f option argument XXX
     for i, var in ipairs(split_words(env_param)) do
-        setenv(var, ports_var {var})
+        local value = ports_var {needbeforemk = true, var}
+	TRACE("SETENV", var, value)
+        setenv(var, value)
     end
     --
     -- local env_lines = Exec.run {table = true, safe = true, "env", "SCRIPTSDIR=" .. PORTSDIR ..  "Mk/Scripts", "PORTSDIR=" .. PATH.portsdir, "MAKE=make", "/bin/sh", PATH.portsdir .. "Mk/Scripts/ports_env.sh"}
@@ -478,6 +473,7 @@ local function init_environment()
         if string.sub(value, 1, 1) == '"' and string.sub(value, -1) == '"' then
             value = string.sub(value, 2, -2)
         end
+	TRACE("SETENV", var, value)
         setenv(var, value)
     end
     -- prevent delays for messages that are not displayed, anyway
@@ -841,6 +837,60 @@ local function list_ports(mode)
     assert(pkg_list[1] == nil, "not all packages covered in tests")
 end
 
+--
+local function add_missing_deps()
+     for i, a in ipairs(Action.list()) do
+        if a.pkg_new and rawget(a.pkg_new, "is_installed") then
+            -- print (a, "is already installed")
+        else
+            local add_dep_hdr = "Add build dependencies of " .. a.short_name
+            local deps = a.build_depends or {}
+            for j, dep in ipairs(deps) do
+                local o = Origin:new(dep)
+                local p = o.pkg_new
+                if not ACTION_CACHE[p.name] then
+                    if add_dep_hdr then
+                        Msg.show {level = 2, start = true, add_dep_hdr}
+                        add_dep_hdr = nil
+                    end
+                    -- local action = Action:new {build_type = "auto", dep_type = "build", origin_new = o}
+                    local action = Action:new{
+                        build_type = "auto",
+                        dep_type = "build",
+                        pkg_new = p,
+                        origin_new = o
+                    }
+                    p.is_build_dep = true
+                    -- assert (not o.action)
+                    -- o.action = action -- NOT UNIQUE!!!
+                end
+            end
+            add_dep_hdr = "Add run dependencies of " .. a.short_name
+            local deps = a.run_depends or {}
+            for _, dep in ipairs(deps) do
+                local o = Origin:new(dep)
+                local p = o.pkg_new
+                if not ACTION_CACHE[p.name] then
+                    if add_dep_hdr then
+                        Msg.show {level = 2, start = true, add_dep_hdr}
+                        add_dep_hdr = nil
+                    end
+                    -- local action = Action:new {build_type = "auto", dep_type = "run", origin_new = o}
+                    local action = Action:new{
+                        build_type = "auto",
+                        dep_type = "run",
+                        pkg_new = p,
+                        origin_new = o
+                    }
+                    p.is_run_dep = true
+                    -- assert (not o.action)
+                    -- o.action = action -- NOT UNIQUE!!!
+                end
+            end
+        end
+    end
+end
+
 -- ----------------------------------------------------------------------------------
 -- TRACEFILE = "/tmp/pm.cmd-log" -- DEBUGGING EARLY START-UP ONLY -- GLOBAL
 
@@ -891,7 +941,7 @@ local function main()
     end
 
     -- add missing dependencies
-    Action.add_missing_deps()
+    add_missing_deps()
 
     -- sort actions according to registered dependencies
     Action.sort_list()
@@ -936,221 +986,226 @@ local success, errmsg = xpcall(main, debug.traceback)
 if not success then fail(errmsg) end
 os.exit(0)
 
--- # ToDo
--- # adjust port origins in stored package manifests (but not in backup packages)
--- # ???automatically rebuild ports after a required shared library changed (i.e. when an old library of a dependency was moved to the backup directory)
--- #      ---> pkg query "%B %n-%v" | grep $old_lib
--- #
---
--- # use "pkg query -g "%B" "*" | sort -u" to get a list of all shared libraries required by the installed packages and remove all files not in this list from lib/compat/pkg.
--- # Additionally consider all files that still require libs in /lib/compat/pkg as outdated, independently of any version changes.
---
--- # Check whether FLAVORS have been removed from a port before trying to build it with a flavor. E.g. the removal of "qt4" caused ports with FLAVORS qt4 and qt5 to become qt5 only and non-flavored
---
--- # In jailed or repo modes, a full recursion has to be performed on run dependencies (of dependencies ...) or some deep dependencies may be missed and run dependencies of build dependencies may be missing
---
--- # BUGS
--- #
--- # -x does not always work (e.g. when a port is to be installed as a new dependency)
--- # installing port@flavor does not always work, e.g. the installation of devel/py-six@py36 fails if devl/py-six@py27 is already installed
--- # conflicts detected only in make install (conflicting files) should not cause an abort, but be delayed until the conflicting package has been removed due to being upgraded
--- #	in that case, the package of new new conflicting port has already been created and it can be installed from that (if the option to save the package had been given)
--- #
--- # -o <origin_new> -r <name>: If $origin_new is set, then the dependencies must be relative to the version built from that origin!!!
---
--- # --delayed-installation does not take the case of a run dependency of a build dependency into account!
--- # If a build dependency has run dependencies, then these must be installed as soon as available, as if they were build dependencies (since they need to exist to make the build dependency runnable)
---
--- # --force or --recursive should prevent use of already existing binaries to satisfy the request - the purpose is to re-compile those ports since some dependency might have incompatibly changed
---
--- # failure in the configuration phase (possibly other phases, too) lead to empty origin_new and then to a de-installation of the existing package!!! (e.g. caused by update conflict in port's Makefile)
---
--- # restart file: in jailed/repo-mode count only finished "build-only" packages as DONE, but especially do not count "provided" packages, which might be required as build deps for a later port build
---
---
--- # General build policy rules (1st match decides!!!):
--- #
--- # Build_Dep_Flag := Build_Type = Provide
--- # UsePkgfile_Flag := Build_Type != Force && Pkgfile exists
--- # Late_Flag := Delayed/Jailed && Build_Dep=No
--- # Temp_Flag := Direct/Delayed && Run_Dep=No && Force=No && User=No
--- #
--- # ERROR:
--- #	Run_Dep=No && Build_Dep=No
--- #	Run_Dep=No && Build_Type=User
--- #
--- # Jail_Install:
--- #	Mode=Jailed/Repo && Build_Dep=Yes
--- #
--- # Base_Install:
--- #	Mode=Direct/Delayed/Jailed && Upgrade=Yes
--- #	Mode=Direct/Delayed/Jailed && Build_Type=Force
--- #
--- #	|B_Type	| B_Dep	| R_Dep	| Upgr	|   JailInst
--- # Mode	| A F U	|  Y N	|  Y N	|  Y N	|InJail	|cause
--- # ------|-------|-------|-------|-------|-------|-------
--- #  *	| A F U	|    N	|    N	|   -	| ERROR	|-
--- #  *	|     U	|   -	|    N	|   -	| ERROR	|-
--- #  D/L	| A F U	|   -	|   -	|   -	|   -	|NoJail
--- #  J/R	| A F U	|    N	|  Y	|   -	|   -	|BuildNo
--- #  J/R	| A F U	|  Y	|   -	|   -	|  Yes	|Build
--- #
--- # 	|B_Type	| B_Dep	| R_Dep	| Upgr	|    BaseInst
--- # Mode	| A F U	|  Y N	|  Y N	|  Y N	|InBase	| P J B R F U
--- # ------|-------|-------|-------|-------|-------|------------
--- #  D/L	| A	|  Y	|    N	|  Y	| Temp	| - - B - - U
--- #  L/J	|   F  	|    N	|  Y	|   -	| Late	| -   - R F
--- #  L/J	| A   U	|    N	|  Y	|  Y	| Late	| -   - R - U
--- #  D/L	|   F  	|   -	|   -	|   -	|  Yes	| - -     F
--- #  D/L	| A   U	|   -	|   -	|  Y	|  Yes	| - -     - U
--- #  L/J	|   F  	|  Y	|  Y	|   -	|  Yes	| -   B R F
--- #  L/J	| A   U	|  Y	|  Y	|  Y	|  Yes	| -   B R - U
---
--- # Usage_Mode:
--- # D = Direct installation
--- # L = deLayed installation
--- # J = Jailed build
--- # R = Repository mode
---
--- # Build_Type:
--- # A = Automatic
--- # F = Forced
--- # U = User request
---
--- # Installation_Mode (BaseInst):
--- # Temp = Temporary installation
--- # Late = Installation after completion of all port builds
--- # Yes  = Direct installation from a port or package
---
--- # ----------------------------------------------------------------------------
--- #
--- # Build-Deps:
--- #
--- # For jailed builds and if delete-build-only is set:
--- # ==> Register for each dependency (key) which port (value) relies on it
--- # ==> The build dependency (key) can be deleted, if it is *not also a run dependency* and after the dependent port (value) registered last has been built
--- #
--- # Run-Deps:
--- #
--- # For jailed builds only (???):
--- # ==> Register for each dependency (key) which port (value) relies on it
--- # ==> The run dependency (key) can be deinstalled, if the registered port (value) registered last has been deinstalled
--- #
---
--- # b r C D J -----------------------------------------------------------------------------
---
--- # b r C     classic port build and installation:
--- # b r C      - recursively build/install build deps if new or version changed or forced
--- # b r C      - build port
--- # b r C      - create package
--- # b r C      - deinstall old package
--- # b r C      - install new version
--- # b r C      - recursively build/install run deps if new or version changed or forced
--- #
--- # b r C     classic package installation/upgrade:
--- # b r C      - recursively provide run deps (from port or package)
--- # b r C      - deinstall old package
--- # b r C      - install new package
---
--- # b r   D   delay-installation port build (of build dependency):
--- # b r   D    - recursively build/install build deps if new or version changed or forced
--- # b r   D    - build port
--- # b r   D    - create package
--- # b r   D    - deinstall old package
--- # b r   D    - install new version
--- # b r   D    - recursively build/install run deps if new or version changed or forced
--- #
--- #   r   D   delay-installation port build (not a build dependency):
--- #   r   D    - recursively build/install build deps if new or version changed or forced
--- #   r   D    - build port
--- #   r   D    - create package
--- #   r   D    - register package for delayed installation / upgrade
---
---
--- # b     D    - recursively build/install build deps if new or version changed or forced
--- # b     D    - build port
--- # b     D    - create package
--- # b     D    - deinstall old package
--- # b     D    - install new version
--- # b     D    - recursively build/install run deps if new or version changed or forced
--- #
--- #
--- #
--- # b     D   delay-installation package installation (of build dependency):
--- # b     D    - recursively build/install run deps
--- # b     D    - deinstall old package
--- # b     D    - install new version
--- #       D
--- #   r   D   delay-installation package installation (not a build dependency):
--- #   r   D    - register package for delayed installation / upgrade
---
--- # b       J jailed port build (of build dependency):
--- # b       J  - recursively build/install build deps in jail
--- # b       J  - build port
--- # b       J  - create package
--- # b       J  - install new version in jail
--- # b       J  - recursively build/install run deps in jail
--- # b       J  - register package for delayed installation / upgrade
--- #
--- #   r     J jailed port build (not a build dependency):
--- #   r     J  - recursively build/install build deps in jail
--- #   r     J  - build port
--- #   r     J  - create package
--- #   r     J  - register package for delayed installation / upgrade
--- #
--- #
--- # b       J jailed package installation (of build dependency):
--- # b       J  - recursively build/install run deps in jail
--- # b       J  - install package in jail
--- # b       J  - register package for delayed installation / upgrade depending on user options
--- #
--- #   r     J jailed package installation (not a build dependency):
--- #   r     J  - register package for delayed installation / upgrade
---
--- #           repo-mode is identical to jailed builds but without installation in base
---
--- # -----------------------
--- # Invocation of "make -V $VAR" - possible speed optimization: query multiple variables and cache result
--- #
--- # --> register_depends
--- # origin_var "$dep_origin" FLAVOR
--- #
--- # # --> origin_from_dir
--- # origin_var "$dir" PKGORIGIN
--- #
--- # # --> dist_fetch_overlap
--- # origin_var "$origin" ALLFILES
--- # origin_var "$origin" DIST_SUBDIR
--- #
--- # # --> distinfo_update_cache
--- # origin_var "$origin" DISTINFO_FILE
--- #
--- # # --> port_flavors_get
--- # origin_var "$origin" FLAVORS
--- #
--- # # --> port_is_interactive
--- # origin_var "$origin_new" IS_INTERACTIVE
--- #
--- # # --> check_license
--- # origin_var "$origin_new" LICENSE
--- #
--- # # --> *
--- # origin_var "$origin_new" PKGNAME
--- #
--- # # --> package_check_build_conflicts
--- # origin_var "$origin_new" BUILD_CONFLICTS
--- #
--- # # --> choose_action, (list_ports)
--- # origin_var "$origin_old" PKGNAME
--- #
--- # # --> origin_from_dir_and_pkg
--- # origin_var "$origin_old" PKGORIGIN
--- #
--- # # --> choose_action
--- # origin_var_jailed "$origin_old" PKGNAME
--- #
--- # # --> choose_action, origin_from_dir_and_pkg
--- # origin_var_jailed "$origin_new" PKGNAME
+--[[
+	ToDo
+	adjust port origins in stored package manifests (but not in backup packages)
+	???automatically rebuild ports after a required shared library changed (i.e. when an old library of a dependency was moved to the backup directory)
+	     ---> pkg query "%B %n-%v" | grep $old_lib
+
+
+	use "pkg query -g "%B" "*" | sort -u" to get a list of all shared libraries required by the installed packages and remove all files not in this list from lib/compat/pkg.
+	Additionally consider all files that still require libs in /lib/compat/pkg as outdated, independently of any version changes.
+
+	Check whether FLAVORS have been removed from a port before trying to build it with a flavor. E.g. the removal of "qt4" caused ports with FLAVORS qt4 and qt5 to become qt5 only and non-flavored
+
+	In jailed or repo modes, a full recursion has to be performed on run dependencies (of dependencies ...) or some deep dependencies may be missed and run dependencies of build dependencies may be missing
+
+	BUGS
+
+	-x does not always work (e.g. when a port is to be installed as a new dependency)
+	installing port@flavor does not always work, e.g. the installation of devel/py-six@py36 fails if devl/py-six@py27 is already installed
+	conflicts detected only in make install (conflicting files) should not cause an abort, but be delayed until the conflicting package has been removed due to being upgraded
+		in that case, the package of new new conflicting port has already been created and it can be installed from that (if the option to save the package had been given)
+
+	-o <origin_new> -r <name>: If $origin_new is set, then the dependencies must be relative to the version built from that origin!!!
+
+	--delayed-installation does not take the case of a run dependency of a build dependency into account!
+	If a build dependency has run dependencies, then these must be installed as soon as available, as if they were build dependencies (since they need to exist to make the build dependency runnable)
+
+	--force or --recursive should prevent use of already existing binaries to satisfy the request - the purpose is to re-compile those ports since some dependency might have incompatibly changed
+
+	failure in the configuration phase (possibly other phases, too) lead to empty origin_new and then to a de-installation of the existing package!!! (e.g. caused by update conflict in port's Makefile)
+
+	restart file: in jailed/repo-mode count only finished "build-only" packages as DONE, but especially do not count "provided" packages, which might be required as build deps for a later port build
+--]]
+
+--[[
+	General build policy rules (1st match decides!!!):
+
+	Build_Dep_Flag := Build_Type = Provide
+	UsePkgfile_Flag := Build_Type != Force && Pkgfile exists
+	Late_Flag := Delayed/Jailed && Build_Dep=No
+	Temp_Flag := Direct/Delayed && Run_Dep=No && Force=No && User=No
+
+	ERROR:
+		Run_Dep=No && Build_Dep=No
+		Run_Dep=No && Build_Type=User
+
+	Jail_Install:
+		Mode=Jailed/Repo && Build_Dep=Yes
+
+	Base_Install:
+		Mode=Direct/Delayed/Jailed && Upgrade=Yes
+		Mode=Direct/Delayed/Jailed && Build_Type=Force
+
+		|B_Type	| B_Dep	| R_Dep	| Upgr	|   JailInst
+	Mode	| A F U	|  Y N	|  Y N	|  Y N	|InJail	|cause
+	------|-------|-------|-------|-------|-------|-------
+	 *	| A F U	|    N	|    N	|   -	| ERROR	|-
+	 *	|     U	|   -	|    N	|   -	| ERROR	|-
+	 D/L	| A F U	|   -	|   -	|   -	|   -	|NoJail
+	 J/R	| A F U	|    N	|  Y	|   -	|   -	|BuildNo
+	 J/R	| A F U	|  Y	|   -	|   -	|  Yes	|Build
+
+		|B_Type	| B_Dep	| R_Dep	| Upgr	|    BaseInst
+	Mode	| A F U	|  Y N	|  Y N	|  Y N	|InBase	| P J B R F U
+	------|-------|-------|-------|-------|-------|------------
+	 D/L	| A	|  Y	|    N	|  Y	| Temp	| - - B - - U
+	 L/J	|   F  	|    N	|  Y	|   -	| Late	| -   - R F
+	 L/J	| A   U	|    N	|  Y	|  Y	| Late	| -   - R - U
+	 D/L	|   F  	|   -	|   -	|   -	|  Yes	| - -     F
+	 D/L	| A   U	|   -	|   -	|  Y	|  Yes	| - -     - U
+	 L/J	|   F  	|  Y	|  Y	|   -	|  Yes	| -   B R F
+	 L/J	| A   U	|  Y	|  Y	|  Y	|  Yes	| -   B R - U
+
+	Usage_Mode:
+	D = Direct installation
+	L = deLayed installation
+	J = Jailed build
+	R = Repository mode
+
+	Build_Type:
+	A = Automatic
+	F = Forced
+	U = User request
+
+	Installation_Mode (BaseInst):
+	Temp = Temporary installation
+	Late = Installation after completion of all port builds
+	Yes  = Direct installation from a port or package
+
+	----------------------------------------------------------------------------
+
+	Build-Deps:
+
+	For jailed builds and if delete-build-only is set:
+	==> Register for each dependency (key) which port (value) relies on it
+	==> The build dependency (key) can be deleted, if it is *not also a run dependency* and after the dependent port (value) registered last has been built
+
+	Run-Deps:
+
+	For jailed builds only (???):
+	==> Register for each dependency (key) which port (value) relies on it
+	==> The run dependency (key) can be deinstalled, if the registered port (value) registered last has been deinstalled
+
+
+	b r C D J -----------------------------------------------------------------------------
+
+	b r C     classic port build and installation:
+	b r C      - recursively build/install build deps if new or version changed or forced
+	b r C      - build port
+	b r C      - create package
+	b r C      - deinstall old package
+	b r C      - install new version
+	b r C      - recursively build/install run deps if new or version changed or forced
+
+	b r C     classic package installation/upgrade:
+	b r C      - recursively provide run deps (from port or package)
+	b r C      - deinstall old package
+	b r C      - install new package
+
+	b r   D   delay-installation port build (of build dependency):
+	b r   D    - recursively build/install build deps if new or version changed or forced
+	b r   D    - build port
+	b r   D    - create package
+	b r   D    - deinstall old package
+	b r   D    - install new version
+	b r   D    - recursively build/install run deps if new or version changed or forced
+
+	  r   D   delay-installation port build (not a build dependency):
+	  r   D    - recursively build/install build deps if new or version changed or forced
+	  r   D    - build port
+	  r   D    - create package
+	  r   D    - register package for delayed installation / upgrade
+
+
+	b     D    - recursively build/install build deps if new or version changed or forced
+	b     D    - build port
+	b     D    - create package
+	b     D    - deinstall old package
+	b     D    - install new version
+	b     D    - recursively build/install run deps if new or version changed or forced
+
+
+
+	b     D   delay-installation package installation (of build dependency):
+	b     D    - recursively build/install run deps
+	b     D    - deinstall old package
+	b     D    - install new version
+	      D
+	  r   D   delay-installation package installation (not a build dependency):
+	  r   D    - register package for delayed installation / upgrade
+
+	b       J jailed port build (of build dependency):
+	b       J  - recursively build/install build deps in jail
+	b       J  - build port
+	b       J  - create package
+	b       J  - install new version in jail
+	b       J  - recursively build/install run deps in jail
+	b       J  - register package for delayed installation / upgrade
+
+	  r     J jailed port build (not a build dependency):
+	  r     J  - recursively build/install build deps in jail
+	  r     J  - build port
+	  r     J  - create package
+	  r     J  - register package for delayed installation / upgrade
+
+
+	b       J jailed package installation (of build dependency):
+	b       J  - recursively build/install run deps in jail
+	b       J  - install package in jail
+	b       J  - register package for delayed installation / upgrade depending on user options
+
+	  r     J jailed package installation (not a build dependency):
+	  r     J  - register package for delayed installation / upgrade
+
+	          repo-mode is identical to jailed builds but without installation in base
+--]]
+
+--[[
+	-----------------------
+	Invocation of "make -V $VAR" - possible speed optimization: query multiple variables and cache result
+
+	# --> register_depends
+	origin_var "$dep_origin" FLAVOR
+
+	# --> origin_from_dir
+	origin_var "$dir" PKGORIGIN
+
+	# --> dist_fetch_overlap
+	origin_var "$origin" ALLFILES
+	origin_var "$origin" DIST_SUBDIR
+
+	# --> distinfo_update_cache
+	origin_var "$origin" DISTINFO_FILE
+
+	# --> port_flavors_get
+	origin_var "$origin" FLAVORS
+
+	# --> port_is_interactive
+	origin_var "$origin_new" IS_INTERACTIVE
+
+	# --> check_license
+	origin_var "$origin_new" LICENSE
+
+	# --> *
+	origin_var "$origin_new" PKGNAME
+
+	# --> package_check_build_conflicts
+	origin_var "$origin_new" BUILD_CONFLICTS
+
+	# --> choose_action, (list_ports)
+	origin_var "$origin_old" PKGNAME
+
+	# --> origin_from_dir_and_pkg
+	origin_var "$origin_old" PKGORIGIN
+
+	# --> choose_action
+	origin_var_jailed "$origin_old" PKGNAME
+
+	# --> choose_action, origin_from_dir_and_pkg
+	origin_var_jailed "$origin_new" PKGNAME
+--]]
 
 --[[
 Ports with special dependencies:
@@ -1204,7 +1259,6 @@ print/ft2demos					print/freetype2:build
 -- stage:
 net/openntpd					security/libressl:stage
 security/dsniff					security/libressl:stage
-
 --]]
 
 --[[
@@ -1253,4 +1307,4 @@ jailed/repo-mode:
    deinstall build dependencies from jail after last use (before start of next port build)
    ignore locked, excluded or broken port
    states: patched, staged, package built, package installed to base system
-]]
+--]]

@@ -194,8 +194,7 @@ local function package_create(action)
         if origin_new:port_make{
             jailed = jailed,
             to_tty = true,
-            "-D",
-            "_OPTIONS_OK",
+            "_OPTIONS_OK=1",
             "PACKAGES=" .. base,
             "PKG_SUFX=" .. sufx,
             "package"
@@ -319,24 +318,25 @@ local function perform_portbuild(action)
         "DISABLE_CONFLICTS=1",
         "FETCH=true",
         "patch"
-    } then return false end
+    } then
+	return false
+    end
     --[[
-   -- check whether build of new port is in conflict with currently installed version
-   local deleted = {}
-   local conflicts = check_build_conflicts (action)
-   for i, pkg in ipairs (conflicts) do
-      if pkg == pkgname_old then
-	 -- ??? pkgname_old is NOT DEFINED
-	 Msg.show {"Build of", origin_new.name, "conflicts with installed package", pkg .. ", deleting old package"}
-	 automatic = PkgDb.automatic_get (pkg)
-	 table.insert (deleted, pkg)
-	 perform_pkg_deinstall (pkg)
-	 break
-      end
-   end
-   --]]
+    -- check whether build of new port is in conflict with currently installed version
+    local deleted = {}
+    local conflicts = check_build_conflicts (action)
+    for i, pkg in ipairs (conflicts) do
+	if pkg == pkgname_old then
+	    -- ??? pkgname_old is NOT DEFINED
+	    Msg.show {"Build of", origin_new.name, "conflicts with installed package", pkg .. ", deleting old package"}
+	    automatic = PkgDb.automatic_get (pkg)
+	    table.insert (deleted, pkg)
+	    perform_pkg_deinstall (pkg)
+	    break
+	end
+    end
+    --]]
     -- build and stage port
-    Progress.show("Build", pkgname_new)
     if not origin_new:port_make{
         to_tty = true,
         jailed = true,
@@ -345,7 +345,9 @@ local function perform_portbuild(action)
         "_OPTIONS_OK=1",
         "build",
         "stage"
-    } then return false end
+    } then
+	return false
+    end
     return true
 end
 
@@ -580,6 +582,10 @@ end
 
 -- ----------------------------------------------------------------------------------
 local ACTION_LIST = {}
+
+local function list()
+   return ACTION_LIST
+end
 
 local function perform_upgrades()
     -- install or upgrade required packages
@@ -1278,60 +1284,6 @@ local function dump_cache()
     end
 end
 
---
-local function add_missing_deps()
-    for i, a in ipairs(ACTION_LIST) do
-        if a.pkg_new and rawget(a.pkg_new, "is_installed") then
-            -- print (a, "is already installed")
-        else
-            local add_dep_hdr = "Add build dependencies of " .. a.short_name
-            local deps = a.build_depends or {}
-            for j, dep in ipairs(deps) do
-                local o = Origin:new(dep)
-                local p = o.pkg_new
-                if not ACTION_CACHE[p.name] then
-                    if add_dep_hdr then
-                        Msg.show {level = 2, start = true, add_dep_hdr}
-                        add_dep_hdr = nil
-                    end
-                    -- local action = Action:new {build_type = "auto", dep_type = "build", origin_new = o}
-                    local action = Action:new{
-                        build_type = "auto",
-                        dep_type = "build",
-                        pkg_new = p,
-                        origin_new = o
-                    }
-                    p.is_build_dep = true
-                    -- assert (not o.action)
-                    -- o.action = action -- NOT UNIQUE!!!
-                end
-            end
-            add_dep_hdr = "Add run dependencies of " .. a.short_name
-            local deps = a.run_depends or {}
-            for _, dep in ipairs(deps) do
-                local o = Origin:new(dep)
-                local p = o.pkg_new
-                if not ACTION_CACHE[p.name] then
-                    if add_dep_hdr then
-                        Msg.show {level = 2, start = true, add_dep_hdr}
-                        add_dep_hdr = nil
-                    end
-                    -- local action = Action:new {build_type = "auto", dep_type = "run", origin_new = o}
-                    local action = Action:new{
-                        build_type = "auto",
-                        dep_type = "run",
-                        pkg_new = p,
-                        origin_new = o
-                    }
-                    p.is_run_dep = true
-                    -- assert (not o.action)
-                    -- o.action = action -- NOT UNIQUE!!!
-                end
-            end
-        end
-    end
-end
-
 -- ----------------------------------------------------------------------------------
 local function __newindex(action, n, v)
     TRACE("SET(a)",
@@ -1474,11 +1426,11 @@ return {
     packages_delete_stale = packages_delete_stale,
     --register_delayed_installs = register_delayed_installs,
     sort_list = sort_list,
-    add_missing_deps = add_missing_deps,
     check_licenses = check_licenses,
     check_conflicts = check_conflicts,
     port_options = port_options,
-    dump_cache = dump_cache
+    dump_cache = dump_cache,
+    list = list,
 }
 
 --[[

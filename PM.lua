@@ -96,7 +96,7 @@ local function exit_cleanup(exit_code)
     tempfile_delete("FETCH_ACK")
     tempfile_delete("BUILD_LOG")
     Options.save()
-    Msg.display()
+    Msg.success_show()
     if tracefd then io.close(tracefd) end
     os.exit(exit_code)
     -- not reached
@@ -867,7 +867,7 @@ local function add_missing_deps()
                 end
             end
             add_dep_hdr = "Add run dependencies of " .. a.short_name
-            local deps = a.run_depends or {}
+            deps = a.run_depends or {}
             for _, dep in ipairs(deps) do
                 local o = Origin:new(dep)
                 local p = o.pkg_new
@@ -926,7 +926,7 @@ local function main()
 
     if Options.replace_origin then
         if #arg ~= 1 then
-            error("xactly one port or packages required with -o")
+            error("exactly one port or packages required with -o")
         end
         ports_add_changed_origin("force", arg, Options.replace_origin)
     elseif Options.all then

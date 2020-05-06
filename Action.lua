@@ -619,6 +619,8 @@ local function perform_upgrades()
             else
                 result = true -- nothing to be done
             end
+        elseif verb == "exclude" then
+            -- do nothing
         else
             error("unknown verb in action: " .. (verb or "<nil>"))
         end

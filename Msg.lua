@@ -135,7 +135,7 @@ local function success_add(text, seconds)
 end
 
 -- display all package messages that are new or have changed
-local function display()
+local function success_show()
     local packages = table.keys(PKGMSG) -- only add to PKGMSG if repo_mode is true XXX
     if #packages > 0 or #SUCCESS_MSGS > 0 then
         -- preserve current stdout and locally replace by pipe to "more" ???
@@ -150,7 +150,7 @@ local function display()
         end
         if #SUCCESS_MSGS > 0 then
             show {start = true, "The following actions have been performed:"}
-            for i, line in ipairs(SUCCESS_MSGS) do show {line} end
+            for _, line in ipairs(SUCCESS_MSGS) do show {line} end
             if tasks_count() == 0 then
                 show {start = true, "All requested actions have been completed"}
             end
@@ -182,8 +182,8 @@ end
 -- print $prompt and read checked user input
 local function read_answer(prompt, default, choices)
     TRACE("READ_ANSWER", prompt, default, table.unpack(choices))
-    local choice = ""
-    local display = ""
+    local choice
+    local opt_list
     local display_default = ""
     local reply = default
     if Options.no_confirm and default and true then
@@ -193,19 +193,15 @@ local function read_answer(prompt, default, choices)
     else
         for i = 1, #choices do
             choice = choices[i]
-            if #display == 0 then
-                display = "["
-            else
-                display = display .. "|"
-            end
-            display = display .. choice
+            opt_list = opt_list and opt_list .. "|" or "["
+            opt_list = opt_list .. choice
         end
-        display = display .. "]"
+        opt_list = opt_list .. "]"
         if default and #default > 0 then
             display_default = "(" .. default .. ")"
         end
         while true do
-            show {prompt = true, prompt, display, display_default .. ": "}
+            show {prompt = true, prompt, opt_list, display_default .. ": "}
             reply = stdin:read(1)
             if not reply or #reply == 0 or reply == "\n" then
                 reply = default
@@ -218,7 +214,7 @@ local function read_answer(prompt, default, choices)
             end
             show {
                 "Invalid input '" .. reply .. "' ignored - please enter one of",
-                display
+                opt_list
             }
         end
     end
@@ -234,7 +230,7 @@ end
 -- ----------------------------------------------------------------------------------
 return {
     abort = abort,
-    display = display,
+    --display = display,
     incr_level = incr_level,
     level = level,
     read_nl = read_nl,
@@ -242,6 +238,7 @@ return {
     read_yn = read_yn,
     show = show,
     success_add = success_add,
+    success_show = success_show,
     title_set = title_set,
     copy_options = copy_options
 }

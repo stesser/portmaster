@@ -119,9 +119,8 @@ end
 -- ----------------------------------------------------------------------------------
 -- rename all matching package files (excluding package backups)
 local function pkgfiles_rename(action) -- UNTESTED !!!
-    local pkgname_old = action.pkg_old.name
     local pkgname_new = action.pkg_new.name
-    local pkgfiles = glob(PATH.packages .. "*/" .. pkgname_old .. ".t??") or {} -- use action.pkg_old:filename {subdir = "*", ext = "t??"}} XXX
+    local pkgfiles = glob(action.pkg_old:filename {subdir = "*", ext = "t??"})
     for _, pkgfile_old in ipairs(pkgfiles) do
         if access(pkgfile_old, "r") and not strpfx(pkgfile_old, PATH.packages_backup) then
             local pkgfile_new = path_concat(dirname(pkgfile_old),
@@ -1259,7 +1258,7 @@ local function check_conflicts(mode)
         start = true,
         "Check for conflicts between requested updates and installed packages"
     }
-    for i, action in ipairs(ACTION_LIST) do
+    for _, action in ipairs(ACTION_LIST) do
         local o_n = rawget(action, "origin_new")
         if o_n and o_n[mode] then
             local conflicts_table = conflicting_pkgs(action, mode)
@@ -1431,6 +1430,7 @@ return {
     port_options = port_options,
     dump_cache = dump_cache,
     list = list,
+    tasks_count = tasks_count,
 }
 
 --[[

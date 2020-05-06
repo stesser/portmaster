@@ -12,3 +12,6 @@ OLD/*
 *~~
 .DS_*
 BACKUP-*
+*.tar.gz
+.lua-format.conf
+portmaster-devel

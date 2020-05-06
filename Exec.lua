@@ -107,13 +107,13 @@ end
 local function run(args)
     TRACE("run", "[" .. table.concat(table.keys(args), ",") .. "]",
           table.unpack(args))
-    if JAILBASE and args.jailed then
+    if PARAM.jailbase and args.jailed then
         table.insert(args, 1, CMD.chroot)
-        table.insert(args, 2, JAILBASE)
+        table.insert(args, 2, PARAM.jailbase)
         if not args.as_root and CMD.sudo then -- chroot needs root but can then switch back to user
             args.as_root = true
             table.insert(args, 2, "-u")
-            table.insert(args, 3, USER)
+            table.insert(args, 3, PARAM.user)
         end
     end
     if args.as_root and CMD.sudo then
@@ -169,9 +169,9 @@ end
 -- execute and log a package command that does not modify any state (JAILED)
 local function pkg(args)
     if args.jailed then
-        if JAILBASE then
+        if PARAM.jailbase then
             table.insert(args, 1, "-c")
-            table.insert(args, 2, JAILBASE)
+            table.insert(args, 2, PARAM.jailbase)
         end
         args.jailed = nil
     end

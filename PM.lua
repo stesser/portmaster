@@ -61,7 +61,7 @@ end
 debug.sethook (trace, "l")
 --]]
 
--- R = require ("strict")
+R = require ("std.strict")
 
 -- local _debug = require 'std._debug'(true)
 
@@ -362,6 +362,7 @@ end
 -- global tables for full paths of used Unix commands and relevant directories
 CMD = {}
 PATH = {}
+PARAM = {}
 
 -- initialize global variables after reading configuration files
 -- return first existing directory with a trailing "/" appended
@@ -378,13 +379,13 @@ local function init_globals()
     PATH.portsdir = init_global_path(ports_var {"PORTSDIR"}, "/usr/ports")
     PATH.distdir = init_global_path(ports_var {"DISTDIR"},
                                path_concat(PATH.portsdir, "distfiles"))
-    DISTDIR_RO = not access(PATH.distdir, "rw") -- need sudo to fetch or purge distfiles
+    PARAM.distdir_ro = not access(PATH.distdir, "rw") -- need sudo to fetch or purge distfiles
 
     PATH.packages = init_global_path(Options.local_packagedir,
                                 ports_var {"PACKAGES"},
                                 path_concat(PATH.portsdir, "packages"), "/usr/packages")
     PATH.packages_backup = init_global_path(PATH.packages .. "portmaster-backup")
-    PACKAGES_RO = not access(PATH.packages, "rw") -- need sudo to create or delete package files
+    PARAM.packages_ro = not access(PATH.packages, "rw") -- need sudo to create or delete package files
 
     PATH.localbase = init_global_path(ports_var {"LOCALBASE"}, "/usr/local")
     PATH.local_lib = init_global_path(path_concat(PATH.localbase, "lib"))
@@ -392,13 +393,13 @@ local function init_globals()
 
     PATH.pkg_dbdir = init_global_path(ports_var {needportmk = true, "PKG_DBDIR"},
                                  "/var/db/pkg") -- no value returned for make -DBEFOREPORTMK
-    PKG_DBDIR_RO = not access(PATH.pkg_dbdir, "rw") -- need sudo to update the package database
+    PARAM.pkg_dbdir_ro = not access(PATH.pkg_dbdir, "rw") -- need sudo to update the package database
 
     PATH.port_dbdir = init_global_path(ports_var {"PORT_DBDIR"}, "/var/db/ports")
-    PORT_DBDIR_RO = not access(PATH.port_dbdir, "rw") -- need sudo to record port options
+    PARAM.port_dbdir_ro = not access(PATH.port_dbdir, "rw") -- need sudo to record port options
 
     PATH.wrkdirprefix = init_global_path(ports_var {"WRKDIRPREFIX"}, "/")
-    WRKDIR_RO = not access(path_concat(PATH.wrkdirprefix, PATH.portsdir), "rw") -- need sudo to build ports
+    PARAM.wrkdir_ro = not access(path_concat(PATH.wrkdirprefix, PATH.portsdir), "rw") -- need sudo to build ports
 
     PATH.tmpdir = init_global_path(os.getenv("TMPDIR"), "/tmp")
 
@@ -409,13 +410,13 @@ local function init_globals()
     -- 	[ -x "${LOCALBASE}sbin/pkg-static" ] || ASSUME_ALWAYS_YES=yes /usr/sbin/pkg -v > /dev/null
     CMD.pkg = init_global_cmd(path_concat(PATH.localbase, "sbin/pkg-static"))
 
-    UID = geteuid()
-    local pw_entry = getpwuid(UID)
-    USER = pw_entry.pw_name
-    HOME = pw_entry.pw_dir
-    TRACE("PW_ENTRY", UID, EUID, USER, HOME)
+    PARAM.uid = geteuid() -- getuid() ???
+    local pw_entry = getpwuid(PARAM.uid)
+    PARAM.user = pw_entry.pw_name
+    PARAM.home = pw_entry.pw_dir
+    TRACE("PW_ENTRY", PARAM.uid, PARAM.user, PARAM.home)
 
-    if not CMD.sudo and UID ~= 0 then
+    if not CMD.sudo and PARAM.uid ~= 0 then
         local cmd = Options.su_cmd or "sudo"
         CMD.sudo = init_global_cmd(path_concat(PATH.localbase, "sbin", cmd),
                                    path_concat(PATH.localbase, "bin", cmd))
@@ -426,19 +427,19 @@ local function init_globals()
     CMD.grep = "/usr/bin/grep"
 
     -- set package formats unless already specified by user
-    Options.package_format = PACKAGE_FORMAT or "tgz"
-    Options.backup_format = BACKUP_FORMAT or "tar"
+    Options.package_format = PARAM.package_format or "tgz"
+    Options.backup_format = PARAM.backup_format or "tar"
 
     -- some important global variables
-    ABI = chomp(Exec.run {safe = true, CMD.pkg, "config", "abi"})
-    ABI_NOARCH = string.match(ABI, "^[^:]+:[^:]+:") .. "*"
+    PARAM.abi = chomp(Exec.run {safe = true, CMD.pkg, "config", "abi"})
+    PARAM.abi_noarch = string.match(PARAM.abi, "^[^:]+:[^:]+:") .. "*"
 
     -- global variables for use by the distinfo cache and distfile names file (for ports to be built)
-    DISTFILES_PERPORT = PATH.distdir .. "DISTFILES.perport" -- port names and names of distfiles required by the latest port version
-    DISTFILES_LIST = PATH.distdir .. "DISTFILES.list" -- current distfile names of all ports
+    --PARAM.distfiles_perport = PATH.distdir .. "DISTFILES.perport" -- port names and names of distfiles required by the latest port version
+    --PARAM.distfiles_list = PATH.distdir .. "DISTFILES.list" -- current distfile names of all ports
 
     -- has license framework been disabled by the user
-    DISABLE_LICENSES = ports_var {"DISABLE_LICENSES"}
+    PARAM.disable_licenses = ports_var {"DISABLE_LICENSES"}
 end
 
 -- ----------------------------------------------------------------------------------
@@ -581,7 +582,7 @@ local function ports_add_all_outdated()
     local current_libs = {}
     -- filter return values are: match, force
     local function filter_old_abi(pkg)
-        return pkg.abi ~= ABI and pkg.abi ~= ABI_NOARCH, false -- true XXX
+        return pkg.abi ~= PARAM.abi and pkg.abi ~= PARAM.abi_noarch, false -- true XXX
     end
     local function filter_old_shared_libs(pkg)
         if pkg.shared_libs then
@@ -917,11 +918,11 @@ local function main()
     init_environment()
 
     -- TESTING
-    if TEST then TEST() end
+    --if TEST then TEST() end
 
     -- ----------------------------------------------------------------------------------
     -- plan tasks based on parameters passed on the command line
-    PHASE = "scan"
+    PARAM.phase = "scan"
 
     if Options.replace_origin then
         if #arg ~= 1 then
@@ -954,7 +955,7 @@ local function main()
    --]]
 
     -- end of scan phase, all required actions are known at this point, builds may start
-    PHASE = "build"
+    PARAM.phase = "build"
 
     Action.execute()
 

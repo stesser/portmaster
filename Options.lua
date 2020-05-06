@@ -613,10 +613,10 @@ end
 
 -- print rc file lines with the values of all passed option names
 local function opt_value_rc(...)
-    local opts = {...}, opt -- ??? final argument "opt" in list is undefined ???
+    local opts = {...}
     local result = {}
     for i = 1, #opts do
-        opt = opts[i]
+        local opt = opts[i]
         local val = Options[opt]
         if val then
             local type = type(val)
@@ -656,7 +656,7 @@ local function save()
         -- print (string.format (format, ...))
     end
 
-    if PHASE == "" then return end
+    if PARAM.phase == "" then return end
     local tasks = tasks_count()
     if tasks == 0 then return end
     -- trap "" INT -- NYI
@@ -666,7 +666,7 @@ local function save()
     local tmp_filename = tempfile_create("RESTART")
     tmpf = io.open(tmp_filename, "w+")
 
-    if PHASE == "scan" then
+    if PARAM.phase == "scan" then
         for k, v in ipairs(Excludes.list()) do w("EXCLUDE=%s", v) end
     else
         Options.all = nil

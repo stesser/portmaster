@@ -65,13 +65,13 @@ SIZE (bash/bash-5.0.tar.gz) = 10135110
 local function parse_distinfo(di_filename)
     local result = {}
     local timestamp
-    di_file = io.open(di_filename, "r")
+    local di_file = io.open(di_filename, "r")
     if di_file then --  meta-ports do not have a distinfo file
         for line in di_file:lines() do
             local key, file, value = string.match(line,
                                                   "(%S+) %((%S+)%) = (%S+)")
             if key then
-                t = result[file]
+                local t = result[file]
                 if not t then t = {TIMESTAMP = timestamp} end
                 t[key] = value
                 TRACE("DISTINFO", key, file, value)
@@ -94,7 +94,7 @@ local function dist_fetch(origin)
     local port = origin.port
     local result = ""
     local lines = origin:port_make{
-        as_root = DISTDIR_RO,
+        as_root = PARAM.distdir_ro,
         table = true,
         "FETCH_BEFORE_ARGS=-v",
         "-D",
@@ -102,7 +102,7 @@ local function dist_fetch(origin)
         "-D",
         "DISABLE_CONFLICTS",
         "-D",
-        "DISABLE_LICENSES",
+        "PARAM.disable_licenses",
         "DEV_WARNING_WAIT=0",
         "checksum"
     } -- as_root?
@@ -122,10 +122,11 @@ local function dist_fetch(origin)
     return "OK " .. port .. " "
 end
 
---[[
-local TMPFILE_FETCH_ACK = nil -- GLOABL
+--
+--local TMPFILE_FETCH_ACK = nil -- GLOABL
 local fetchq = nil -- pipe used as fetch request queue -- GLOBAL
 
+--[[
 -- fetch and check distfiles (in background?)
 local function fetch (origin)
    local name = tostring (origin) -- convert to origin string ???

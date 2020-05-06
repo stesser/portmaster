@@ -188,7 +188,7 @@ local function package_create(action)
     else
         Msg.show {"Create a package for new version", pkgname}
         local jailed = Options.jailed
-        local as_root = PACKAGES_RO
+        local as_root = PARAM.packages_ro
         local base = (as_root or jailed) and PATH.tmpdir or PATH.packages -- use random tempdir !!!
         local sufx = "." .. Options.package_format
         if origin_new:port_make{
@@ -202,7 +202,7 @@ local function package_create(action)
             if as_root or jailed then
                 local tmpfile = path_concat(base, "All", pkgname .. sufx)
                 if jailed then
-                    tmpfile = path_concat(JAILBASE, tmpfile)
+                    tmpfile = path_concat(PARAM.jailbase, tmpfile)
                 end
                 chown(tmpfile, 0, 0)
                 Exec.run {as_root = as_root, "/bin/mv", tmpfile, pkgfile}
@@ -301,7 +301,7 @@ local function perform_portbuild(action)
     if not Options.no_pre_clean then port_clean(action) end
     -- check for special license and ask user to accept it (may require make extract/patch)
     -- may depend on OPTIONS set by make configure
-    if not DISABLE_LICENSES then
+    if not PARAM.disable_licenses then
         if not origin_new:check_license() then return false end
     end
     -- <se> VERIFY THAT ALL DEPENDENCIES ARE AVAILABLE AT THIS POINT!!!
@@ -383,7 +383,7 @@ local function perform_installation(action)
     local pkg_msg_old
     -- prepare installation, if this is an upgrade (and not a fresh install)
     if pkgname_old then
-        if not Options.jailed or PHASE == "install" then
+        if not Options.jailed or PARAM.phase == "install" then
             -- keep old package message for later comparison with new message
             pkg_msg_old = p_o:message()
             -- create backup package file from installed files
@@ -780,7 +780,7 @@ local function execute()
                     -- or just a plain install from package???)
                     --[[
                     if #DELAYED_INSTALL_LIST > 0 then -- NYI to be implemented in a different way
-                        PHASE = "install"
+                        PARAM.phase = "install"
                         perform_delayed_installations()
                     end
                     --]]
@@ -793,7 +793,7 @@ local function execute()
                 }
             end
             Progress.clear()
-            PHASE = ""
+            PARAM.phase = ""
         end
     end
     return true
@@ -978,7 +978,7 @@ local function fixup_conflict(action1, action2)
             TRACE("FIXUP_CONFLICT2", describe(action2))
             if action1.pkg_new == action2.pkg_new then
                 for k, v1 in pairs(action1) do
-                    v2 = rawget(action2, k)
+                    local v2 = rawget(action2, k)
                     if v1 and not v2 then action2[k] = v1 end
                 end
                 action1.action = nil

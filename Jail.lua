@@ -86,7 +86,7 @@ local JAIL_FS = {
 -- ---------------------------------------------------------------------------
 local function unmount_all(jaildir)
     TRACE("UNMOUNT_ALL", jaildir)
-    assert(jaildir and jaildir == JAILBASE,
+    assert(jaildir and jaildir == PARAM.jailbase,
            "invalid jail directory " .. jaildir .. " passed")
     local mnt_dev, mnt_point, md_unit
     local df_lines = Exec.run {table = true, safe = true, "df"}
@@ -307,19 +307,19 @@ local JAILROOT = "/tmp"
 
 local function create()
     if not Options.dry_run then
-        JAILBASE = JAILROOT .. "/TEST" -- NYI use individual jail names
+        PARAM.jailbase = JAILROOT .. "/TEST" -- NYI use individual jail names
 
-        unmount_all(JAILBASE)
-        mount_all(JAILBASE)
-        setup_etc(JAILBASE)
-        setup_var_run(JAILBASE)
-        setup_usr_local(JAILBASE)
+        unmount_all(PARAM.jailbase)
+        mount_all(PARAM.jailbase)
+        setup_etc(PARAM.jailbase)
+        setup_var_run(PARAM.jailbase)
+        setup_usr_local(PARAM.jailbase)
     end
 end
 
 local function destroy()
-    if not Options.dry_run then unmount_all(JAILBASE) end
-    JAILBASE = nil
+    if not Options.dry_run then unmount_all(PARAM.jailbase) end
+    PARAM.jailbase = nil
 end
 
 return {create = create, destroy = destroy}

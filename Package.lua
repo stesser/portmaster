@@ -68,10 +68,10 @@ local function file_get_abi(filename)
     return PkgDb.query {pkgfile = filename, "%q"} -- <se> %q vs. %Q ???
 end
 
--- check whether ABI of package file matches current system ABI
+-- check whether ABI of package file matches current system PARAM.abi
 local function file_valid_abi(file)
     local abi = file_get_abi(file)
-    return abi == ABI or abi == ABI_NOARCH
+    return abi == PARAM.abi or abi == PARAM.abi_noarch
 end
 
 -- return package version
@@ -168,7 +168,7 @@ local function deinstall(package, make_backup)
     if make_backup then
         Progress.show("Create backup package for", pkgname)
         Exec.pkg {
-            as_root = PACKAGES_RO,
+            as_root = PARAM.packages_ro,
             "create",
             "-q",
             "-o",
@@ -178,7 +178,7 @@ local function deinstall(package, make_backup)
             pkgname
         }
     end
-    if Options.jailed and PHASE ~= "install" then
+    if Options.jailed and PARAM.phase ~= "install" then
         Progress.show("De-install", pkgname, "from build jail")
         return Exec.pkg {jailed = true, "delete", "-y", "-q", "-f", pkgname}
     else
@@ -190,7 +190,7 @@ end
 -- ----------------------------------------------------------------------------------
 -- get package message in case of an installation to the base system
 local function message(pkg)
-    if not Options.dry_run and (not Options.jailed or PHASE == "install") then
+    if not Options.dry_run and (not Options.jailed or PARAM.phase == "install") then
         local lines = PkgDb.query {table = true, "%M", pkg.name}
         if lines then return table.concat(lines, "\n") end
     end
@@ -200,7 +200,7 @@ end
 -- install package from passed pkg
 local function install(pkg, abi)
     local pkgfile = pkg.pkgfile
-    local jailed = Options.jailed and PHASE == "build"
+    local jailed = Options.jailed and PARAM.phase == "build"
     local env = {IGNORE_OSVERSION = "yes"}
     TRACE("INSTALL", abi, pkgfile)
     if string.match(pkgfile, ".*/pkg-[^/]+$") then -- pkg command itself
@@ -296,8 +296,7 @@ end
 local function pkg_lookup(pkg, k)
     local subdir = k == "pkgfile" and "All" or "portmaster-backup"
     local file
-    for i, f in ipairs(glob(filename {subdir = subdir, ext = ".t??", pkg},
-                            GLOB_ERR) or {}) do
+    for i, f in ipairs(glob(filename {subdir = subdir, ext = ".t??", pkg}) or {}) do
         if file_valid_abi(f) then
             if not file or stat(file).st_mtime < stat(f).st_mtime then
                 file = f

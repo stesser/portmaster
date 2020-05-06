@@ -77,8 +77,8 @@ local function port_make(origin, args)
     local dir = path(origin)
     --[[
     -- only valid for port_var, not generic port_make !!!
-    if args.jailed and JAILBASE then
-      dir = JAILBASE .. dir
+    if args.jailed and PARAM.jailbase then
+      dir = PARAM.jailbase .. dir
       args.jailed = false
    end
    --]]
@@ -138,7 +138,7 @@ local function configure(origin, force)
     local target = force and "config" or "config-conditional"
     return origin:port_make{
         to_tty = true,
-        as_root = PORT_DBDIR_RO,
+        as_root = PARAM.port_dbdir_ro,
         "-D",
         "NO_DEPENDS",
         "-D",
@@ -313,7 +313,7 @@ end
 --
 local function check_config_allow(origin, recursive)
     TRACE("CHECK_CONFIG_ALLOW", origin.name, recursive)
-    function check_ignore(name, field)
+    local function check_ignore(name, field)
         TRACE("CHECK_IGNORE", origin.name, name, field, rawget(origin, field))
         if rawget(origin, field) then
             Msg.show {

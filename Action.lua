@@ -565,7 +565,7 @@ local function perform_origin_change(action)
     Progress.show("Change origin of", action.pkg_old.name, "from",
                   action.o_o.name, "to", action.o_n.name)
     if PkgDb.update_origin(action.o_o, action.o_n,
-                           action.pkgname_old) then
+                           action.pkg_old.name) then
         portdb_update_origin(action.o_o, action.o_n)
         action.done = true
         return true

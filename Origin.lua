@@ -600,6 +600,7 @@ local function __index(origin, k)
         patch_depends_var = __port_vars,
         build_depends_var = __port_vars,
         lib_depends_var = __port_vars,
+        pkg_depends_var = __port_vars,
         run_depends_var = __port_vars,
         test_depends_var = __port_vars,
         conflicts_build_var = __port_vars,

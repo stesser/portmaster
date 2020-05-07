@@ -196,7 +196,7 @@ local function mount_all(jaildir)
         local mount_proc = MOUNT_PROCS[fs_type]
         assert(mount_proc,
                "unknown file system type " .. fs_type .. " for " .. dir)
-        mount_proc(fs_type, real_fs, where, param)
+        mount_proc(fs_type, real_fs, where, mount_opt)
     end
 end
 

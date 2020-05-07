@@ -543,11 +543,12 @@ local function __index(origin, k)
         local ut = {}
         for i, v in ipairs(t) do
             for j, d in ipairs(origin[v] or {}) do
-                local pattern =
-                    k == "special_depends" and "^[^:]+:[^:]+:(%S+)" or
-                        "^[^:]+:([^:]+)$"
+                local pattern = k == "special_depends" and "^[^:]+:([^:]+:%S+)" or "^[^:]+:([^:]+)$"
+                TRACE ("PORT_DEPENDS", k, d, pattern)
                 local o = string.match(d, pattern)
-                if o then ut[o] = true end
+                if o then
+                    ut[o] = true
+                end
             end
         end
         return table.keys(ut)

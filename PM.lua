@@ -74,6 +74,7 @@ local Distfile = require("Distfile")
 local Action = require("Action")
 local Exec = require("Exec")
 local PkgDb = require("PkgDb")
+local Strategy = require("Strategy")
 
 -- ----------------------------------------------------------------------------------
 stdin = io.stdin
@@ -483,7 +484,7 @@ end
 
 --[[
 -- replace passed package or port with one built from the new origin
-local function ports_add_changed_origin(build_type, name, origin_new) -- 3rd arg is NOT optional
+local function ports_add_changed_origin(build_type, name, o_n) -- 3rd arg is NOT optional
     if Options.force then build_type = "force" end
     Msg.show {
         level = 1,
@@ -494,10 +495,10 @@ local function ports_add_changed_origin(build_type, name, origin_new) -- 3rd arg
     }
     local origins = PkgDb.origins_flavor_from_glob(
                   name or PkgDb.origins_flavor_from_glob(name .. "*") or
-                      origin_old_from_port(name))
+                      o_o_from_port(name))
     assert(origins, "Could not find package or port matching " .. name)
-    for i, origin_old in ipairs(origins) do
-        choose_action(build_type, "run", origin_old, origin_new) -- && matched=1
+    for i, o_o in ipairs(origins) do
+        choose_action(build_type, "run", o_o, o_n) -- && matched=1
     end
 end
 --]]
@@ -553,7 +554,7 @@ local function ports_add_multiple(args)
                 build_type = "user",
                 dep_type = "run",
                 force = Options.force,
-                origin_new = o,
+                o_n = o,
                 pkg_new = p
             }
         end
@@ -566,7 +567,7 @@ local function ports_add_multiple(args)
 	    if access (filename, "r") then
 	       local port = string.match (filename, "/([^/]+/[^/]+)/Makefile")
 	       local origin = Origin:new (port)
-	       Action:new {build_type = "user", dep_type = "run", origin_new = origin}
+	       Action:new {build_type = "user", dep_type = "run", o_n = origin}
 	    end
 	 end
       else
@@ -797,18 +798,18 @@ local function list_ports(mode)
                 if test(pkg_old) then
                     local line = pkg_old.name
                     if mode == "verbose" then
-                        local origin_old = pkg_old.origin
-                        assert(origin_old,
+                        local o_o = pkg_old.origin
+                        assert(o_o,
                                "no origin for package " .. pkg_old.name)
-                        local pkg_new = origin_old.pkg_new
+                        local pkg_new = o_o.pkg_new
                         local pkgname_new = pkg_new and pkg_new.name
                         local reason
                         if not pkgname_new then
-                            local origin_new = origin_old:lookup_moved_origin()
-                            reason = origin_old.reason
+                            local o_n = o_o:lookup_moved_origin()
+                            reason = o_o.reason
                             TRACE("MOVED??", reason)
-                            if origin_new and origin_new ~= origin_old then
-                                pkg_new = origin_new.pkg_new
+                            if o_n and o_n ~= o_o then
+                                pkg_new = o_n.pkg_new
                                 pkgname_new = pkg_new and pkg_new.name
                             end
                         end
@@ -836,60 +837,6 @@ local function list_ports(mode)
         end
     end
     assert(pkg_list[1] == nil, "not all packages covered in tests")
-end
-
---
-local function add_missing_deps()
-     for i, a in ipairs(Action.list()) do
-        if a.pkg_new and rawget(a.pkg_new, "is_installed") then
-            -- print (a, "is already installed")
-        else
-            local add_dep_hdr = "Add build dependencies of " .. a.short_name
-            local deps = a.build_depends or {}
-            for j, dep in ipairs(deps) do
-                local o = Origin:new(dep)
-                local p = o.pkg_new
-                if not ACTION_CACHE[p.name] then
-                    if add_dep_hdr then
-                        Msg.show {level = 2, start = true, add_dep_hdr}
-                        add_dep_hdr = nil
-                    end
-                    -- local action = Action:new {build_type = "auto", dep_type = "build", origin_new = o}
-                    local action = Action:new{
-                        build_type = "auto",
-                        dep_type = "build",
-                        pkg_new = p,
-                        origin_new = o
-                    }
-                    p.is_build_dep = true
-                    -- assert (not o.action)
-                    -- o.action = action -- NOT UNIQUE!!!
-                end
-            end
-            add_dep_hdr = "Add run dependencies of " .. a.short_name
-            deps = a.run_depends or {}
-            for _, dep in ipairs(deps) do
-                local o = Origin:new(dep)
-                local p = o.pkg_new
-                if not ACTION_CACHE[p.name] then
-                    if add_dep_hdr then
-                        Msg.show {level = 2, start = true, add_dep_hdr}
-                        add_dep_hdr = nil
-                    end
-                    -- local action = Action:new {build_type = "auto", dep_type = "run", origin_new = o}
-                    local action = Action:new{
-                        build_type = "auto",
-                        dep_type = "run",
-                        pkg_new = p,
-                        origin_new = o
-                    }
-                    p.is_run_dep = true
-                    -- assert (not o.action)
-                    -- o.action = action -- NOT UNIQUE!!!
-                end
-            end
-        end
-    end
 end
 
 -- ----------------------------------------------------------------------------------
@@ -942,7 +889,7 @@ local function main()
     end
 
     -- add missing dependencies
-    add_missing_deps()
+    Strategy.add_missing_deps()
 
     -- sort actions according to registered dependencies
     Action.sort_list()
@@ -1008,14 +955,14 @@ os.exit(0)
 	conflicts detected only in make install (conflicting files) should not cause an abort, but be delayed until the conflicting package has been removed due to being upgraded
 		in that case, the package of new new conflicting port has already been created and it can be installed from that (if the option to save the package had been given)
 
-	-o <origin_new> -r <name>: If $origin_new is set, then the dependencies must be relative to the version built from that origin!!!
+	-o <o_n> -r <name>: If $o_n is set, then the dependencies must be relative to the version built from that origin!!!
 
 	--delayed-installation does not take the case of a run dependency of a build dependency into account!
 	If a build dependency has run dependencies, then these must be installed as soon as available, as if they were build dependencies (since they need to exist to make the build dependency runnable)
 
 	--force or --recursive should prevent use of already existing binaries to satisfy the request - the purpose is to re-compile those ports since some dependency might have incompatibly changed
 
-	failure in the configuration phase (possibly other phases, too) lead to empty origin_new and then to a de-installation of the existing package!!! (e.g. caused by update conflict in port's Makefile)
+	failure in the configuration phase (possibly other phases, too) lead to empty o_n and then to a de-installation of the existing package!!! (e.g. caused by update conflict in port's Makefile)
 
 	restart file: in jailed/repo-mode count only finished "build-only" packages as DONE, but especially do not count "provided" packages, which might be required as build deps for a later port build
 --]]
@@ -1184,28 +1131,28 @@ os.exit(0)
 	origin_var "$origin" FLAVORS
 
 	# --> port_is_interactive
-	origin_var "$origin_new" IS_INTERACTIVE
+	origin_var "$o_n" IS_INTERACTIVE
 
 	# --> check_license
-	origin_var "$origin_new" LICENSE
+	origin_var "$o_n" LICENSE
 
 	# --> *
-	origin_var "$origin_new" PKGNAME
+	origin_var "$o_n" PKGNAME
 
 	# --> package_check_build_conflicts
-	origin_var "$origin_new" BUILD_CONFLICTS
+	origin_var "$o_n" BUILD_CONFLICTS
 
 	# --> choose_action, (list_ports)
-	origin_var "$origin_old" PKGNAME
+	origin_var "$o_o" PKGNAME
 
 	# --> origin_from_dir_and_pkg
-	origin_var "$origin_old" PKGORIGIN
+	origin_var "$o_o" PKGORIGIN
 
 	# --> choose_action
-	origin_var_jailed "$origin_old" PKGNAME
+	origin_var_jailed "$o_o" PKGNAME
 
 	# --> choose_action, origin_from_dir_and_pkg
-	origin_var_jailed "$origin_new" PKGNAME
+	origin_var_jailed "$o_n" PKGNAME
 --]]
 
 --[[

@@ -698,72 +698,72 @@ local function save()
 end
 
 -- register upgrade in the restart case where no dependency checks have been performed
-local function register_upgrade_restart(dep_type, origin_old, origin_new,
+local function register_upgrade_restart(dep_type, o_o, o_n,
                                         pkgname_old, pkgname_new, pkgfile, ...)
-    if origin_old == "-" then
+    if o_o == "-" then
         if pkgname_old == "-" then
             pkgname_old = nil
-            origin_old = nil
+            o_o = nil
         else
-            origin_old = origin_new
+            o_o = o_n
         end
     end
     if pkgfile == "-" then pkgfile = nil end
     --
-    if origin_old ~= origin_new then ORIGIN_OLD[origin_new] = origin_old end
-    if pkgname_old then PKGNAME_OLD[origin_new] = pkgname_old end
-    if pkgname_new then PKGNAME_NEW[origin_new] = pkgname_new end
-    if pkgfile then USEPACKAGE[origin_new] = pkgfile end
+    if o_o ~= o_n then o_o[o_n] = o_o end
+    if pkgname_old then PKGNAME_OLD[o_n] = pkgname_old end
+    if pkgname_new then PKGNAME_NEW[o_n] = pkgname_new end
+    if pkgfile then USEPACKAGE[o_n] = pkgfile end
     local special_depends = {...}
-    if special_depends[1] then SPECIAL_DEPENDS[origin_new] = special_depends end
+    if special_depends[1] then SPECIAL_DEPENDS[o_n] = special_depends end
     --
     if dep_type == "pkg" then
-        delayedlist_add(origin_new)
+        delayedlist_add(o_n)
     else
-        worklist_add(origin_new)
+        worklist_add(o_n)
         if dep_type == "build" then
-            BUILDDEP[origin_new] = true
+            BUILDDEP[o_n] = true
         elseif dep_type == "run" then
-            RUNDEP[origin_new] = true
+            RUNDEP[o_n] = true
         end
-        if not UPGRADES[origin_new] then
-            UPGRADES[origin_new] = true
+        if not UPGRADES[o_n] then
+            UPGRADES[o_n] = true
             if not pkgfile and not Options.dry_run then
-                distfiles_fetch(origin_new)
+                distfiles_fetch(o_n)
             end
         end
     end
 end
 
 -- parse action line of restart file and register action
-local function restart_file_parse_line(hash, command, origin_old, origin_new,
+local function restart_file_parse_line(hash, command, o_o, o_n,
                                        pkgname_old, pkgname_new, pkgfile, ...)
     local special_depends = {...}
     if hash == "#:" and not check_locked(pkgname_old) and
-        not Excludes.check(pkgname_new, origin_new) then
+        not Excludes.check(pkgname_new, o_n) then
         if command == "Delete" then
             register_delete(pkgname_old)
         elseif command == "Move" then
-            register_moved(origin_old, origin_new, pkgname_old)
+            register_moved(o_o, o_n, pkgname_old)
         elseif command == "Rename" then
-            register_pkgname_chg(origin_new, pkgname_old, pkgname_new)
+            register_pkgname_chg(o_n, pkgname_old, pkgname_new)
         elseif command == "Install_build" then
-            register_upgrade_restart("build", "", origin_new, "", pkgname_new,
+            register_upgrade_restart("build", "", o_n, "", pkgname_new,
                                      pkgfile, special_depends)
         elseif command == "Install_run" then
-            register_upgrade_restart("run", "", origin_new, "", pkgname_new,
+            register_upgrade_restart("run", "", o_n, "", pkgname_new,
                                      pkgfile, special_depends)
         elseif command == "Upgrade_build" then
-            register_upgrade_restart("build", origin_old, origin_new,
+            register_upgrade_restart("build", o_o, o_n,
                                      pkgname_old, pkgname_new, pkgfile,
                                      special_depends)
         elseif command == "Upgrade_run" then
-            register_upgrade_restart("run", origin_old, origin_new, pkgname_old,
+            register_upgrade_restart("run", o_o, o_n, pkgname_old,
                                      pkgname_new, pkgfile, special_depends)
         elseif command == "Purge_after_build" then
-            DEP_DEL_AFTER_BUILD[origin_new] = special_depends
+            DEP_DEL_AFTER_BUILD[o_n] = special_depends
         elseif command == "Purge_after_del" then
-            DEP_DEL_AFTER_RUN[origin_new] = special_depends
+            DEP_DEL_AFTER_RUN[o_n] = special_depends
         else
             return false
         end

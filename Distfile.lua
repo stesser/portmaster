@@ -200,7 +200,7 @@ end
 
 --[[
 -- delete old distfiles
-local function delete_old (origin_new, pkgname_old)
+local function delete_old (o_n, pkgname_old)
    --error ("NYI")
    return true
 end
@@ -218,10 +218,10 @@ function update_list ()
 	 if not access (file, "r") then
 	    file = origin.distinfo_file
 	    if not file or not access (file, "r") then
-	       local origin_new = origin_find_moved (origin)
-	       if origin_new and origin ~= origin_new then
-		  file = origin_new.distinfo_file
-		  origin = origin_new
+	       local o_n = origin_find_moved (origin)
+	       if o_n and origin ~= o_n then
+		  file = o_n.distinfo_file
+		  origin = o_n
 	       end
 	    end
 	 end
@@ -255,8 +255,8 @@ function update_list ()
 end
 
 -- preserve file names and hashes of distfiles from new port
-function distinfo_cache_update (origin_new, pkgname_new)
-   Msg.show {level = 2, "NYI: distinfo_cache_update", origin_new, pkgname_new}
+function distinfo_cache_update (o_n, pkgname_new)
+   Msg.show {level = 2, "NYI: distinfo_cache_update", o_n, pkgname_new}
 --   error("NYI")
 end
 

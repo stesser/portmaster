@@ -52,11 +52,15 @@ local function print_longopts()
     local result = {}
     local longopts = table.keys(LONGOPT)
     table.sort(longopts)
-    for _, v in ipairs(longopts) do table.insert(result, LONGOPT[v]) end
+    for _, v in ipairs(longopts) do
+        table.insert(result, LONGOPT[v])
+    end
     longopts = table.keys(VALID_OPTS)
     table.sort(longopts)
     for _, v in ipairs(longopts) do
-        if VALID_OPTS[v][1] == nil then table.insert(result, v) end
+        if VALID_OPTS[v].letter == nil then
+            table.insert(result, v)
+        end
     end
     return result
 end
@@ -65,29 +69,33 @@ end
 local function usage()
     -- print_version ()
     -- print ()
-    io.stderr:write("Usage: " .. PROGRAM ..
-                        " [option ...] [portorigin|packagename] ...\n\nOptions:\n")
+    io.stderr:write("Usage: ", PROGRAM,  " [option ...] [portorigin|packagename] ...\n")
+    io.stderr:write("\n")
+    io.stderr:write("Options:\n")
     local options_descr = {}
     local maxlen = 0
     for _, longopt in pairs(print_longopts()) do
         local line = ""
         local spec = VALID_OPTS[longopt]
-        local shortopt = spec[1]
-        local param = spec[2]
-        local descr = spec[3]
+        local shortopt = spec.letter
+        local param = spec.param
+        local descr = spec.descr
         if shortopt then
             line = "-" .. shortopt
             if param then line = line .. " <" .. param .. ">" end
             line = line .. " | "
         end
         line = line .. "--" .. longopt:gsub("_", "-")
-        if param then line = line .. "=<" .. param .. ">" end
+        if param then
+            line = line .. "=<" .. param .. ">"
+        end
         table.insert(options_descr, {line, descr})
-        if #line > maxlen then maxlen = #line end
+        if #line > maxlen then
+            maxlen = #line
+        end
     end
     for _, v in ipairs(options_descr) do
-        io.stderr:write(string.format(" %-" .. maxlen + 1 .. "s %s\n", v[1],
-                                      v[2]))
+        io.stderr:write(string.format(" %-" .. maxlen + 1 .. "s %s\n", v[1], v[2]))
     end
     os.exit(2)
 end
@@ -114,7 +122,7 @@ local function longopt_action(opt, arg)
     TRACE("LONGOPT_ACTION", opt, arg)
     local opt_rec = VALID_OPTS[opt]
     if not opt_rec then opt_err(opt) end
-    local param = opt_rec[2]
+    local param = opt_rec.param
     if param then
         assert(arg and #arg > 0, "required parameter is missing")
     else
@@ -125,13 +133,15 @@ local function longopt_action(opt, arg)
             arg = opt
         end
     end
-    opt_rec[4](opt, arg)
+    opt_rec.func(opt, arg)
 end
 
 -- process short option of type "-o param" with optional param
 local function shortopt_action(opt, arg)
     local longopt = LONGOPT[opt]
-    if not longopt then opt_err(opt) end
+    if not longopt then
+        opt_err(opt)
+    end
     longopt_action(longopt, arg)
 end
 
@@ -193,14 +203,6 @@ local function set_package_format(var, fmt)
     assert(VALID_FORMATS[fmt], "invalid package format '" .. fmt .. "'")
     Options[var] = fmt
 end
-
--- options that have to be set in the Msg module, too
-local msg_opts = {
-    no_confirm = true,
-    no_term_title = true,
-    default_yes = true,
-    default_no = true
-}
 
 -- set option (or clear, if value is nil)
 local function opt_set(opt, value)
@@ -279,265 +281,289 @@ end
 -- - ToDo: Verify that required parameters are actually provided!!!
 VALID_OPTS = {
     all_old_abi = {
-        nil, nil,
-        "select all ports that have been built for a prior ABI version",
-        function(o, v) opt_set(o, v) end
+		descr = "select all ports that have been built for a prior ABI version",
+		func = function(o, v) opt_set(o, v) end
     }, -- MAN
     all_options_change = {
-        nil, nil,
-        "select all ports for which new options have become available",
-        function(o, v) opt_set(o, v) end
+		descr = "select all ports for which new options have become available",
+		func = function(o, v) opt_set(o, v) end
     }, -- NYI
     backup_format = {
-        nil, "fmt", "select backup package format",
-        function(o, v) set_package_format(o, v) end
+		param = "fmt",
+		descr = "select backup package format",
+		func = function(o, v) set_package_format(o, v) end
     },
     check_depends = {
-        nil, nil, "check and fix registered dependencies",
-        function(o, v) opt_set(o, v) end
+		descr = "check and fix registered dependencies",
+		func = function(o, v) opt_set(o, v) end
     },
     check_port_dbdir = {
-        nil, nil, "check for and delete stale port options",
-        function(o, v) opt_set(o, v) end
+		descr =  "check for and delete stale port options",
+		func = function(o, v) opt_set(o, v) end
     },
     clean_packages = {
-        nil, nil, "delete stale package files", function(o, v)
-            opt_set(o, v)
-        end
+		descr = "delete stale package files",
+		func = function(o, v) opt_set(o, v) end
     },
     clean_packages_all = {
-        nil, nil, "delete stale package files without asking",
-        function(o, v) opt_set(o, v) end
+		descr = "delete stale package files without asking",
+		func = function(o, v) opt_set(o, v) end
     },
     clean_stale_libraries = {
-        nil, nil, "delete stale libraries", function(o, v) opt_set(o, v) end
+		descr = "delete stale libraries",
+		func = function(o, v) opt_set(o, v) end
     },
     deinstall_unused = {
-        nil, nil,
-        "deinstall no longer required automatically installed packages",
-        function(o, v) opt_set(o, v) end
+		descr = "deinstall no longer required automatically installed packages",
+		func = function(o, v) opt_set(o, v) end
     },
     delay_installation = {
-        nil, nil,
-        "delay installation of ports unless they are build dependencies",
-        function(o, v) opt_set(o, v) end
+		descr = "delay installation of ports unless they are build dependencies",
+		func = function(o, v) opt_set(o, v) end
     },
     delete_build_only = {
-        nil, nil, "delete packages only used as build dependencies",
-        function(o, v) opt_set(o, v) end
+		descr = "delete packages only used as build dependencies",
+		func = function(o, v) opt_set(o, v) end
     },
     force_config = {
-        nil, nil, "ask for port options of each port", function(o, v)
-            opt_set(o, v)
-            opt_clear("no_make_config", o)
-        end
+		descr = "ask for port options of each port",
+		func = function(o, v) opt_set(o, v) opt_clear("no_make_config", o) end
     },
     jailed = {
-        nil, nil, "build ports in a clean chroot jail", function(o, v)
-            opt_set(o, v)
-            opt_set("packages", "yes")
-            opt_set("create_package", "yes")
-        end
+		descr = "build ports in a clean chroot jail",
+		func = function(o, v) opt_set(o, v) opt_set("packages", "yes") opt_set("create_package", "yes") end
     }, -- MAN
     list_origins = {
-        nil, nil, "list origins of all installed ports",
-        function(o, v) opt_set(o, v) end
+		descr = "list origins of all installed ports",
+		func = function(o, v) opt_set(o, v) end
     },
     logfile = {
-        nil, "file", "log actions taken by portmaster to a file (NYI)",
-        function(o, v) opt_set(o, v) end
+		param = "file",
+		descr = "log actions taken by portmaster to a file (NYI)",
+		func = function(o, v) opt_set(o, v) end
     }, -- NYI
     local_packagedir = {
-        nil, "dir", "set local packages directory",
-        function(o, v) opt_set(o, v) end
+		param = "dir",
+		descr = "set local packages directory",
+		func = function(o, v) opt_set(o, v) end
     },
     no_confirm = {
-        nil, nil, "do not ask for confirmation", function(o, v)
-            opt_set(o, v)
-            opt_clear("interactive", o)
-        end
+		descr = "do not ask for confirmation",
+		func = function(o, v) opt_set(o, v) opt_clear("interactive", o) end
     },
     no_term_title = {
-        nil, nil, "no progress indication in terminal title",
-        function(o, v) opt_set(o, v) end
+		descr = "no progress indication in terminal title",
+		func = function(o, v) opt_set(o, v) end
     },
     package_format = {
-        nil, "fmt", "select archive format of created packages",
-        function(o, v) set_package_format(o, v) end
+		param = "fmt",
+		descr = "select archive format of created packages",
+		func = function(o, v) set_package_format(o, v) end
     },
     packages_build = {
-        nil, nil, "use packages to resolve build dependencies",
-        function(o, v) opt_set(o, v) end
+		descr = "use packages to resolve build dependencies",
+		func = function(o, v) opt_set(o, v) end
     },
     repo_mode = {
-        nil, nil, "update package repository", function(o, v)
-            opt_set(o, v)
-            opt_set("clean_packages", "yes")
-        end
+		descr = "update package repository",
+		func = function(o, v) opt_set(o, v) opt_set("clean_packages", "yes") end
     },
     restart_with = {
-        nil, "filename", "restart aborted run with actions from named file",
-        function(o, v) restart_file_load(v) end
+		param = "filename",
+		descr = "restart aborted run with actions from named file",
+		func = function(o, v) restart_file_load(v) end
     }, -- MAN
-    show_work = {nil, nil, "show progress", function(o, v) opt_set(o, v) end},
+    show_work = {
+		descr = "show progress",
+		func = function(o, v) opt_set(o, v) end},
     skip_recreate_pkg = {
-        nil, nil, "do not overwrite existing package files",
-        function(o, v) opt_set(o, v) end
+		descr = "do not overwrite existing package files",
+		func = function(o, v) opt_set(o, v) end
     },
     su_cmd = {
-        nil, "cmd",
-        "command and options that grant root privileges (e.g.: sudo)",
-        function(o, v) opt_set(o, v) end
+		param = "cmd",
+		descr = "command and options that grant root privileges (e.g.: sudo)",
+		func = function(o, v) opt_set(o, v) end
     },
     try_broken = {
-        nil, nil, "try to build ports marked as broken",
-        function(o, v) opt_set(o, v) end
+		descr = "try to build ports marked as broken",
+		func = function(o, v) opt_set(o, v) end
     },
     no_backup = {
-        "B", nil, "do not create backups of de-installed packages",
-        function(o, v) opt_clear("backup", o) end
+		letter = "B",
+		descr = "do not create backups of de-installed packages",
+		func = function(o, v) opt_clear("backup", o) end
     },
     no_pre_clean = {
-        "C", nil, "do not clean before building the ports",
-        function(o, v) opt_set(o, v) end
+		letter = "C",
+		descr = "do not clean before building the ports",
+		func = function(o, v) opt_set(o, v) end
     },
     no_scrub_distfiles = {
-        "D", nil, "do not delete stale distfiles", function(o, v)
-            opt_set(o, v)
-            opt_clear("scrub_distfiles", o)
-        end
+		letter = "D",
+		descr = "do not delete stale distfiles",
+		func = function(o, v) opt_set(o, v) opt_clear("scrub_distfiles", o) end
     },
-    fetch_only = {"F", nil, "fetch only", function(o, v) opt_set(o, v) end},
+    fetch_only = {
+		letter = "F",
+		descr = "fetch only",
+		func = function(o, v) opt_set(o, v) end},
     no_make_config = {
-        "G", nil, "do not configure ports", function(o, v)
-            opt_set(o, v)
-            opt_clear("force_config", o)
-        end
+		letter = "G",
+		descr = "do not configure ports",
+		func = function(o, v) opt_set(o, v) opt_clear("force_config", o) end
     },
     hide_build = {
-        "H", nil, "hide port build messages", function(o, v)
-            opt_set(o, v)
-        end
+		letter = "H",
+		descr = "hide port build messages",
+		func = function(o, v) opt_set(o, v) end
     },
     no_post_clean = {
-        "K", nil, "do not clean after building the ports",
-        function(o, v) opt_set(o, v) end
+		letter = "K",
+		descr = "do not clean after building the ports",
+		func = function(o, v) opt_set(o, v) end
     },
     list_plus = {
-        "L", false, "print verbose listing of installed ports",
-        function(o, v) opt_set("list", "verbose") end
+		letter = "L",
+		param = false,
+		descr = "print verbose listing of installed ports",
+		func = function(o, v) opt_set("list", "verbose") end
     },
     dry_run = {
-        "N", nil, "print but do not actually execute commands",
-        function(o, v) opt_set(o, v) end
+		letter = "N",
+		descr = "print but do not actually execute commands",
+		func = function(o, v) opt_set(o, v) end
     },
     packages = {
-        "P", nil, "use packages if available", function(o, v)
-            opt_set(o, v)
-        end
+		letter = "P",
+		descr = "use packages if available",
+		func = function(o, v) opt_set(o, v) end
     },
     restart = {
-        "R", false, "restart build", function(o, v) restart_file_load() end
+		letter = "R",
+		param = false,
+		descr = "restart build",
+		func = function(o, v) restart_file_load() end
     }, -- MAN
     version = {
-        "V", false, "print program version", function(o, v)
-            print_version()
-        end
+		letter = "V",
+		param = false,
+		descr = "print program version",
+		func = function(o, v) print_version() end
     },
     all = {
-        "a", nil, "operate on all installed ports",
-        function(o, v) opt_set(o, v) end
+		letter = "a",
+		descr = "operate on all installed ports",
+		func = function(o, v) opt_set(o, v) end
     },
     backup = {
-        "b", nil, "create backups of de-installed packages",
-        function(o, v) opt_set(o, v) end
+		letter = "b",
+		descr = "create backups of de-installed packages",
+		func = function(o, v) opt_set(o, v) end
     },
     scrub_distfiles = {
-        "d", nil, "delete stale distfiles", function(o, v)
-            opt_set(o, v)
-            opt_clear("no_scrub_distfiles", o)
-        end
+		letter = "d",
+		descr = "delete stale distfiles",
+		func = function(o, v) opt_set(o, v) opt_clear("no_scrub_distfiles", o) end
     },
-    -- expunge		= { "e", "package", "delete one port passed as argument and its distfiles",		function (o, v) opt_add (o, v) end },
-    force = {"f", nil, "force action", function(o, v) opt_set(o, v) end},
+    -- expunge = { "e", "package", "delete one port passed as argument and its distfiles", function (o, v) opt_add (o, v) end },
+    force = {
+		letter = "f",
+		descr = "force action",
+		func = function(o, v) opt_set(o, v) end},
     create_package = {
-        "g", nil, "create package files for all installed ports",
-        function(o, v) opt_set(o, v) end
+		letter = "g",
+		descr = "create package files for all installed ports",
+		func = function(o, v) opt_set(o, v) end
     },
-    help = {"h", false, "show usage", function(o, v) usage() end},
+    help = {
+		letter = "h",
+		param = false,
+		descr = "show usage",
+		func = function(o, v) usage() end},
     interactive = {
-        "i", nil, "interactive mode", function(o, v) opt_set(o, v) end
+		letter = "i",
+		descr = "interactive mode",
+		func = function(o, v) opt_set(o, v) end
     },
     list = {
-        "l", false, "list installed ports",
-        function(o, v) opt_set("list", "short") end
+		letter = "l",
+		param = false,
+		descr = "list installed ports",
+		func = function(o, v) opt_set("list", "short") end
     },
     make_args = {
-        "m", "arg", "pass option to make processes",
-        function(o, v) opt_add(o, v) end
+		letter = "m",
+		param = "arg",
+		descr = "pass option to make processes",
+		func = function(o, v) opt_add(o, v) end
     },
     default_no = {
-        "n", nil, "assume answer 'no'", function(o, v)
-            opt_set(o, v)
-            opt_clear("default_yes", o)
-        end
+		letter = "n",
+		descr = "assume answer 'no'",
+		func = function(o, v) opt_set(o, v) opt_clear("default_yes", o) end
     },
     origin = {
-        "o", "origin", "install from specified origin",
-        function(o, v) opt_set("replace_origin", v) end
+		letter = "o",
+		param = "origin",
+		descr = "install from specified origin",
+		func = function(o, v) opt_set("replace_origin", v) end
     }, -- use module local static variable to hold this value ???
     recursive = {
-        "r", "port", "force building of dependent ports", function(o, v)
-            ports_add_recursive(v, Options.replace_origin)
-            opt_clear("replace_origin")
-        end
+		letter = "r",
+		param = "port",
+		descr = "force building of dependent ports",
+		func = function(o, v) ports_add_recursive(v, Options.replace_origin) opt_clear("replace_origin") end
     },
     clean_stale = {
-        "s", nil, "deinstall unused packages that were installed as dependency",
-        function(o, v)
-            opt_set(o, v)
-            opt_set("thorough", "yes")
-        end
+		letter = "s",
+		descr = "deinstall unused packages that were installed as dependency",
+		func = function(o, v) opt_set(o, v) opt_set("thorough", "yes") end
     },
     thorough = {
-        "t", nil,
-        "check all dependencies and de_install unused automatic packages",
-        function(o, v) opt_set(o, v) end
+		letter = "t",
+		descr = "check all dependencies and de_install unused automatic packages",
+		func = function(o, v) opt_set(o, v) end
     },
     verbose = {
-        "v", false, "increase verbosity level",
-        function(o, v) Msg.incr_level() end
+		letter = "v",
+		param = false,
+		descr = "increase verbosity level",
+		func = function(o, v) Msg.incr_level() end
     },
     save_shared = {
-        "w", nil, "keep backup copies of replaced shared libraries",
-        function(o, v) opt_set(o, v) end
+		letter = "w",
+		descr = "keep backup copies of replaced shared libraries",
+		func = function(o, v) opt_set(o, v) end
     },
     exclude = {
-        "x", "pattern", "add pattern to exclude list",
-        function(o, v) Excludes.add(v) end
+		letter = "x",
+		param = "pattern",
+		descr = "add pattern to exclude list",
+		func = function(o, v) Excludes.add(v) end
     },
     default_yes = {
-        "y", nil, "assume answer 'yes'", function(o, v)
-            opt_set(o, v)
-            opt_clear("default_no", o)
-        end
+		letter = "y",
+		descr = "assume answer 'yes'",
+		func = function(o, v) opt_set(o, v) opt_clear("default_no", o) end
     },
     developer_mode = {
-        nil, nil, "create log and trace files",
-        function(o, v) tracefd = io.open(TRACEFILE, "w") end
+		descr = "create log and trace files",
+		func = function(o, v) tracefd = io.open(TRACEFILE, "w") end
     }
 }
 
 --
 local function init()
     local getopts_opts = ""
-    local short_opt
     for k, v in pairs(VALID_OPTS) do
-        short_opt = v[1]
+        local short_opt = v.letter
         if short_opt then
             LONGOPT[short_opt] = k
             getopts_opts = getopts_opts .. short_opt
-            if v[2] then getopts_opts = getopts_opts .. ":" end
+            if v.param then
+                getopts_opts = getopts_opts .. ":"
+            end
         end
     end
     getopts_opts = getopts_opts .. "-"
@@ -551,8 +577,8 @@ local function init()
     -- options processing
     local longopt_i = 0
     local current_i = 1
-    --local opterr
-    --local i
+    local opterr
+    local i
     for opt, opterr, i in getopt(arg, getopts_opts, opterr, i) do -- check getopt usage parameters 3 and 4
         if opt == "-" then
             opt = arg[current_i]:sub(3)
@@ -676,7 +702,7 @@ local function save()
 
     local opts = table.keys(VALID_OPTS)
     table.sort(opts)
-    for i, k in ipairs(opts) do
+    for _, k in ipairs(opts) do
         local t = VALID_OPTS[k]
         local takes_arg = t[2] -- parameter name as string, nil if none, false to skip
         if takes_arg ~= false then
@@ -688,7 +714,7 @@ local function save()
         end
     end
 
-    for i = 1, Msg.level() do tmpf:write("verbose=yes\n") end
+    for _ = 1, Msg.level() do tmpf:write("verbose=yes\n") end
     w("")
 
     local filename = restart_file_name()
@@ -792,6 +818,6 @@ end
 
 Options.init = init
 Options.save = save
-Options.restart_file_load = restart_file_load
+--Options.restart_file_load = restart_file_load
 
 return Options

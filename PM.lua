@@ -264,7 +264,7 @@ end
 function tempfile_delete(...)
     local files = tempfile_list(...)
     if files then
-        for i, file in ipairs(files) do
+        for _, file in ipairs(files) do
             os.remove(file)
         end
     end
@@ -277,7 +277,7 @@ function dirname(filename) return string.match(filename, ".*/") or "." end
 function path_concat(result, ...)
     TRACE("PATH_CONCAT", result, ...)
     if result and result ~= "" then
-        for i, v in ipairs({...}) do
+        for _, v in ipairs({...}) do
             if string.sub(v, 1, 1) == "/" then v = string.sub(v, 2) end
             if v and v ~= "" then
                 result =
@@ -322,7 +322,7 @@ end
 
 -- set global variable to first parameter that is a directory
 local function init_global_path(...)
-    for i, dir in pairs({...}) do
+    for _, dir in pairs({...}) do
         if is_dir(path_concat(dir, ".")) then
             if string.sub(dir, -1) ~= "/" then dir = dir .. "/" end
             return dir
@@ -333,7 +333,7 @@ end
 
 -- return first parameter that is an existing executable
 local function init_global_cmd(...)
-    for i, n in ipairs({...}) do if access(n, "x") then return n end end
+    for _, n in ipairs({...}) do if access(n, "x") then return n end end
     error("init_global_cmd")
 end
 
@@ -452,7 +452,7 @@ local function init_environment()
                PATH.localbase .. "sbin") -- DUPLICATE ???
     -- cache some build variables in the environment (cannot use ports_var due to its use of "-D BEFOREPORTMK")
     local env_param = ports_var {needbeforemk = true, "PORTS_ENV_VARS"} -- || fail "$output" -- convert to port_var with extra parameter for the -f option argument XXX
-    for i, var in ipairs(split_words(env_param)) do
+    for _, var in ipairs(split_words(env_param)) do
         local value = ports_var {needbeforemk = true, var}
 	TRACE("SETENV", var, value)
         setenv(var, value)
@@ -470,7 +470,7 @@ local function init_environment()
         PATH.portsdir .. "Mk/Scripts/ports_env.sh"
     }
     TRACE("ENVLINES", table.unpack(env_lines))
-    for i, line in ipairs(env_lines) do
+    for _, line in ipairs(env_lines) do
         local var, value = line:match("^export ([%w_]+)=(.+)")
         if string.sub(value, 1, 1) == '"' and string.sub(value, -1) == '"' then
             value = string.sub(value, 2, -2)
@@ -506,8 +506,8 @@ end
 --
 local function ports_update(filters)
     local pkgs, rest = Package:installed_pkgs(), {}
-    for i, filter in ipairs(filters) do
-        for i, pkg in ipairs(pkgs) do
+    for _, filter in ipairs(filters) do
+        for _, pkg in ipairs(pkgs) do
             local selected, force = filter(pkg)
             if selected then
                 Action:new{
@@ -527,14 +527,14 @@ end
 -- add all matching ports identified by pkgnames and/or portnames with optional flavor
 local function ports_add_multiple(args)
     local pattern_table = {}
-    for i, name_glob in ipairs(args) do
+    for _, name_glob in ipairs(args) do
         local pattern = string.gsub(name_glob, "%.", "%%.")
         pattern = string.gsub(pattern, "%?", ".")
         pattern = string.gsub(pattern, "%*", ".*")
         table.insert(pattern_table, "^(" .. pattern .. ")")
     end
     local function filter_match(pkg)
-        for i, v in ipairs(pattern_table) do
+        for _, v in ipairs(pattern_table) do
             if string.match(pkg.name_base, v .. "$") then return true end
             if pkg.origin and (string.match(pkg.origin.name, v .. "$") or
                 string.match(pkg.origin.name, v .. "@%S+$")) then
@@ -545,7 +545,7 @@ local function ports_add_multiple(args)
     TRACE("PORTS_ADD_MULTIPLE-<", table.unpack(args))
     TRACE("PORTS_ADD_MULTIPLE->", table.unpack(pattern_table))
     ports_update {filter_match}
-    for i, v in ipairs(args) do
+    for _, v in ipairs(args) do
         if string.match(v, "/") and
             access(path_concat(PATH.portsdir, v, "Makefile"), "r") then
             local o = Origin:new(v)
@@ -617,7 +617,7 @@ local function ask_and_delete(prompt, ...)
     local answer
     if Options.default_no then answer = "q" end
     if Options.default_yes then answer = "a" end
-    for i, file in ipairs(...) do
+    for _, file in ipairs(...) do
         if answer ~= "a" and answer ~= "q" then
             answer = Msg.read_answer("Delete " .. prompt .. " '" .. file .. "'",
                                      "y", {"y", "n", "a", "q"})
@@ -646,7 +646,7 @@ local function ask_and_delete_directory(prompt, ...)
     local answer
     if Options.default_no then answer = "q" end
     if Options.default_yes then answer = "a" end
-    for i, directory in ipairs(...) do
+    for _, directory in ipairs(...) do
         if answer ~= "a" and answer ~= "q" then
             answer = Msg.read_answer(
                          "Delete " .. prompt .. " '" .. directory .. "'", "y",
@@ -884,7 +884,7 @@ local function main()
 
     --  allow the specification of -a and -r together with further individual ports to install or upgrade
     if #arg > 0 then
-        arg.force = Options.force
+        arg.force = Options.force -- copy args to local variable in Options.init
         ports_add_multiple(arg)
     end
 

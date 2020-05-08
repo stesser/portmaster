@@ -84,6 +84,11 @@ local function add_missing_deps()
     end
 end
 
+local function plan()
+
+end
+
 return {
     add_missing_deps = add_missing_deps,
+    plan = plan,
 }

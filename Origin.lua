@@ -393,7 +393,7 @@ local function __newindex(origin, n, v)
 end
 
 --
-ORIGIN_ALIAS = {}
+local ORIGIN_ALIAS = {}
 
 --
 local function get(name)
@@ -541,8 +541,8 @@ local function __index(origin, k)
         local t = depends_table[k]
         assert(t, "non-existing dependency " .. k or "<nil>" .. " requested")
         local ut = {}
-        for i, v in ipairs(t) do
-            for j, d in ipairs(origin[v] or {}) do
+        for _, v in ipairs(t) do
+            for _, d in ipairs(origin[v] or {}) do
                 local pattern = k == "special_depends" and "^[^:]+:([^:]+:%S+)" or "^[^:]+:([^:]+)$"
                 TRACE ("PORT_DEPENDS", k, d, pattern)
                 local o = string.match(d, pattern)
@@ -561,10 +561,10 @@ local function __index(origin, k)
         local t = conflicts_table[k]
         assert(t, "non-existing conflict type " .. k or "<nil>" .. " requested")
         local ut = {}
-        for i, v in ipairs(t) do
+        for _, v in ipairs(t) do
             local t = origin[v]
             TRACE("CHECK_C?", origin.name, k, v)
-            if t then for j, d in ipairs(t) do ut[d] = true end end
+            if t then for _, d in ipairs(t) do ut[d] = true end end
         end
         return table.keys(ut)
     end

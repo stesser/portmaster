@@ -52,10 +52,10 @@ local function print_longopts()
     local result = {}
     local longopts = table.keys(LONGOPT)
     table.sort(longopts)
-    for i, v in ipairs(longopts) do table.insert(result, LONGOPT[v]) end
+    for _, v in ipairs(longopts) do table.insert(result, LONGOPT[v]) end
     longopts = table.keys(VALID_OPTS)
     table.sort(longopts)
-    for i, v in ipairs(longopts) do
+    for _, v in ipairs(longopts) do
         if VALID_OPTS[v][1] == nil then table.insert(result, v) end
     end
     return result
@@ -69,7 +69,7 @@ local function usage()
                         " [option ...] [portorigin|packagename] ...\n\nOptions:\n")
     local options_descr = {}
     local maxlen = 0
-    for i, longopt in pairs(print_longopts()) do
+    for _, longopt in pairs(print_longopts()) do
         local line = ""
         local spec = VALID_OPTS[longopt]
         local shortopt = spec[1]
@@ -85,7 +85,7 @@ local function usage()
         table.insert(options_descr, {line, descr})
         if #line > maxlen then maxlen = #line end
     end
-    for i, v in ipairs(options_descr) do
+    for _, v in ipairs(options_descr) do
         io.stderr:write(string.format(" %-" .. maxlen + 1 .. "s %s\n", v[1],
                                       v[2]))
     end
@@ -134,6 +134,28 @@ local function shortopt_action(opt, arg)
     if not longopt then opt_err(opt) end
     longopt_action(longopt, arg)
 end
+
+-- translation table from old portmaster options to this version's options
+local OLD_RC_COMPAT = {
+    ALWAYS_SCRUB_DISTFILES = "scrub_distfiles",
+    DONT_POST_CLEAN = "no_post_clean",
+    DONT_PRE_CLEAN = "no_pre_clean",
+    DONT_SCRUB_DISTFILES = "no_scrub_distfiles",
+    MAKE_PACKAGE = "create_package",
+    PM_DEL_BUILD_ONLY = "verbose",
+    PM_NO_MAKE_CONFIG = "no_make_config",
+    PM_NO_CONFIRM = "no_confirm",
+    PM_NO_TERM_TITLE = "no_term_title",
+    PM_PACKAGES = "packages",
+    PM_PACKAGES_NEWER = "packages",
+    PM_PACKAGES_LOCAL = "packages",
+    PM_PACKAGES_BUILD = "packages_build",
+    PM_SU_CMD = "su_cmd",
+    PM_VERBOSE = "verbose",
+    --   PM_ALWAYS_FETCH = "always_fetch",
+    --   PM_DELETE_PACKAGES = "deinstall_unused",
+    RECURSE_THOROUGH = "thorough"
+}
 
 --
 local function rcfile_tryload(filename)
@@ -207,7 +229,7 @@ end
 local function opt_set_if(test_opt, ...)
     if test_opt then
         if Options[test_opt] then
-            for i, opt in ipairs({...}) do
+            for _, opt in ipairs({...}) do
                 if not Options[opt] then
                     Msg.show {
                         level = 2,
@@ -227,7 +249,7 @@ end
 local function opt_clear_if(test_opt, ...)
     if test_opt then
         if Options[test_opt] then
-            for i, opt in ipairs({...}) do
+            for _, opt in ipairs({...}) do
                 if Options[opt] then opt_clear(opt, test_opt) end
             end
         end
@@ -355,7 +377,7 @@ VALID_OPTS = {
     },
     restart_with = {
         nil, "filename", "restart aborted run with actions from named file",
-        function(o, v) restart_file_load(value) end
+        function(o, v) restart_file_load(v) end
     }, -- MAN
     show_work = {nil, nil, "show progress", function(o, v) opt_set(o, v) end},
     skip_recreate_pkg = {
@@ -529,8 +551,8 @@ local function init()
     -- options processing
     local longopt_i = 0
     local current_i = 1
-    local opterr
-    local i
+    --local opterr
+    --local i
     for opt, opterr, i in getopt(arg, getopts_opts, opterr, i) do -- check getopt usage parameters 3 and 4
         if opt == "-" then
             opt = arg[current_i]:sub(3)
@@ -560,28 +582,6 @@ local function init()
     -- remove options before port and package glob arguments
     for i = 1, current_i - 1 do table.remove(arg, 1) end
 end
-
--- translation table from old portmaster options to this version's options
-OLD_RC_COMPAT = {
-    ALWAYS_SCRUB_DISTFILES = "scrub_distfiles",
-    DONT_POST_CLEAN = "no_post_clean",
-    DONT_PRE_CLEAN = "no_pre_clean",
-    DONT_SCRUB_DISTFILES = "no_scrub_distfiles",
-    MAKE_PACKAGE = "create_package",
-    PM_DEL_BUILD_ONLY = "verbose",
-    PM_NO_MAKE_CONFIG = "no_make_config",
-    PM_NO_CONFIRM = "no_confirm",
-    PM_NO_TERM_TITLE = "no_term_title",
-    PM_PACKAGES = "packages",
-    PM_PACKAGES_NEWER = "packages",
-    PM_PACKAGES_LOCAL = "packages",
-    PM_PACKAGES_BUILD = "packages_build",
-    PM_SU_CMD = "su_cmd",
-    PM_VERBOSE = "verbose",
-    --   PM_ALWAYS_FETCH = "always_fetch",
-    --   PM_DELETE_PACKAGES = "deinstall_unused",
-    RECURSE_THOROUGH = "thorough"
-}
 
 -- print program name and version
 local function print_version()
@@ -623,7 +623,7 @@ local function opt_value_rc(...)
             if type == "string" then
                 table.insert(result, opt .. "=" .. val)
             elseif type == "table" then
-                for i, val in ipairs(val) do
+                for _, val in ipairs(val) do
                     table.insert(result, opt .. "=" .. val)
                 end
             end
@@ -667,7 +667,7 @@ local function save()
     tmpf = io.open(tmp_filename, "w+")
 
     if PARAM.phase == "scan" then
-        for k, v in ipairs(Excludes.list()) do w("EXCLUDE=%s", v) end
+        for _, v in ipairs(Excludes.list()) do w("EXCLUDE=%s", v) end
     else
         Options.all = nil
         Options.all_old_abi = nil
@@ -697,6 +697,7 @@ local function save()
     Msg.show {"Restart information has been written to", filename}
 end
 
+--[[
 -- register upgrade in the restart case where no dependency checks have been performed
 local function register_upgrade_restart(dep_type, o_o, o_n,
                                         pkgname_old, pkgname_new, pkgfile, ...)
@@ -787,6 +788,7 @@ local function restart_file_load(filename)
     end
     if not Options.dry_run then os.remove(filename) end
 end
+--]]
 
 Options.init = init
 Options.save = save

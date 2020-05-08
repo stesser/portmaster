@@ -380,7 +380,7 @@ local function perform_installation(action)
     local p_n = action.pkg_new
     local pkgname_old = p_o and p_o.name
     local pkgname_new = p_n.name
-    local o_n = o_n.name
+    local portname = o_n.dirname
     local pkgfile = p_n.pkgfile
     local pkg_msg_old
     -- prepare installation, if this is an upgrade (and not a fresh install)
@@ -395,14 +395,14 @@ local function perform_installation(action)
                 p_o:shlibs_backup() -- OUTPUT
             end
             -- preserve pkg-static even when deleting the "pkg" package
-            if action.o_n == "ports-mgmt/pkg" then
+            if portname == "ports-mgmt/pkg" then
                 Exec.run {as_root = true, "unlink", CMD.pkg .. "~"}
                 Exec.run {as_root = true, "ln", CMD.pkg, CMD.pkg .. "~"}
             end
             -- delete old package version
             p_o:deinstall(create_backup) -- OUTPUT
             -- restore pkg-static if it has been preserved
-            if o_n == "ports-mgmt/pkg" then
+            if portname == "ports-mgmt/pkg" then
                 Exec.run {as_root = true, "unlink", CMD.pkg}
                 Exec.run {as_root = true, "mv", CMD.pkg .. "~", CMD.pkg}
             end
@@ -425,7 +425,7 @@ local function perform_installation(action)
         end
     else
         -- try to install new port
-        Progress.show("Install", pkgname_new, "built from", o_n)
+        Progress.show("Install", pkgname_new, "built from", portname)
         -- <se> DEAL WITH CONFLICTS ONLY DETECTED BY PLIST CHECK DURING PKG REGISTRATION!!!
         if not o_n:install() then
             -- OUTPUT
@@ -463,8 +463,7 @@ local function perform_install_or_upgrade(action)
     -- has a package been identified to be used instead of building the port?
     local pkgfile
     -- CHECK CONDITION for use of pkgfile: if build_type ~= "force" and not Options.packages and (not Options.packages_build or dep_type ~= "build") then
-    if true or not action.force and
-        (Options.packages or Options.packages_build and not p_n.is_run_dep) then -- XXX TESTTESTTEST
+    if not action.force and (Options.packages or Options.packages_build and not p_n.is_run_dep) then
         TRACE("P", p_n.name, p_n.pkgfile, table.unpack(table.keys(p_n)))
         pkgfile = p_n.pkgfile
         TRACE("PKGFILE", pkgfile)
@@ -1184,7 +1183,7 @@ local function sort_list()
                 tostring(action)
             }
             --
-            local deps = rawget(action, "run_depends")
+            deps = rawget(action, "run_depends")
             if deps then
                 for _, o in ipairs(deps) do
                     local origin = Origin.get(o)
@@ -1204,7 +1203,7 @@ local function sort_list()
     end
 
     Msg.show {start = true, "Sort", #ACTION_LIST, "actions"}
-    for i, a in ipairs(ACTION_LIST) do
+    for _, a in ipairs(ACTION_LIST) do
         Msg.show {start = true}
         add_action(a)
     end
@@ -1223,7 +1222,7 @@ local function check_licenses()
         -- LICENSES_ACCEPTED="L1 L2 L3"
     end
     Msg.show {start = true}
-    for i, a in ipairs(ACTION_LIST) do
+    for _, a in ipairs(ACTION_LIST) do
         local o = rawget(a, "o_n")
         if o and rawget(o, "license") then
             if not check_accepted(o.license) then

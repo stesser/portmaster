@@ -104,12 +104,12 @@ local function shlibs_backup(pkg)
             CMD.ldconfig,
             "-r"
         } -- "RT?" ??? CACHE LDCONFIG OUTPUT???
-        for i, line in ipairs(ldconfig_lines) do
+        for _, line in ipairs(ldconfig_lines) do
             local libpath, lib = string.match(line, " => (" .. PATH.local_lib ..
                                                   "*(lib.*%.so%..*))")
             if lib then
                 if stat_isreg(lstat(libpath).st_mode) then
-                    for i, l in ipairs(pkg_libs) do
+                    for _, l in ipairs(pkg_libs) do
                         if l == lib then
                             local backup_lib = PATH.local_lib_compat .. lib
                             if access(backup_lib, "r") then
@@ -141,7 +141,7 @@ local function shlibs_backup_remove_stale(pkg)
     local pkg_libs = pkg.shared_libs
     if pkg_libs then
         local deletes = {}
-        for i, lib in ipairs(pkg_libs) do
+        for _, lib in ipairs(pkg_libs) do
             local backup_lib = PATH.local_lib_compat .. lib
             if access(backup_lib, "r") then
                 table.insert(deletes, backup_lib)
@@ -233,11 +233,10 @@ end
 
 -- create category links and a lastest link
 local function category_links_create(pkg_new, categories)
-    local source = filename {base = "..", ext = extension, pkg_new}
-    -- local pkgname = pkg_new.name
     local extension = Options.package_format
+    local source = filename {base = "..", ext = extension, pkg_new}
     table.insert(categories, "Latest")
-    for i, category in ipairs(categories) do
+    for _, category in ipairs(categories) do
         local destination = PATH.packages .. category
         if not is_dir(destination) then
             Exec.run {as_root = true, log = true, "mkdir", "-p", destination}
@@ -296,7 +295,7 @@ end
 local function pkg_lookup(pkg, k)
     local subdir = k == "pkgfile" and "All" or "portmaster-backup"
     local file
-    for i, f in ipairs(glob(filename {subdir = subdir, ext = ".t??", pkg}) or {}) do
+    for _, f in ipairs(glob(filename {subdir = subdir, ext = ".t??", pkg}) or {}) do
         if file_valid_abi(f) then
             if not file or stat(file).st_mtime < stat(f).st_mtime then
                 file = f
@@ -309,7 +308,7 @@ end
 -- delete backup package file
 local function backup_delete(pkg)
     local g = filename {subdir = "portmaster-backup", ext = ".t??", pkg}
-    for i, backupfile in pairs(glob(g) or {}) do
+    for _, backupfile in pairs(glob(g) or {}) do
         TRACE("BACKUP_DELETE", backupfile, PATH.packages .. "portmaster-backup/")
         Exec.run {as_root = true, log = true, "/bin/unlink", backupfile}
     end
@@ -320,7 +319,7 @@ local function delete_old(pkg)
     local bakfile = pkg.bak_file
     local g = filename {subdir = "*", ext = "t??", pkg}
     TRACE("DELETE_OLD", pkg.name, g)
-    for i, pkgfile in pairs(glob(g) or {}) do
+    for _, pkgfile in pairs(glob(g) or {}) do
         TRACE("CHECK_BACKUP", pkgfile, bakfile)
         if pkgfile ~= bakfile then
             Exec.run {as_root = true, log = true, "/bin/unlink", pkgfile}
@@ -378,7 +377,7 @@ local function shared_libs_cache_load()
     Msg.show {level = 2, start = true, "Load list of provided shared libraries"}
     local p = {}
     local lines = PkgDb.query {table = true, "%n-%v %b"}
-    for i, line in ipairs(lines) do
+    for _, line in ipairs(lines) do
         local pkgname, lib = string.match(line, "^(%S+) (%S+%.so%..*)")
         if pkgname then
             if pkgname ~= rawget(p, "name") then
@@ -399,7 +398,7 @@ local function req_shared_libs_cache_load()
     Msg.show {level = 2, start = true, "Load list of required shared libraries"}
     local p = {}
     local lines = PkgDb.query {table = true, "%n-%v %B"}
-    for i, line in ipairs(lines) do
+    for _, line in ipairs(lines) do
         local pkgname, lib = string.match(line, "^(%S+) (%S+%.so%..*)")
         if pkgname then
             if pkgname ~= rawget(p, "name") then
@@ -424,7 +423,7 @@ local function packages_cache_load()
     Msg.show {level = 2, start = true, "Load list of installed packages ..."}
     local lines = PkgDb.query {table = true, "%At %Av %n-%v"}
     if lines then
-        for i, line in pairs(lines) do
+        for _, line in pairs(lines) do
             local tag, value, pkgname = string.match(line, "(%S+) (%S+) (%S+)")
             if tag == "flavor" then
                 pkg_flavor[pkgname] = value
@@ -436,7 +435,7 @@ local function packages_cache_load()
     -- load
     local pkg_count = 0
     lines = PkgDb.query {table = true, "%n-%v %o %q %a %k"} -- no dependent packages
-    for i, line in ipairs(lines) do
+    for _, line in ipairs(lines) do
         local pkgname, origin_name, abi, automatic, locked =
             string.match(line, "(%S+) (%S+) (%S+) (%d) (%d)")
         local f = pkg_flavor[pkgname]
@@ -467,7 +466,7 @@ local function packages_cache_load()
     Msg.show {level = 2, start = true, "Load package dependencies"}
     local p = {}
     lines = PkgDb.query {table = true, "%n-%v %rn-%rv"}
-    for i, line in ipairs(lines) do
+    for _, line in ipairs(lines) do
         local pkgname, dep_pkg = string.match(line, "(%S+) (%S+)")
         if pkgname ~= rawget(p, "name") then
             p = Package.get(pkgname) -- fetch cached package record
@@ -528,7 +527,7 @@ local function __index(pkg, k)
     local function load_num_dependencies(pkg, k)
         Msg.show {level = 2, start = true, "Load dependency counts"}
         local t = PkgDb.query {table = true, "%#d %n-%v"}
-        for i, line in ipairs(t) do
+        for _, line in ipairs(t) do
             local num_dependencies, pkgname = string.match(line, "(%d+) (%S+)")
             PACKAGES_CACHE[pkgname].num_dependencies =
                 tonumber(num_dependencies)
@@ -627,7 +626,7 @@ end
 -- DEBUGGING: DUMP INSTANCES CACHE
 local function dump_cache()
     local t = PACKAGES_CACHE
-    for i, v in ipairs(table.keys(t)) do
+    for _, v in ipairs(table.keys(t)) do
         local name = tostring(v)
         TRACE("PACKAGES_CACHE", name, table.unpack(table.keys(t[v])))
     end

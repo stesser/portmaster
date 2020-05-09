@@ -44,67 +44,79 @@ local access = P_US.access
 local chown = P_US.chown
 
 -------------------------------------------------------------------------------------
+--
 local function origin_changed(o_o, o_n)
     return o_o and o_o.name ~= "" and o_o ~= o_n and o_o.name ~= string.match(o_n.name, "^([^%%]+)%%")
 end
 
+--
+local function action_set(action, verb)
+    TRACE ("ACTION_SET", action.pkg_new or action.pkg_old, verb)
+    verb = verb ~= "keep" and verb or false
+    action.action = verb
+end
+
+--
+local function action_get (action)
+    return action.action or "keep"
+end
+
+-- check whether the action denoted by "verb" has been registered
+local function action_is (action, verb)
+    local a = action_get(action)
+    TRACE ("ACTION_IS", action.pkg_new or action.pkg_old, a, verb)
+    return verb and a == verb
+end
+
 -- Describe action to be performed
 local function describe(action)
-    if not action then
-        action = {}
-    end
     local o_o = action.o_o
     local p_o = action.pkg_old
     local o_n = action.o_n
     local p_n = action.pkg_new
-    local a = action.action
-    TRACE("DESCRIBE", a, o_o, o_n, p_o, p_n)
-    if a then
-        if a == "delete" then
-            return string.format("De-install %s built from %s", p_o.name, o_o.name)
-        elseif a == "change" then
-            if p_o ~= p_n then
-                local prev_origin = o_o and o_o ~= o_n and " (was " .. o_o.name .. ")" or ""
-                return string.format("Change package name from %s to %s for port %s%s", p_o.name, p_n.name, o_n.name,
-                                     prev_origin)
+    TRACE("DESCRIBE", action.action, o_o, o_n, p_o, p_n)
+    if action_is(action, "delete") then
+        return string.format("De-install %s built from %s", p_o.name, o_o.name)
+    elseif action_is(action, "change") then
+        if p_o ~= p_n then
+            local prev_origin = o_o and o_o ~= o_n and " (was " .. o_o.name .. ")" or ""
+            return string.format("Change package name from %s to %s for port %s%s", p_o.name, p_n.name, o_n.name,
+                                    prev_origin)
+        else
+            return string.format("Change origin of port %s to %s for package %s", o_o.name, o_n.name, p_n.name)
+        end
+    elseif action_is(action, "exclude") then
+        return string.format("Skip excluded package %s installed from %s", tostring(p_o), tostring(o_o))
+    elseif action_is(action, "upgrade") then
+        local from
+        if p_n and p_n.pkgfile then
+            from = "from " .. p_n.pkgfile
+        else
+            from = "using " .. o_n.name .. (origin_changed(o_o, o_n) and " (was " .. o_o.name .. ")" or "")
+        end
+        local prev_pkg = ""
+        local verb
+        if not p_o then
+            verb = "Install"
+        else
+            local vers_cmp = action.vers_cmp
+            if p_o == p_n then
+                verb = "Re-install"
             else
-                return string.format("Change origin of port %s to %s for package %s", o_o.name, o_n.name, p_n.name)
-            end
-        elseif a == "exclude" then
-            return string.format("Skip excluded package %s installed from %s", tostring(p_o), tostring(o_o))
-        elseif a == "upgrade" then
-            local from
-            if p_n and p_n.pkgfile then
-                from = "from " .. p_n.pkgfile
-            else
-                from = "using " .. o_n.name .. (origin_changed(o_o, o_n) and " (was " .. o_o.name .. ")" or "")
-            end
-            local prev_pkg = ""
-            local verb
-            if not p_o then
-                verb = "Install"
-            else
-                local vers_cmp = action.vers_cmp
-                if p_o == p_n then
-                    verb = "Re-install"
-                else
-                    if action.pkg_old.name_base == action.pkg_new.name_base then
-                        if vers_cmp == "<" then
-                            verb = "Upgrade"
-                        elseif vers_cmp == ">" then
-                            verb = "Downgrade"
-                        end
-                        prev_pkg = p_o.name .. " to "
-                    else
-                        verb = "Replace"
-                        prev_pkg = p_o.name .. " with "
+                if action.pkg_old.name_base == action.pkg_new.name_base then
+                    if vers_cmp == "<" then
+                        verb = "Upgrade"
+                    elseif vers_cmp == ">" then
+                        verb = "Downgrade"
                     end
+                    prev_pkg = p_o.name .. " to "
+                else
+                    verb = "Replace"
+                    prev_pkg = p_o.name .. " with "
                 end
             end
-            return string.format("%s %s%s %s", verb, prev_pkg, p_n.name, from)
         end
-    elseif not a then
-        return "Keep " .. action.short_name
+        return string.format("%s %s%s %s", verb, prev_pkg, p_n.name, from)
     end
     return "No action for " .. action.short_name
 end
@@ -332,7 +344,7 @@ local function perform_installation(action)
     local p_n = action.pkg_new
     local pkgname_old = p_o and p_o.name
     local pkgname_new = p_n.name
-    local portname = o_n.dirname
+    local portname = o_n.port
     local pkgfile = p_n.pkgfile
     local pkg_msg_old
     -- prepare installation, if this is an upgrade (and not a fresh install)
@@ -422,7 +434,7 @@ local function perform_install_or_upgrade(action)
     -- has a package been identified to be used instead of building the port?
     local pkgfile
     -- CHECK CONDITION for use of pkgfile: if build_type ~= "force" and not Options.packages and (not Options.packages_build or dep_type ~= "build") then
-    if not action.force and (Options.packages or Options.packages_build and not p_n.is_run_dep) then
+    if not rawget (action, "force") and (Options.packages or Options.packages_build and not p_n.is_run_dep) then
         TRACE("P", p_n.name, p_n.pkgfile, table.unpack(table.keys(p_n)))
         pkgfile = p_n.pkgfile
         TRACE("PKGFILE", pkgfile)
@@ -563,19 +575,18 @@ local function perform_upgrades()
             BUILDLOG = tempfile_create("BUILD_LOG")
         end
         local result
-        local verb = action.action
         -- print ("DO", verb, action.pkg_new.name)
-        if verb == "delete" then
+        if action_is(action, "delete") then
             result = perform_delete(action)
-        elseif verb == "upgrade" then
+        elseif action_is(action, "upgrade") then
             result = perform_install_or_upgrade(action)
-        elseif verb == "change" then
+        elseif action_is(action, verb == "change") then
             if action.pkg_old.name ~= action.pkg_new.name then
                 result = perform_pkg_rename(action)
             elseif action.o_o.name ~= action.o_n.name then
                 result = perform_origin_change(action)
             end
-        elseif verb == "provide" or verb == false then
+        elseif action_is(action, "provide") or action_is(action, "keep") then
             if Options.jailed then
                 if action.pkg_new.pkgfile then
                     result = perform_provide(action)
@@ -604,7 +615,7 @@ local function perform_upgrades()
 end
 
 -- update repository database after creation of new packages
-local function perform_repo_update()
+local function perform_repo_update() -- move to Package module XXX
     -- create repository database
     Msg.show {start = true, "Create local package repository database ..."}
     Exec.pkg {as_root = true, "repo", PATH.packages .. "All"}
@@ -656,8 +667,7 @@ local function show_statistics()
             NUM[field] = (NUM[field] or 0) + 1
         end
         for _, v in ipairs(ACTION_LIST) do
-            local a = v.action
-            if a == "upgrade" then
+            if action_is (v, "upgrade") then
                 local p_o = v.pkg_old
                 local p_n = v.pkg_new
                 if p_o == p_n then
@@ -667,9 +677,9 @@ local function show_statistics()
                 else
                     incr("upgrades")
                 end
-            elseif a == "delete" then
+            elseif action_is (v, "delete") then
                 incr("deletes")
-            elseif a == "change" then
+            elseif action_is (v, "change") then
                 incr("moves")
             end
         end
@@ -713,67 +723,6 @@ local function show_statistics()
         end
         Msg.show {start = true}
     end
-end
-
---
-local function execute()
-    if tasks_count() == 0 then
-        -- ToDo: suppress if updates had been requested on the command line
-        Msg.show {start = true, "No installations or upgrades required"}
-    else
-        -- all fetch distfiles tasks should have been requested by now
-        Distfile.fetch_finish()
-        -- display list of actions planned
-        -- NYI register_delete_build_only ()
-
-        show_statistics()
-        if Options.fetch_only then
-            if Msg.read_yn("Fetch and check distfiles required for these upgrades now?", "y") then
-                -- wait for completion of fetch operations
-                -- perform_fetch_only () -- NYI wait for completion of fetch operations
-            end
-        else
-            Progress.clear()
-            if Msg.read_yn("Perform these upgrades now?", "y") then
-                -- perform the planned tasks in the order recorded in ACTION_LIST
-                Msg.show {start = true}
-                Progress.set_max(tasks_count())
-                --
-                if Options.jailed then
-                    Jail.create()
-                end
-                if not perform_upgrades() then
-                    if Options.hide_build then
-                        -- shell_pipe ("cat > /dev/tty", BUILDLOG) -- use read and write to copy the file to STDOUT XXX
-                    end
-                    fail("Port upgrade failed.")
-                end
-                if Options.jailed then
-                    Jail.destroy()
-                end
-                Progress.clear()
-                if Options.repo_mode then
-                    perform_repo_update()
-                else
-                    -- XXX fold into perform_upgrades()???
-                    -- new action verb required???
-                    -- or just a plain install from package???)
-                    --[[
-                    if #DELAYED_INSTALL_LIST > 0 then -- NYI to be implemented in a different way
-                        PARAM.phase = "install"
-                        perform_delayed_installations()
-                    end
-                    --]]
-                end
-            end
-            if tasks_count() == 0 then
-                Msg.show {start = true, "All requested actions have been completed"}
-            end
-            Progress.clear()
-            PARAM.phase = ""
-        end
-    end
-    return true
 end
 
 --
@@ -850,7 +799,7 @@ end
 
 --
 local function determine_action(action, k)
-    local p_o = action.pkg_old
+    local p_o = action.pkg_old -- keep next 4 lines in this order!
     local o_n = action.o_n
     local o_o = action.o_o
     local p_n = action.pkg_new
@@ -882,16 +831,19 @@ local function determine_action(action, k)
         end
     end
 
+    TRACE ("DETERMINE_ACTION", p_o, p_n, o_o, o_n)
     if excluded() then
-        return "exclude"
+        action_set (action, "exclude")
     elseif not p_n then
-        return "delete"
+        action_set (action, "delete")
     elseif not p_o or need_upgrade() then
-        return "upgrade"
+        action_set (action, "upgrade")
     elseif p_o ~= p_n or origin_changed(o_o, o_n) then
-        return "change"
+        action_set (action, "change")
+    else
+        action_set (action, "keep")
     end
-    return false
+    return action.action
 end
 
 --
@@ -900,7 +852,7 @@ ACTION_CACHE = {}
 local function clear_cached_action(action)
     local pkg_old = action.pkg_old
     local pkg_new = action.pkg_new
-    if action.action == "delete" then
+    if action_is(action, "delete") then
         if ACTION_CACHE[pkg_old] then
             ACTION_CACHE[pkg_old.name] = nil
         end
@@ -930,7 +882,7 @@ local function set_cached_action(action)
     assert(action, "set_cached_action called with nil argument")
     TRACE("SET_CACHED_ACTION", describe(action))
     check_and_set("pkg_old")
-    if action.action ~= "delete" then
+    if not action_is(action, "delete") then
         check_and_set("pkg_new")
     end
     return action
@@ -938,7 +890,7 @@ end
 
 --
 local function get_pkgname(action)
-    if action.pkg_old and action.action == "delete" then
+    if action.pkg_old and action_is(action, "delete") then
         return action.pkg_old.name
     elseif action.pkg_new then
         return action.pkg_new.name
@@ -958,7 +910,7 @@ local function fixup_conflict(action1, action2)
         if not a2 then -- attempt to upgrade some port to already existing package
             TRACE("FIXUP_CONFLICT1", describe(action1))
             TRACE("FIXUP_CONFLICT2", describe(action2))
-            action1.action = "delete"
+            action_set (action1, "delete")
             action1.o_o = action1.o_o or action1.o_n
             action1.o_n = nil
             action1.pkg_old = action1.pkg_old or action1.pkg_new
@@ -974,7 +926,7 @@ local function fixup_conflict(action1, action2)
                         action2[k] = v1
                     end
                 end
-                action1.action = nil
+                action_set (action1, "keep")
                 TRACE("FIXUP_CONFLICT->", describe(action2))
             else
                 -- other cases
@@ -1099,7 +1051,7 @@ local function action_enrich(action)
     --
     if action.o_o and action.o_o:check_excluded() or action.o_n and action.o_n:check_excluded() or action.pkg_new and
         action.pkg_new:check_excluded() then
-        action.action = "exclude"
+        action_set (action, "exclude")
         return action
     end
     --
@@ -1136,58 +1088,6 @@ local function action_enrich(action)
    --]]
 
     return action -- NYI
-end
-
---
-local function sort_list()
-    local max_str = tostring(#ACTION_LIST)
-    local sorted_list = {}
-    local function add_action(action)
-        if not rawget(action, "planned") then
-            local deps = rawget(action, "build_depends")
-            if deps then
-                for _, o in ipairs(deps) do
-                    local origin = Origin.get(o)
-                    local pkg_new = origin.pkg_new
-                    local a = rawget(ACTION_CACHE, pkg_new.name)
-                    TRACE("BUILD_DEP", a and rawget(a, "action"), origin.name, origin.pkg_new,
-                          origin.pkg_new and rawget(origin.pkg_new, "is_installed"))
-                    -- if a and not rawget (a, "planned") then
-                    if a and not rawget(a, "planned") and not rawget(origin.pkg_new, "is_installed") then
-                        add_action(a)
-                    end
-                end
-            end
-            assert(not rawget(action, "planned"), "Dependency loop for: " .. describe(action))
-            table.insert(sorted_list, action)
-            action.listpos = #sorted_list
-            action.planned = true
-            Msg.show {"[" .. tostring(#sorted_list) .. "/" .. max_str .. "]", tostring(action)}
-            --
-            deps = rawget(action, "run_depends")
-            if deps then
-                for _, o in ipairs(deps) do
-                    local origin = Origin.get(o)
-                    local pkg_new = origin.pkg_new
-                    local a = rawget(ACTION_CACHE, pkg_new.name)
-                    TRACE("RUN_DEP", a and rawget(a, "action"), origin.name, origin.pkg_new,
-                          origin.pkg_new and rawget(origin.pkg_new, "is_installed"))
-                    -- if a and not rawget (a, "planned") then
-                    if a and not rawget(a, "planned") and not rawget(origin.pkg_new, "is_installed") then
-                        add_action(a)
-                    end
-                end
-            end
-        end
-    end
-
-    Msg.show {start = true, "Sort", #ACTION_LIST, "actions"}
-    for _, a in ipairs(ACTION_LIST) do
-        Msg.show {start = true}
-        add_action(a)
-    end
-    -- assert (#ACTION_LIST == #sorted_list, "ACTION_LIST items have been lost: " .. #ACTION_LIST .. " vs. " .. #sorted_list)
-    ACTION_LIST = sorted_list
 end
 
 --
@@ -1330,7 +1230,7 @@ local function new(Action, args)
             if args.pkg_old then
                 if rawget(action, "pkg_old") then
                     -- assert (action.pkg_old.name == args.pkg_old.name, "Conflicting pkg_old: " .. action.pkg_old.name .. " vs. " .. args.pkg_old.name)
-                    action.action = "delete"
+                    action_set (action, "delete")
                     args.pkg_new = nil
                     args.o_n = nil
                 end
@@ -1358,7 +1258,7 @@ local function new(Action, args)
             setmetatable(action, mt)
         end
         if not action_enrich(action) then
-            if action.action == "exclude" then
+            if action_is(action, "exclude") then
                 if action.o_n then
                     action.o_n:delete() -- remove this origin from ORIGIN_CACHE
                 end
@@ -1366,13 +1266,13 @@ local function new(Action, args)
                 return new(Action, args)
             end
         end
-        if action.action and action.action ~= "exclude" then
+        if not action_is(action, "exclude") and not action_is(action, "keep") then
             if not rawget(action, "listpos") then
                 table.insert(ACTION_LIST, action)
                 action.listpos = #ACTION_LIST
                 Progress.show_task(describe(action))
             end
-            if action.action == "upgrade" then
+            if action_is(action, "upgrade") then
                 action.o_n:checksum()
             end
         end
@@ -1386,16 +1286,19 @@ end
 --
 return {
     new = new,
-    execute = execute,
+    describe = describe,
+    --execute = execute,
     packages_delete_stale = packages_delete_stale,
     -- register_delayed_installs = register_delayed_installs,
-    sort_list = sort_list,
+    --sort_list = sort_list,
     check_licenses = check_licenses,
     check_conflicts = check_conflicts,
     port_options = port_options,
     dump_cache = dump_cache,
     list = list,
     tasks_count = tasks_count,
+    show_statistics = show_statistics,
+    perform_upgrades = perform_upgrades,
 }
 
 --[[

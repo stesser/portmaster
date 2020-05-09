@@ -30,6 +30,10 @@ SUCH DAMAGE.
 -------------------------------------------------------------------------------------
 local Action = require("Action")
 local Msg = require("Msg")
+local Options = require("Options")
+local Jail = require("Jail")
+local Progress = require("Progress")
+local Distfile = require("Distfile")
 
 --
 local function add_missing_deps()
@@ -75,8 +79,121 @@ local function add_missing_deps()
     end
 end
 
+--
+local function sort_list(ACTION_LIST, ACTION_CACHE) -- remove ACTION_CACHE from function arguments !!!
+    local max_str = tostring(#ACTION_LIST)
+    local sorted_list = {}
+    local function add_action(action)
+        if not rawget(action, "planned") then
+            local deps = rawget(action, "build_depends")
+            if deps then
+                for _, o in ipairs(deps) do
+                    local origin = Origin.get(o)
+                    local pkg_new = origin.pkg_new
+                    local a = rawget(ACTION_CACHE, pkg_new.name)
+                    TRACE("BUILD_DEP", a and rawget(a, "action"), origin.name, origin.pkg_new,
+                          origin.pkg_new and rawget(origin.pkg_new, "is_installed"))
+                    -- if a and not rawget (a, "planned") then
+                    if a and not rawget(a, "planned") and not rawget(origin.pkg_new, "is_installed") then
+                        add_action(a)
+                    end
+                end
+            end
+            assert(not rawget(action, "planned"), "Dependency loop for: " .. action:describe())
+            table.insert(sorted_list, action)
+            action.listpos = #sorted_list
+            action.planned = true
+            Msg.show {"[" .. tostring(#sorted_list) .. "/" .. max_str .. "]", tostring(action)}
+            --
+            deps = rawget(action, "run_depends")
+            if deps then
+                for _, o in ipairs(deps) do
+                    local origin = Origin.get(o)
+                    local pkg_new = origin.pkg_new
+                    local a = rawget(ACTION_CACHE, pkg_new.name)
+                    TRACE("RUN_DEP", a and rawget(a, "action"), origin.name, origin.pkg_new,
+                          origin.pkg_new and rawget(origin.pkg_new, "is_installed"))
+                    -- if a and not rawget (a, "planned") then
+                    if a and not rawget(a, "planned") and not rawget(origin.pkg_new, "is_installed") then
+                        add_action(a)
+                    end
+                end
+            end
+        end
+    end
+
+    Msg.show {start = true, "Sort", #ACTION_LIST, "actions"}
+    for _, a in ipairs(ACTION_LIST) do
+        Msg.show {start = true}
+        add_action(a)
+    end
+    -- assert (#ACTION_LIST == #sorted_list, "ACTION_LIST items have been lost: " .. #ACTION_LIST .. " vs. " .. #sorted_list)
+    return sorted_list
+end
+
+--
+local function execute()
+    if tasks_count() == 0 then
+        -- ToDo: suppress if updates had been requested on the command line
+        Msg.show {start = true, "No installations or upgrades required"}
+    else
+        -- all fetch distfiles tasks should have been requested by now
+        Distfile.fetch_finish()
+        -- display list of actions planned
+        -- NYI register_delete_build_only ()
+
+        Action.show_statistics()
+        if Options.fetch_only then
+            if Msg.read_yn("Fetch and check distfiles required for these upgrades now?", "y") then
+                -- wait for completion of fetch operations
+                -- perform_fetch_only () -- NYI wait for completion of fetch operations
+            end
+        else
+            Progress.clear()
+            if Msg.read_yn("Perform these upgrades now?", "y") then
+                -- perform the planned tasks in the order recorded in ACTION_LIST
+                Msg.show {start = true}
+                Progress.set_max(tasks_count())
+                --
+                if Options.jailed then
+                    Jail.create()
+                end
+                if not Action.perform_upgrades() then
+                    if Options.hide_build then
+                        -- shell_pipe ("cat > /dev/tty", BUILDLOG) -- use read and write to copy the file to STDOUT XXX
+                    end
+                    fail("Port upgrade failed.")
+                end
+                if Options.jailed then
+                    Jail.destroy()
+                end
+                Progress.clear()
+                if Options.repo_mode then
+                    Action.perform_repo_update()
+                else
+                    -- XXX fold into perform_upgrades()???
+                    -- new action verb required???
+                    -- or just a plain install from package???)
+                    --[[
+                    if #DELAYED_INSTALL_LIST > 0 then -- NYI to be implemented in a different way
+                        PARAM.phase = "install"
+                        perform_delayed_installations()
+                    end
+                    --]]
+                end
+            end
+            if tasks_count() == 0 then
+                Msg.show {start = true, "All requested actions have been completed"}
+            end
+            Progress.clear()
+            PARAM.phase = ""
+        end
+    end
+    return true
+end
+
 local function plan()
 
 end
 
-return {add_missing_deps = add_missing_deps, plan = plan}
+return {add_missing_deps = add_missing_deps, sort_list = sort_list, execute = execute, plan = plan}

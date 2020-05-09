@@ -150,7 +150,9 @@ local function success_show()
         end
         if #SUCCESS_MSGS > 0 then
             show {start = true, "The following actions have been performed:"}
-            for _, line in ipairs(SUCCESS_MSGS) do show {line} end
+            for _, line in ipairs(SUCCESS_MSGS) do
+                show {line}
+            end
             if tasks_count() == 0 then
                 show {start = true, "All requested actions have been completed"}
             end

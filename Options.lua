@@ -82,7 +82,9 @@ local function usage()
         local descr = spec.descr
         if shortopt then
             line = "-" .. shortopt
-            if param then line = line .. " <" .. param .. ">" end
+            if param then
+                line = line .. " <" .. param .. ">"
+            end
             line = line .. " | "
         end
         line = line .. "--" .. longopt:gsub("_", "-")
@@ -94,8 +96,9 @@ local function usage()
             maxlen = #line
         end
     end
+    local fmt = " %-" .. maxlen + 1 .. "s %s\n"
     for _, v in ipairs(options_descr) do
-        io.stderr:write(string.format(" %-" .. maxlen + 1 .. "s %s\n", v[1], v[2]))
+        io.stderr:write(string.format(fmt, v[1], v[2]))
     end
     os.exit(2)
 end

@@ -897,10 +897,10 @@ local function main()
     end
 
     -- add missing dependencies
-    Strategy.add_missing_deps()
+    local action_list = Strategy.add_missing_deps(Action.list(), ACTION_CACHE)
 
     -- sort actions according to registered dependencies
-    Strategy.sort_list(Action.list(), ACTION_CACHE)
+    action_list = Strategy.sort_list(action_list, ACTION_CACHE)
 
     --[[
    -- DEBUGGING!!!
@@ -912,7 +912,7 @@ local function main()
     -- end of scan phase, all required actions are known at this point, builds may start
     PARAM.phase = "build"
 
-    Strategy.execute()
+    Strategy.execute(action_list)
 
     -------------------------------------------------------------------------------------
     -- non-upgrade operations supported by portmaster - executed after upgrades if requested

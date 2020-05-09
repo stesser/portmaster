@@ -564,9 +564,14 @@ local function list()
     return ACTION_LIST
 end
 
-local function perform_upgrades()
+-- return the sum of the numbers of required operations
+function tasks_count()
+    return #ACTION_LIST
+end
+
+local function perform_upgrades(action_list)
     -- install or upgrade required packages
-    for _, action in ipairs(ACTION_LIST) do
+    for _, action in ipairs(action_list) do
         Msg.show {start = true}
         -- if Options.hide_build is set the buildlog will only be shown on errors
         local o_n = rawget(action, "o_n")
@@ -647,13 +652,8 @@ local function packages_delete_stale()
     end
 end
 
--- return the sum of the numbers of required operations
-function tasks_count()
-    return #ACTION_LIST
-end
-
 -- display statistics of actions to be performed
-local function show_statistics()
+local function show_statistics(action_list)
     -- create statistics line from parameters
     local NUM = {}
     local function format_install_msg(num, actiontext)
@@ -666,7 +666,7 @@ local function show_statistics()
         local function incr(field)
             NUM[field] = (NUM[field] or 0) + 1
         end
-        for _, v in ipairs(ACTION_LIST) do
+        for _, v in ipairs(action_list) do
             if action_is (v, "upgrade") then
                 local p_o = v.pkg_old
                 local p_n = v.pkg_new
@@ -695,7 +695,7 @@ local function show_statistics()
     end
     num_tasks = tasks_count()
     if num_tasks > 0 then
-        count_actions(ACTION_LIST)
+        count_actions(action_list)
         Msg.show {start = true, "Statistic of planned actions:"}
         local txt = format_install_msg(NUM.deletes, "will be deleted")
         if txt then

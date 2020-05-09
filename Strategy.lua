@@ -36,8 +36,8 @@ local Progress = require("Progress")
 local Distfile = require("Distfile")
 
 --
-local function add_missing_deps()
-    for i, a in ipairs(Action.list()) do
+local function add_missing_deps(action_list, ACTION_CACHE)
+    for i, a in ipairs(action_list) do
         if a.pkg_new and rawget(a.pkg_new, "is_installed") then
             -- print (a, "is already installed")
         else
@@ -77,11 +77,12 @@ local function add_missing_deps()
             end
         end
     end
+    return action_list
 end
 
 --
-local function sort_list(ACTION_LIST, ACTION_CACHE) -- remove ACTION_CACHE from function arguments !!!
-    local max_str = tostring(#ACTION_LIST)
+local function sort_list(action_list, ACTION_CACHE) -- remove ACTION_CACHE from function arguments !!!
+    local max_str = tostring(#action_list)
     local sorted_list = {}
     local function add_action(action)
         if not rawget(action, "planned") then
@@ -122,17 +123,17 @@ local function sort_list(ACTION_LIST, ACTION_CACHE) -- remove ACTION_CACHE from 
         end
     end
 
-    Msg.show {start = true, "Sort", #ACTION_LIST, "actions"}
-    for _, a in ipairs(ACTION_LIST) do
+    Msg.show {start = true, "Sort", #action_list, "actions"}
+    for _, a in ipairs(action_list) do
         Msg.show {start = true}
         add_action(a)
     end
-    -- assert (#ACTION_LIST == #sorted_list, "ACTION_LIST items have been lost: " .. #ACTION_LIST .. " vs. " .. #sorted_list)
+    -- assert (#action_list == #sorted_list, "action_list items have been lost: " .. #action_list .. " vs. " .. #sorted_list)
     return sorted_list
 end
 
 --
-local function execute()
+local function execute(action_list)
     if tasks_count() == 0 then
         -- ToDo: suppress if updates had been requested on the command line
         Msg.show {start = true, "No installations or upgrades required"}
@@ -142,7 +143,7 @@ local function execute()
         -- display list of actions planned
         -- NYI register_delete_build_only ()
 
-        Action.show_statistics()
+        Action.show_statistics(action_list)
         if Options.fetch_only then
             if Msg.read_yn("Fetch and check distfiles required for these upgrades now?", "y") then
                 -- wait for completion of fetch operations
@@ -151,14 +152,14 @@ local function execute()
         else
             Progress.clear()
             if Msg.read_yn("Perform these upgrades now?", "y") then
-                -- perform the planned tasks in the order recorded in ACTION_LIST
+                -- perform the planned tasks in the order recorded in action_list
                 Msg.show {start = true}
                 Progress.set_max(tasks_count())
                 --
                 if Options.jailed then
                     Jail.create()
                 end
-                if not Action.perform_upgrades() then
+                if not Action.perform_upgrades(action_list) then
                     if Options.hide_build then
                         -- shell_pipe ("cat > /dev/tty", BUILDLOG) -- use read and write to copy the file to STDOUT XXX
                     end

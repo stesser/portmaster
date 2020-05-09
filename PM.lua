@@ -98,7 +98,9 @@ local function exit_cleanup(exit_code)
     tempfile_delete("BUILD_LOG")
     Options.save()
     Msg.success_show()
-    if tracefd then io.close(tracefd) end
+    if tracefd then
+        io.close(tracefd)
+    end
     os.exit(exit_code)
     -- not reached
 end
@@ -863,7 +865,7 @@ local function main()
     -- shell ({to_tty = true}, "umask")
 
     -- load option definitions from table
-    Options.init()
+    local args = Options.init()
 
     -- initialise global variables based on default values and rc file settings
     init_globals()
@@ -887,10 +889,10 @@ local function main()
     PARAM.phase = "scan"
 
     if Options.replace_origin then
-        if #arg ~= 1 then
+        if #args ~= 1 then
             error("exactly one port or packages required with -o")
         end
-        ports_add_changed_origin("force", arg, Options.replace_origin)
+        ports_add_changed_origin("force", args, Options.replace_origin)
     elseif Options.all then
         ports_add_all_outdated()
     elseif Options.all_old_abi then
@@ -898,9 +900,9 @@ local function main()
     end
 
     --  allow the specification of -a and -r together with further individual ports to install or upgrade
-    if #arg > 0 then
-        arg.force = Options.force -- copy args to local variable in Options.init
-        ports_add_multiple(arg)
+    if #args > 0 then
+        args.force = Options.force
+        ports_add_multiple(args)
     end
 
     -- add missing dependencies

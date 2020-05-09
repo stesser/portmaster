@@ -609,7 +609,7 @@ local function init()
     Msg.copy_options(Options)
 
     -- remove options before port and package glob arguments
-    for i = 1, current_i - 1 do table.remove(arg, 1) end
+    return {table.unpack (arg, current_i)}
 end
 
 -- print program name and version

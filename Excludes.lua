@@ -105,8 +105,12 @@ end
 local function list()
     local result = EXCLUDED_PKG
     -- table.move (EXCLUDED_PORT, 1, #EXCLUDED_PORT, #result + 1, result) -- lua53 only
-    for i, v in ipairs(EXCLUDED_PKG_PREFIX) do table.insert(result, v .. "*") end
-    for i, v in ipairs(EXCLUDED_PORT) do table.insert(result, v) end
+    for i, v in ipairs(EXCLUDED_PKG_PREFIX) do
+        table.insert(result, v .. "*")
+    end
+    for i, v in ipairs(EXCLUDED_PORT) do
+        table.insert(result, v)
+    end
     for i, v in ipairs(EXCLUDED_PORT_PREFIX) do
         table.insert(result, v .. "*")
     end

@@ -36,7 +36,7 @@ local Progress = require("Progress")
 local Distfile = require("Distfile")
 
 --
-local function add_missing_deps(action_list, ACTION_CACHE)
+local function add_missing_deps(action_list)
     for i, a in ipairs(action_list) do
         if a.pkg_new and rawget(a.pkg_new, "is_installed") then
             -- print (a, "is already installed")
@@ -46,7 +46,7 @@ local function add_missing_deps(action_list, ACTION_CACHE)
             for _, dep in ipairs(deps) do
                 local o = Origin:new(dep)
                 local p = o.pkg_new
-                if not ACTION_CACHE[p.name] then
+                if not Action.get(p.name) then
                     if add_dep_hdr then
                         Msg.show {level = 2, start = true, add_dep_hdr}
                         add_dep_hdr = nil
@@ -63,7 +63,7 @@ local function add_missing_deps(action_list, ACTION_CACHE)
             for _, dep in ipairs(deps) do
                 local o = Origin:new(dep)
                 local p = o.pkg_new
-                if not ACTION_CACHE[p.name] then
+                if not Action.get(p.name) then
                     if add_dep_hdr then
                         Msg.show {level = 2, start = true, add_dep_hdr}
                         add_dep_hdr = nil
@@ -81,7 +81,7 @@ local function add_missing_deps(action_list, ACTION_CACHE)
 end
 
 --
-local function sort_list(action_list, ACTION_CACHE) -- remove ACTION_CACHE from function arguments !!!
+local function sort_list(action_list) -- remove ACTION_CACHE from function arguments !!!
     local max_str = tostring(#action_list)
     local sorted_list = {}
     local function add_action(action)
@@ -91,7 +91,7 @@ local function sort_list(action_list, ACTION_CACHE) -- remove ACTION_CACHE from 
                 for _, o in ipairs(deps) do
                     local origin = Origin.get(o)
                     local pkg_new = origin.pkg_new
-                    local a = rawget(ACTION_CACHE, pkg_new.name)
+                    local a = Action.get(pkg_new.name)
                     TRACE("BUILD_DEP", a and rawget(a, "action"), origin.name, origin.pkg_new,
                           origin.pkg_new and rawget(origin.pkg_new, "is_installed"))
                     -- if a and not rawget (a, "planned") then
@@ -111,7 +111,7 @@ local function sort_list(action_list, ACTION_CACHE) -- remove ACTION_CACHE from 
                 for _, o in ipairs(deps) do
                     local origin = Origin.get(o)
                     local pkg_new = origin.pkg_new
-                    local a = rawget(ACTION_CACHE, pkg_new.name)
+                    local a = Action.get(pkg_new.name)
                     TRACE("RUN_DEP", a and rawget(a, "action"), origin.name, origin.pkg_new,
                           origin.pkg_new and rawget(origin.pkg_new, "is_installed"))
                     -- if a and not rawget (a, "planned") then

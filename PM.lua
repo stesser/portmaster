@@ -897,10 +897,10 @@ local function main()
     end
 
     -- add missing dependencies
-    local action_list = Strategy.add_missing_deps(Action.list(), ACTION_CACHE)
+    local action_list = Strategy.add_missing_deps(Action.list())
 
     -- sort actions according to registered dependencies
-    action_list = Strategy.sort_list(action_list, ACTION_CACHE)
+    action_list = Strategy.sort_list(action_list)
 
     --[[
    -- DEBUGGING!!!

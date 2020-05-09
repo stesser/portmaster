@@ -956,12 +956,14 @@ local function cache_add(action)
     return set_cached_action(action)
 end
 
+local function get(pkgname)
+    return rawget(ACTION_CACHE, pkgname)
+end
 --
 local function lookup_cached_action(args) -- args.pkg_new is a string not an object!!
-    local action
     local p_o = rawget(args, "pkg_old")
     local p_n = rawget(args, "pkg_new") or rawget(args, "o_n") and args.o_n.pkg_new
-    action = p_n and ACTION_CACHE[p_n.name] or p_o and ACTION_CACHE[p_o.name]
+    local action = p_n and ACTION_CACHE[p_n.name] or p_o and ACTION_CACHE[p_o.name]
     TRACE("CACHED_ACTION", args.pkg_new, args.pkg_old, action and action.pkg_new and action.pkg_new.name,
           action and action.pkg_old and action.pkg_old.name, "END")
     return action
@@ -1286,6 +1288,7 @@ end
 --
 return {
     new = new,
+    get = get,
     describe = describe,
     --execute = execute,
     packages_delete_stale = packages_delete_stale,

@@ -27,12 +27,13 @@ OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 SUCH DAMAGE.
 --]]
 
+-------------------------------------------------------------------------------------
 local Action = require("Action")
 local Msg = require("Msg")
 
 --
 local function add_missing_deps()
-     for i, a in ipairs(Action.list()) do
+    for i, a in ipairs(Action.list()) do
         if a.pkg_new and rawget(a.pkg_new, "is_installed") then
             -- print (a, "is already installed")
         else
@@ -47,12 +48,7 @@ local function add_missing_deps()
                         add_dep_hdr = nil
                     end
                     -- local action = Action:new {build_type = "auto", dep_type = "build", o_n = o}
-                    local action = Action:new{
-                        build_type = "auto",
-                        dep_type = "build",
-                        pkg_new = p,
-                        o_n = o
-                    }
+                    local action = Action:new{build_type = "auto", dep_type = "build", pkg_new = p, o_n = o}
                     p.is_build_dep = true
                     -- assert (not o.action)
                     -- o.action = action -- NOT UNIQUE!!!
@@ -69,12 +65,7 @@ local function add_missing_deps()
                         add_dep_hdr = nil
                     end
                     -- local action = Action:new {build_type = "auto", dep_type = "run", o_n = o}
-                    local action = Action:new{
-                        build_type = "auto",
-                        dep_type = "run",
-                        pkg_new = p,
-                        o_n = o
-                    }
+                    local action = Action:new{build_type = "auto", dep_type = "run", pkg_new = p, o_n = o}
                     p.is_run_dep = true
                     -- assert (not o.action)
                     -- o.action = action -- NOT UNIQUE!!!
@@ -88,7 +79,4 @@ local function plan()
 
 end
 
-return {
-    add_missing_deps = add_missing_deps,
-    plan = plan,
-}
+return {add_missing_deps = add_missing_deps, plan = plan}

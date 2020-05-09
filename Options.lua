@@ -25,11 +25,11 @@ OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 SUCH DAMAGE.
 --]]
 
--- ----------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------
 local Excludes = require("Excludes")
 local Msg = require("Msg")
 
--- ----------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------
 local P = require "posix"
 local getopt = P.getopt
 
@@ -38,11 +38,11 @@ local access = P_US.access
 local getpid = P_US.getpid
 local ttyname = P_US.ttyname
 
--- ----------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------
 local PROGRAM = arg[0]:gsub(".*/", "")
 local VERSION = "4.0.0a1" -- GLOBAL
 
--- ----------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------
 -- options and rc file processing
 local Options = {}
 local LONGOPT = {}
@@ -69,7 +69,7 @@ end
 local function usage()
     -- print_version ()
     -- print ()
-    io.stderr:write("Usage: ", PROGRAM,  " [option ...] [portorigin|packagename] ...\n")
+    io.stderr:write("Usage: ", PROGRAM, " [option ...] [portorigin|packagename] ...\n")
     io.stderr:write("\n")
     io.stderr:write("Options:\n")
     local options_descr = {}
@@ -115,7 +115,9 @@ local function opt_check(opt)
         return opt
     elseif opt then
         opt = LONGOPT[opt]
-        if opt then return opt end
+        if opt then
+            return opt
+        end
     end
     error("Invalid option " .. (opt or "<nil>"), 2)
 end
@@ -124,7 +126,9 @@ end
 local function longopt_action(opt, arg)
     TRACE("LONGOPT_ACTION", opt, arg)
     local opt_rec = VALID_OPTS[opt]
-    if not opt_rec then opt_err(opt) end
+    if not opt_rec then
+        opt_err(opt)
+    end
     local param = opt_rec.param
     if param then
         assert(arg and #arg > 0, "required parameter is missing")
@@ -167,14 +171,16 @@ local OLD_RC_COMPAT = {
     PM_VERBOSE = "verbose",
     --   PM_ALWAYS_FETCH = "always_fetch",
     --   PM_DELETE_PACKAGES = "deinstall_unused",
-    RECURSE_THOROUGH = "thorough"
+    RECURSE_THOROUGH = "thorough",
 }
 
 --
 local function rcfile_tryload(filename)
     local inp = io.open(filename, "r")
     TRACE("RCFILE_TRYLOAD", filename, inp or tostring(inp))
-    if not inp then return end
+    if not inp then
+        return
+    end
     local lineno = 0
     for line in inp:lines("*l") do
         lineno = lineno + 1
@@ -192,7 +198,9 @@ local function rcfile_tryload(filename)
                     assert(opt)
                 end
                 value = value or "no"
-                if string.lower(value) == "no" then value = "no" end
+                if string.lower(value) == "no" then
+                    value = "no"
+                end
                 longopt_action(opt, value)
             end
         end
@@ -236,13 +244,7 @@ local function opt_set_if(test_opt, ...)
         if Options[test_opt] then
             for _, opt in ipairs({...}) do
                 if not Options[opt] then
-                    Msg.show {
-                        level = 2,
-                        "Option",
-                        opt,
-                        "added due to option",
-                        test_opt
-                    }
+                    Msg.show {level = 2, "Option", opt, "added due to option", test_opt}
                     opt_set(opt, true)
                 end
             end
@@ -255,7 +257,9 @@ local function opt_clear_if(test_opt, ...)
     if test_opt then
         if Options[test_opt] then
             for _, opt in ipairs({...}) do
-                if Options[opt] then opt_clear(opt, test_opt) end
+                if Options[opt] then
+                    opt_clear(opt, test_opt)
+                end
             end
         end
     end
@@ -274,7 +278,7 @@ local function opt_adjust()
     opt_clear_if("interactive", "no_confirm")
 end
 
--- ----------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------
 -- options table indexed by longopt, values: shortopt, param_name, descr, action
 -- - each command option has a long form
 -- - use <nil> if no short options is defined
@@ -284,276 +288,406 @@ end
 -- - ToDo: Verify that required parameters are actually provided!!!
 VALID_OPTS = {
     all_old_abi = {
-		descr = "select all ports that have been built for a prior ABI version",
-		func = function(o, v) opt_set(o, v) end
+        descr = "select all ports that have been built for a prior ABI version",
+        func = function(o, v)
+            opt_set(o, v)
+        end,
     }, -- MAN
     all_options_change = {
-		descr = "select all ports for which new options have become available",
-		func = function(o, v) opt_set(o, v) end
+        descr = "select all ports for which new options have become available",
+        func = function(o, v)
+            opt_set(o, v)
+        end,
     }, -- NYI
     backup_format = {
-		param = "fmt",
-		descr = "select backup package format",
-		func = function(o, v) set_package_format(o, v) end
+        param = "fmt",
+        descr = "select backup package format",
+        func = function(o, v)
+            set_package_format(o, v)
+        end,
     },
     check_depends = {
-		descr = "check and fix registered dependencies",
-		func = function(o, v) opt_set(o, v) end
+        descr = "check and fix registered dependencies",
+        func = function(o, v)
+            opt_set(o, v)
+        end,
     },
     check_port_dbdir = {
-		descr =  "check for and delete stale port options",
-		func = function(o, v) opt_set(o, v) end
+        descr = "check for and delete stale port options",
+        func = function(o, v)
+            opt_set(o, v)
+        end,
     },
     clean_packages = {
-		descr = "delete stale package files",
-		func = function(o, v) opt_set(o, v) end
+        descr = "delete stale package files",
+        func = function(o, v)
+            opt_set(o, v)
+        end,
     },
     clean_packages_all = {
-		descr = "delete stale package files without asking",
-		func = function(o, v) opt_set(o, v) end
+        descr = "delete stale package files without asking",
+        func = function(o, v)
+            opt_set(o, v)
+        end,
     },
     clean_stale_libraries = {
-		descr = "delete stale libraries",
-		func = function(o, v) opt_set(o, v) end
+        descr = "delete stale libraries",
+        func = function(o, v)
+            opt_set(o, v)
+        end,
     },
     deinstall_unused = {
-		descr = "deinstall no longer required automatically installed packages",
-		func = function(o, v) opt_set(o, v) end
+        descr = "deinstall no longer required automatically installed packages",
+        func = function(o, v)
+            opt_set(o, v)
+        end,
     },
     delay_installation = {
-		descr = "delay installation of ports unless they are build dependencies",
-		func = function(o, v) opt_set(o, v) end
+        descr = "delay installation of ports unless they are build dependencies",
+        func = function(o, v)
+            opt_set(o, v)
+        end,
     },
     delete_build_only = {
-		descr = "delete packages only used as build dependencies",
-		func = function(o, v) opt_set(o, v) end
+        descr = "delete packages only used as build dependencies",
+        func = function(o, v)
+            opt_set(o, v)
+        end,
     },
     force_config = {
-		descr = "ask for port options of each port",
-		func = function(o, v) opt_set(o, v) opt_clear("no_make_config", o) end
+        descr = "ask for port options of each port",
+        func = function(o, v)
+            opt_set(o, v)
+            opt_clear("no_make_config", o)
+        end,
     },
     jailed = {
-		descr = "build ports in a clean chroot jail",
-		func = function(o, v) opt_set(o, v) opt_set("packages", "yes") opt_set("create_package", "yes") end
+        descr = "build ports in a clean chroot jail",
+        func = function(o, v)
+            opt_set(o, v)
+            opt_set("packages", "yes")
+            opt_set("create_package", "yes")
+        end,
     }, -- MAN
     list_origins = {
-		descr = "list origins of all installed ports",
-		func = function(o, v) opt_set(o, v) end
+        descr = "list origins of all installed ports",
+        func = function(o, v)
+            opt_set(o, v)
+        end,
     },
     logfile = {
-		param = "file",
-		descr = "log actions taken by portmaster to a file (NYI)",
-		func = function(o, v) opt_set(o, v) end
+        param = "file",
+        descr = "log actions taken by portmaster to a file (NYI)",
+        func = function(o, v)
+            opt_set(o, v)
+        end,
     }, -- NYI
     local_packagedir = {
-		param = "dir",
-		descr = "set local packages directory",
-		func = function(o, v) opt_set(o, v) end
+        param = "dir",
+        descr = "set local packages directory",
+        func = function(o, v)
+            opt_set(o, v)
+        end,
     },
     no_confirm = {
-		descr = "do not ask for confirmation",
-		func = function(o, v) opt_set(o, v) opt_clear("interactive", o) end
+        descr = "do not ask for confirmation",
+        func = function(o, v)
+            opt_set(o, v)
+            opt_clear("interactive", o)
+        end,
     },
     no_term_title = {
-		descr = "no progress indication in terminal title",
-		func = function(o, v) opt_set(o, v) end
+        descr = "no progress indication in terminal title",
+        func = function(o, v)
+            opt_set(o, v)
+        end,
     },
     package_format = {
-		param = "fmt",
-		descr = "select archive format of created packages",
-		func = function(o, v) set_package_format(o, v) end
+        param = "fmt",
+        descr = "select archive format of created packages",
+        func = function(o, v)
+            set_package_format(o, v)
+        end,
     },
     packages_build = {
-		descr = "use packages to resolve build dependencies",
-		func = function(o, v) opt_set(o, v) end
+        descr = "use packages to resolve build dependencies",
+        func = function(o, v)
+            opt_set(o, v)
+        end,
     },
     repo_mode = {
-		descr = "update package repository",
-		func = function(o, v) opt_set(o, v) opt_set("clean_packages", "yes") end
+        descr = "update package repository",
+        func = function(o, v)
+            opt_set(o, v)
+            opt_set("clean_packages", "yes")
+        end,
     },
     restart_with = {
-		param = "filename",
-		descr = "restart aborted run with actions from named file",
-		func = function(o, v) restart_file_load(v) end
+        param = "filename",
+        descr = "restart aborted run with actions from named file",
+        func = function(o, v)
+            restart_file_load(v)
+        end,
     }, -- MAN
     show_work = {
-		descr = "show progress",
-		func = function(o, v) opt_set(o, v) end},
+        descr = "show progress",
+        func = function(o, v)
+            opt_set(o, v)
+        end,
+    },
     skip_recreate_pkg = {
-		descr = "do not overwrite existing package files",
-		func = function(o, v) opt_set(o, v) end
+        descr = "do not overwrite existing package files",
+        func = function(o, v)
+            opt_set(o, v)
+        end,
     },
     su_cmd = {
-		param = "cmd",
-		descr = "command and options that grant root privileges (e.g.: sudo)",
-		func = function(o, v) opt_set(o, v) end
+        param = "cmd",
+        descr = "command and options that grant root privileges (e.g.: sudo)",
+        func = function(o, v)
+            opt_set(o, v)
+        end,
     },
     try_broken = {
-		descr = "try to build ports marked as broken",
-		func = function(o, v) opt_set(o, v) end
+        descr = "try to build ports marked as broken",
+        func = function(o, v)
+            opt_set(o, v)
+        end,
     },
     no_backup = {
-		letter = "B",
-		descr = "do not create backups of de-installed packages",
-		func = function(o, v) opt_clear("backup", o) end
+        letter = "B",
+        descr = "do not create backups of de-installed packages",
+        func = function(o, v)
+            opt_clear("backup", o)
+        end,
     },
     no_pre_clean = {
-		letter = "C",
-		descr = "do not clean before building the ports",
-		func = function(o, v) opt_set(o, v) end
+        letter = "C",
+        descr = "do not clean before building the ports",
+        func = function(o, v)
+            opt_set(o, v)
+        end,
     },
     no_scrub_distfiles = {
-		letter = "D",
-		descr = "do not delete stale distfiles",
-		func = function(o, v) opt_set(o, v) opt_clear("scrub_distfiles", o) end
+        letter = "D",
+        descr = "do not delete stale distfiles",
+        func = function(o, v)
+            opt_set(o, v)
+            opt_clear("scrub_distfiles", o)
+        end,
     },
     fetch_only = {
-		letter = "F",
-		descr = "fetch only",
-		func = function(o, v) opt_set(o, v) end},
+        letter = "F",
+        descr = "fetch only",
+        func = function(o, v)
+            opt_set(o, v)
+        end,
+    },
     no_make_config = {
-		letter = "G",
-		descr = "do not configure ports",
-		func = function(o, v) opt_set(o, v) opt_clear("force_config", o) end
+        letter = "G",
+        descr = "do not configure ports",
+        func = function(o, v)
+            opt_set(o, v)
+            opt_clear("force_config", o)
+        end,
     },
     hide_build = {
-		letter = "H",
-		descr = "hide port build messages",
-		func = function(o, v) opt_set(o, v) end
+        letter = "H",
+        descr = "hide port build messages",
+        func = function(o, v)
+            opt_set(o, v)
+        end,
     },
     no_post_clean = {
-		letter = "K",
-		descr = "do not clean after building the ports",
-		func = function(o, v) opt_set(o, v) end
+        letter = "K",
+        descr = "do not clean after building the ports",
+        func = function(o, v)
+            opt_set(o, v)
+        end,
     },
     list_plus = {
-		letter = "L",
-		param = false,
-		descr = "print verbose listing of installed ports",
-		func = function(o, v) opt_set("list", "verbose") end
+        letter = "L",
+        param = false,
+        descr = "print verbose listing of installed ports",
+        func = function(o, v)
+            opt_set("list", "verbose")
+        end,
     },
     dry_run = {
-		letter = "N",
-		descr = "print but do not actually execute commands",
-		func = function(o, v) opt_set(o, v) end
+        letter = "N",
+        descr = "print but do not actually execute commands",
+        func = function(o, v)
+            opt_set(o, v)
+        end,
     },
     packages = {
-		letter = "P",
-		descr = "use packages if available",
-		func = function(o, v) opt_set(o, v) end
+        letter = "P",
+        descr = "use packages if available",
+        func = function(o, v)
+            opt_set(o, v)
+        end,
     },
     restart = {
-		letter = "R",
-		param = false,
-		descr = "restart build",
-		func = function(o, v) restart_file_load() end
+        letter = "R",
+        param = false,
+        descr = "restart build",
+        func = function(o, v)
+            restart_file_load()
+        end,
     }, -- MAN
     version = {
-		letter = "V",
-		param = false,
-		descr = "print program version",
-		func = function(o, v) print_version() end
+        letter = "V",
+        param = false,
+        descr = "print program version",
+        func = function(o, v)
+            print_version()
+        end,
     },
     all = {
-		letter = "a",
-		descr = "operate on all installed ports",
-		func = function(o, v) opt_set(o, v) end
+        letter = "a",
+        descr = "operate on all installed ports",
+        func = function(o, v)
+            opt_set(o, v)
+        end,
     },
     backup = {
-		letter = "b",
-		descr = "create backups of de-installed packages",
-		func = function(o, v) opt_set(o, v) end
+        letter = "b",
+        descr = "create backups of de-installed packages",
+        func = function(o, v)
+            opt_set(o, v)
+        end,
     },
     scrub_distfiles = {
-		letter = "d",
-		descr = "delete stale distfiles",
-		func = function(o, v) opt_set(o, v) opt_clear("no_scrub_distfiles", o) end
+        letter = "d",
+        descr = "delete stale distfiles",
+        func = function(o, v)
+            opt_set(o, v)
+            opt_clear("no_scrub_distfiles", o)
+        end,
     },
     -- expunge = { "e", "package", "delete one port passed as argument and its distfiles", function (o, v) opt_add (o, v) end },
     force = {
-		letter = "f",
-		descr = "force action",
-		func = function(o, v) opt_set(o, v) end},
+        letter = "f",
+        descr = "force action",
+        func = function(o, v)
+            opt_set(o, v)
+        end,
+    },
     create_package = {
-		letter = "g",
-		descr = "create package files for all installed ports",
-		func = function(o, v) opt_set(o, v) end
+        letter = "g",
+        descr = "create package files for all installed ports",
+        func = function(o, v)
+            opt_set(o, v)
+        end,
     },
     help = {
-		letter = "h",
-		param = false,
-		descr = "show usage",
-		func = function(o, v) usage() end},
+        letter = "h",
+        param = false,
+        descr = "show usage",
+        func = function(o, v)
+            usage()
+        end,
+    },
     interactive = {
-		letter = "i",
-		descr = "interactive mode",
-		func = function(o, v) opt_set(o, v) end
+        letter = "i",
+        descr = "interactive mode",
+        func = function(o, v)
+            opt_set(o, v)
+        end,
     },
     list = {
-		letter = "l",
-		param = false,
-		descr = "list installed ports",
-		func = function(o, v) opt_set("list", "short") end
+        letter = "l",
+        param = false,
+        descr = "list installed ports",
+        func = function(o, v)
+            opt_set("list", "short")
+        end,
     },
     make_args = {
-		letter = "m",
-		param = "arg",
-		descr = "pass option to make processes",
-		func = function(o, v) opt_add(o, v) end
+        letter = "m",
+        param = "arg",
+        descr = "pass option to make processes",
+        func = function(o, v)
+            opt_add(o, v)
+        end,
     },
     default_no = {
-		letter = "n",
-		descr = "assume answer 'no'",
-		func = function(o, v) opt_set(o, v) opt_clear("default_yes", o) end
+        letter = "n",
+        descr = "assume answer 'no'",
+        func = function(o, v)
+            opt_set(o, v)
+            opt_clear("default_yes", o)
+        end,
     },
     origin = {
-		letter = "o",
-		param = "origin",
-		descr = "install from specified origin",
-		func = function(o, v) opt_set("replace_origin", v) end
+        letter = "o",
+        param = "origin",
+        descr = "install from specified origin",
+        func = function(o, v)
+            opt_set("replace_origin", v)
+        end,
     }, -- use module local static variable to hold this value ???
     recursive = {
-		letter = "r",
-		param = "port",
-		descr = "force building of dependent ports",
-		func = function(o, v) ports_add_recursive(v, Options.replace_origin) opt_clear("replace_origin") end
+        letter = "r",
+        param = "port",
+        descr = "force building of dependent ports",
+        func = function(o, v)
+            ports_add_recursive(v, Options.replace_origin)
+            opt_clear("replace_origin")
+        end,
     },
     clean_stale = {
-		letter = "s",
-		descr = "deinstall unused packages that were installed as dependency",
-		func = function(o, v) opt_set(o, v) opt_set("thorough", "yes") end
+        letter = "s",
+        descr = "deinstall unused packages that were installed as dependency",
+        func = function(o, v)
+            opt_set(o, v)
+            opt_set("thorough", "yes")
+        end,
     },
     thorough = {
-		letter = "t",
-		descr = "check all dependencies and de_install unused automatic packages",
-		func = function(o, v) opt_set(o, v) end
+        letter = "t",
+        descr = "check all dependencies and de_install unused automatic packages",
+        func = function(o, v)
+            opt_set(o, v)
+        end,
     },
     verbose = {
-		letter = "v",
-		param = false,
-		descr = "increase verbosity level",
-		func = function(o, v) Msg.incr_level() end
+        letter = "v",
+        param = false,
+        descr = "increase verbosity level",
+        func = function(o, v)
+            Msg.incr_level()
+        end,
     },
     save_shared = {
-		letter = "w",
-		descr = "keep backup copies of replaced shared libraries",
-		func = function(o, v) opt_set(o, v) end
+        letter = "w",
+        descr = "keep backup copies of replaced shared libraries",
+        func = function(o, v)
+            opt_set(o, v)
+        end,
     },
     exclude = {
-		letter = "x",
-		param = "pattern",
-		descr = "add pattern to exclude list",
-		func = function(o, v) Excludes.add(v) end
+        letter = "x",
+        param = "pattern",
+        descr = "add pattern to exclude list",
+        func = function(o, v)
+            Excludes.add(v)
+        end,
     },
     default_yes = {
-		letter = "y",
-		descr = "assume answer 'yes'",
-		func = function(o, v) opt_set(o, v) opt_clear("default_no", o) end
+        letter = "y",
+        descr = "assume answer 'yes'",
+        func = function(o, v)
+            opt_set(o, v)
+            opt_clear("default_no", o)
+        end,
     },
     developer_mode = {
-		descr = "create log and trace files",
-		func = function(o, v) tracefd = io.open(TRACEFILE, "w") end
-    }
+        descr = "create log and trace files",
+        func = function(o, v)
+            tracefd = io.open(TRACEFILE, "w")
+        end,
+    },
 }
 
 --
@@ -595,7 +729,9 @@ local function init()
                 opt_err(arg[current_i]) -- does not return
             else
                 local value
-                if i == current_i + 2 then value = arg[i - 1] end
+                if i == current_i + 2 then
+                    value = arg[i - 1]
+                end
                 shortopt_action(opt, value)
             end
         end
@@ -609,7 +745,7 @@ local function init()
     Msg.copy_options(Options)
 
     -- remove options before port and package glob arguments
-    return {table.unpack (arg, current_i)}
+    return {table.unpack(arg, current_i)}
 end
 
 -- print program name and version
@@ -685,9 +821,13 @@ local function save()
         -- print (string.format (format, ...))
     end
 
-    if PARAM.phase == "" then return end
+    if PARAM.phase == "" then
+        return
+    end
     local tasks = tasks_count()
-    if tasks == 0 then return end
+    if tasks == 0 then
+        return
+    end
     -- trap "" INT -- NYI
     Msg.show {start = true}
     Msg.show {"Writing restart file for", tasks, "actions ..."}
@@ -696,7 +836,9 @@ local function save()
     tmpf = io.open(tmp_filename, "w+")
 
     if PARAM.phase == "scan" then
-        for _, v in ipairs(Excludes.list()) do w("EXCLUDE=%s", v) end
+        for _, v in ipairs(Excludes.list()) do
+            w("EXCLUDE=%s", v)
+        end
     else
         Options.all = nil
         Options.all_old_abi = nil
@@ -717,7 +859,9 @@ local function save()
         end
     end
 
-    for _ = 1, Msg.level() do tmpf:write("verbose=yes\n") end
+    for _ = 1, Msg.level() do
+        tmpf:write("verbose=yes\n")
+    end
     w("")
 
     local filename = restart_file_name()
@@ -821,6 +965,6 @@ end
 
 Options.init = init
 Options.save = save
---Options.restart_file_load = restart_file_load
+-- Options.restart_file_load = restart_file_load
 
 return Options

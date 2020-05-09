@@ -27,10 +27,10 @@ OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 SUCH DAMAGE.
 --]]
 
--- ----------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------
 package.path = package.path .. ";/home/se/src/GIT/portmaster/?.lua"
 
--- ----------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------
 local P = require("posix")
 local glob = P.glob
 
@@ -41,10 +41,10 @@ local P_SL = require("posix.stdlib")
 local setenv = P_SL.setenv
 
 local P_SS = require("posix.sys.stat")
---local stat = P_SS.stat
+-- local stat = P_SS.stat
 local lstat = P_SS.lstat
 local stat_isdir = P_SS.S_ISDIR
---local stat_isreg = P_SS.S_ISREG
+-- local stat_isreg = P_SS.S_ISREG
 
 local P_US = require("posix.unistd")
 local access = P_US.access
@@ -61,7 +61,7 @@ end
 debug.sethook (trace, "l")
 --]]
 
-R = require ("std.strict")
+R = require("std.strict")
 
 -- local _debug = require 'std._debug'(true)
 
@@ -76,11 +76,11 @@ local Exec = require("Exec")
 local PkgDb = require("PkgDb")
 local Strategy = require("Strategy")
 
--- ----------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------
 stdin = io.stdin
 tracefd = nil
 
--- ----------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------
 setenv("PID", getpid())
 setenv("LANG", "C")
 setenv("LC_CTYPE", "C")
@@ -88,7 +88,7 @@ setenv("CASE_SENSITIVE_MATCH", "yes")
 setenv("LOCK_RETRIES", "120")
 -- setenv ("WRKDIRPREFIX", "/usr/work") -- ports_var ???
 
--- ----------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------
 -- clean up when script execution ends
 local function exit_cleanup(exit_code)
     exit_code = exit_code or 0
@@ -108,7 +108,7 @@ end
 -- abort script execution with an error message
 function fail(...)
     Msg.show {start = true, "ERROR:", ...}
-   --Msg.show {"Fix the issue and use '" .. PROGRAM, "-R' to restart"}
+    -- Msg.show {"Fix the issue and use '" .. PROGRAM, "-R' to restart"}
     Msg.show {"Aborting update"}
     exit_cleanup(1)
     -- not reached
@@ -133,8 +133,7 @@ function TRACE(...)
             sep = " "
         end
         local dbginfo = debug.getinfo(3, "Sl") or debug.getinfo(2, "Sl")
-        tracefd:write(tostring(os.time() - STARTTIMESECS) .. "	" ..
-                          (dbginfo.short_src or "(main)") .. ":" ..
+        tracefd:write(tostring(os.time() - STARTTIMESECS) .. "	" .. (dbginfo.short_src or "(main)") .. ":" ..
                           dbginfo.currentline .. "\t" .. tracemsg .. "\n")
     end
 end
@@ -163,7 +162,7 @@ function chomp(str)
     return str
 end
 
--- ----------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------
 -- split string on word boundaries and return as table
 function split_words(str)
     if str then
@@ -185,16 +184,16 @@ function split_lines(str)
 end
 
 -- split line at blanks into parts at most columns long and return as table
-function split_at (line, columns)
+function split_at(line, columns)
     local result = {}
     while #line > columns do
-        local l0 = string.sub (line, 1, columns)
-        local l1, l2 = string.match (l0, "([%S ]+) (.*)")
-        line = l2 .. string.sub(line, columns +1)
-        table.insert (result, l1)
+        local l0 = string.sub(line, 1, columns)
+        local l1, l2 = string.match(l0, "([%S ]+) (.*)")
+        line = l2 .. string.sub(line, columns + 1)
+        table.insert(result, l1)
     end
     if #line > 0 then
-        table.insert (result, line)
+        table.insert(result, line)
     end
     return result
 end
@@ -214,7 +213,7 @@ function set_table(self, field, v)
     self[field] = v ~= "" and split_words(v) or false
 end
 
--- ---------------------------------------------------------------------------------- (UTIL)
+------------------------------------------------------------------------------------- (UTIL)
 -- test whether the second parameter is a prefix of the first parameter (UTIL)
 function strpfx(str, pattern)
     return str:sub(1, #pattern) == pattern
@@ -236,16 +235,16 @@ function target_part(dep)
     return target or "install"
 end
 
--- ----------------------------------------------------------------------------------
---local table_mt = getmetatable(table)
+-------------------------------------------------------------------------------------
+-- local table_mt = getmetatable(table)
 
 -- return list of all keys of a table -- UTIL
 function table:keys()
     local result = {}
     for k, _ in pairs(self) do
         if type(k) ~= "number" then
-           table.insert(result, k)
-         end
+            table.insert(result, k)
+        end
     end
     return result
 end
@@ -255,11 +254,11 @@ function table:index(val)
     for i, v in ipairs(self) do
         if v == val then
             return i
-         end
+        end
     end
 end
 
--- ---------------------------------------------------------------------------------- (UTIL)
+------------------------------------------------------------------------------------- (UTIL)
 -- create tempfile with a name that contains "$type" and the portmaster PID
 function tempfile_create(type)
     local pattern = "pm-" .. getpid() .. "-" .. type
@@ -271,9 +270,10 @@ end
 
 -- list temporary files created by the current process for "$type" (UTIL)
 function tempfile_list(type, key)
-    if not PATH.tmpdir then return nil end
-    local pattern = PATH.tmpdir .. "pm-" .. getpid() .. "-" .. type .. "." ..
-                        (key or "*")
+    if not PATH.tmpdir then
+        return nil
+    end
+    local pattern = PATH.tmpdir .. "pm-" .. getpid() .. "-" .. type .. "." .. (key or "*")
     return glob(pattern)
 end
 
@@ -288,17 +288,20 @@ function tempfile_delete(...)
 end
 
 -- directory name part of file path
-function dirname(filename) return string.match(filename, ".*/") or "." end
+function dirname(filename)
+    return string.match(filename, ".*/") or "."
+end
 
 -- concatenate file path, first element must not be empty
 function path_concat(result, ...)
     TRACE("PATH_CONCAT", result, ...)
     if result and result ~= "" then
         for _, v in ipairs({...}) do
-            if string.sub(v, 1, 1) == "/" then v = string.sub(v, 2) end
+            if string.sub(v, 1, 1) == "/" then
+                v = string.sub(v, 2)
+            end
             if v and v ~= "" then
-                result =
-                    result .. (string.sub(result, -1) ~= "/" and "/" or "") .. v
+                result = result .. (string.sub(result, -1) ~= "/" and "/" or "") .. v
             end
         end
         TRACE("PATH_CONCAT->", result)
@@ -341,7 +344,9 @@ end
 local function init_global_path(...)
     for _, dir in pairs({...}) do
         if is_dir(path_concat(dir, ".")) then
-            if string.sub(dir, -1) ~= "/" then dir = dir .. "/" end
+            if string.sub(dir, -1) ~= "/" then
+                dir = dir .. "/"
+            end
             return dir
         end
     end
@@ -350,7 +355,11 @@ end
 
 -- return first parameter that is an existing executable
 local function init_global_cmd(...)
-    for _, n in ipairs({...}) do if access(n, "x") then return n end end
+    for _, n in ipairs({...}) do
+        if access(n, "x") then
+            return n
+        end
+    end
     error("init_global_cmd")
 end
 
@@ -360,7 +369,9 @@ local function ports_var(args)
     local result
     table.insert(args, 1, "-f/usr/share/mk/bsd.port.mk")
     table.insert(args, 2, "-V")
-    if not args.needbeforemk then table.insert(args, 1, "-DBEFOREPORTMK") end
+    if not args.needbeforemk then
+        table.insert(args, 1, "-DBEFOREPORTMK")
+    end
     if Options.make_args then
         table.move(Options.make_args, 1, -1, #args + 1, args)
     end
@@ -395,13 +406,11 @@ local function init_globals()
 
     -- port infrastructure paths, may be modified by user
     PATH.portsdir = init_global_path(ports_var {"PORTSDIR"}, "/usr/ports")
-    PATH.distdir = init_global_path(ports_var {"DISTDIR"},
-                               path_concat(PATH.portsdir, "distfiles"))
+    PATH.distdir = init_global_path(ports_var {"DISTDIR"}, path_concat(PATH.portsdir, "distfiles"))
     PARAM.distdir_ro = not access(PATH.distdir, "rw") -- need sudo to fetch or purge distfiles
 
-    PATH.packages = init_global_path(Options.local_packagedir,
-                                ports_var {"PACKAGES"},
-                                path_concat(PATH.portsdir, "packages"), "/usr/packages")
+    PATH.packages = init_global_path(Options.local_packagedir, ports_var {"PACKAGES"}, path_concat(PATH.portsdir, "packages"),
+                                     "/usr/packages")
     PATH.packages_backup = init_global_path(PATH.packages .. "portmaster-backup")
     PARAM.packages_ro = not access(PATH.packages, "rw") -- need sudo to create or delete package files
 
@@ -409,8 +418,7 @@ local function init_globals()
     PATH.local_lib = init_global_path(path_concat(PATH.localbase, "lib"))
     PATH.local_lib_compat = init_global_path(path_concat(PATH.local_lib, "compat/pkg"))
 
-    PATH.pkg_dbdir = init_global_path(ports_var {needportmk = true, "PKG_DBDIR"},
-                                 "/var/db/pkg") -- no value returned for make -DBEFOREPORTMK
+    PATH.pkg_dbdir = init_global_path(ports_var {needportmk = true, "PKG_DBDIR"}, "/var/db/pkg") -- no value returned for make -DBEFOREPORTMK
     PARAM.pkg_dbdir_ro = not access(PATH.pkg_dbdir, "rw") -- need sudo to update the package database
 
     PATH.port_dbdir = init_global_path(ports_var {"PORT_DBDIR"}, "/var/db/ports")
@@ -436,8 +444,7 @@ local function init_globals()
 
     if not CMD.sudo and PARAM.uid ~= 0 then
         local cmd = Options.su_cmd or "sudo"
-        CMD.sudo = init_global_cmd(path_concat(PATH.localbase, "sbin", cmd),
-                                   path_concat(PATH.localbase, "bin", cmd))
+        CMD.sudo = init_global_cmd(path_concat(PATH.localbase, "sbin", cmd), path_concat(PATH.localbase, "bin", cmd))
     end
 
     -- locate grep command that provided required functionality
@@ -453,25 +460,24 @@ local function init_globals()
     PARAM.abi_noarch = string.match(PARAM.abi, "^[^:]+:[^:]+:") .. "*"
 
     -- global variables for use by the distinfo cache and distfile names file (for ports to be built)
-    --PARAM.distfiles_perport = PATH.distdir .. "DISTFILES.perport" -- port names and names of distfiles required by the latest port version
-    --PARAM.distfiles_list = PATH.distdir .. "DISTFILES.list" -- current distfile names of all ports
+    -- PARAM.distfiles_perport = PATH.distdir .. "DISTFILES.perport" -- port names and names of distfiles required by the latest port version
+    -- PARAM.distfiles_list = PATH.distdir .. "DISTFILES.list" -- current distfile names of all ports
 
     -- has license framework been disabled by the user
     PARAM.disable_licenses = ports_var {"DISABLE_LICENSES"}
 end
 
--- ----------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------
 -- set sane defaults and cache some buildvariables in the environment
 -- <se> ToDo convert to sub-shell and "export -p | egrep '^(VAR1|VAR2)'" ???
 local function init_environment()
     -- reset PATH to a sane default
-    setenv("PATH", "/bin:/sbin:/usr/bin:/usr/sbin:" .. PATH.localbase .. "bin:" ..
-               PATH.localbase .. "sbin") -- DUPLICATE ???
+    setenv("PATH", "/bin:/sbin:/usr/bin:/usr/sbin:" .. PATH.localbase .. "bin:" .. PATH.localbase .. "sbin") -- DUPLICATE ???
     -- cache some build variables in the environment (cannot use ports_var due to its use of "-D BEFOREPORTMK")
     local env_param = ports_var {needbeforemk = true, "PORTS_ENV_VARS"} -- || fail "$output" -- convert to port_var with extra parameter for the -f option argument XXX
     for _, var in ipairs(split_words(env_param)) do
         local value = ports_var {needbeforemk = true, var}
-	TRACE("SETENV", var, value)
+        TRACE("SETENV", var, value)
         setenv(var, value)
     end
     --
@@ -484,7 +490,7 @@ local function init_environment()
         "PORTSDIR=" .. PATH.portsdir,
         "MAKE=make",
         "/bin/sh",
-        PATH.portsdir .. "Mk/Scripts/ports_env.sh"
+        PATH.portsdir .. "Mk/Scripts/ports_env.sh",
     }
     TRACE("ENVLINES", table.unpack(env_lines))
     for _, line in ipairs(env_lines) do
@@ -492,7 +498,7 @@ local function init_environment()
         if string.sub(value, 1, 1) == '"' and string.sub(value, -1) == '"' then
             value = string.sub(value, 2, -2)
         end
-	TRACE("SETENV", var, value)
+        TRACE("SETENV", var, value)
         setenv(var, value)
     end
     -- prevent delays for messages that are not displayed, anyway
@@ -527,12 +533,7 @@ local function ports_update(filters)
         for _, pkg in ipairs(pkgs) do
             local selected, force = filter(pkg)
             if selected then
-                Action:new{
-                    build_type = "user",
-                    dep_type = "run",
-                    force = force,
-                    pkg_old = pkg
-                }
+                Action:new{build_type = "user", dep_type = "run", force = force, pkg_old = pkg}
             else
                 table.insert(rest, pkg)
             end
@@ -552,9 +553,10 @@ local function ports_add_multiple(args)
     end
     local function filter_match(pkg)
         for _, v in ipairs(pattern_table) do
-            if string.match(pkg.name_base, v .. "$") then return true end
-            if pkg.origin and (string.match(pkg.origin.name, v .. "$") or
-                string.match(pkg.origin.name, v .. "@%S+$")) then
+            if string.match(pkg.name_base, v .. "$") then
+                return true
+            end
+            if pkg.origin and (string.match(pkg.origin.name, v .. "$") or string.match(pkg.origin.name, v .. "@%S+$")) then
                 return true
             end
         end
@@ -563,17 +565,10 @@ local function ports_add_multiple(args)
     TRACE("PORTS_ADD_MULTIPLE->", table.unpack(pattern_table))
     ports_update {filter_match}
     for _, v in ipairs(args) do
-        if string.match(v, "/") and
-            access(path_concat(PATH.portsdir, v, "Makefile"), "r") then
+        if string.match(v, "/") and access(path_concat(PATH.portsdir, v, "Makefile"), "r") then
             local o = Origin:new(v)
             local p = o.pkg_new
-            Action:new{
-                build_type = "user",
-                dep_type = "run",
-                force = Options.force,
-                o_n = o,
-                pkg_new = p
-            }
+            Action:new{build_type = "user", dep_type = "run", force = Options.force, o_n = o, pkg_new = p}
         end
     end
     --[[
@@ -621,7 +616,7 @@ local function ports_add_all_outdated()
     end
     ports_update {
         filter_old_abi, -- filter_old_shared_libs,
-        filter_is_required, filter_pass_all
+        filter_is_required, filter_pass_all,
     }
 end
 
@@ -632,14 +627,19 @@ end
 local function ask_and_delete(prompt, ...)
     local msg_level = 1
     local answer
-    if Options.default_no then answer = "q" end
-    if Options.default_yes then answer = "a" end
+    if Options.default_no then
+        answer = "q"
+    end
+    if Options.default_yes then
+        answer = "a"
+    end
     for _, file in ipairs(...) do
         if answer ~= "a" and answer ~= "q" then
-            answer = Msg.read_answer("Delete " .. prompt .. " '" .. file .. "'",
-                                     "y", {"y", "n", "a", "q"})
+            answer = Msg.read_answer("Delete " .. prompt .. " '" .. file .. "'", "y", {"y", "n", "a", "q"})
         end
-        if answer == "a" then msg_level = 0 end
+        if answer == "a" then
+            msg_level = 0
+        end
         --
         if answer == "a" or answer == "y" then
             if Options.default_yes or answer == "a" then
@@ -658,44 +658,33 @@ end
 
 -- ask whether some directory and its contents  should be deleted (except when -n or -y enforce a default answer)
 local function ask_and_delete_directory(prompt, ...)
-   -- move to Msg module -- convert to return table of directories to delete?
+    -- move to Msg module -- convert to return table of directories to delete?
     local msg_level = 1
     local answer
-    if Options.default_no then answer = "q" end
-    if Options.default_yes then answer = "a" end
+    if Options.default_no then
+        answer = "q"
+    end
+    if Options.default_yes then
+        answer = "a"
+    end
     for _, directory in ipairs(...) do
         if answer ~= "a" and answer ~= "q" then
-            answer = Msg.read_answer(
-                         "Delete " .. prompt .. " '" .. directory .. "'", "y",
-                         {"y", "n", "a", "q"})
+            answer = Msg.read_answer("Delete " .. prompt .. " '" .. directory .. "'", "y", {"y", "n", "a", "q"})
         end
-        if answer == "a" then msg_level = 0 end
+        if answer == "a" then
+            msg_level = 0
+        end
         --
         if answer == "a" or answer == "y" then
             if Options.default_yes or answer == "a" then
-                Msg.show {
-                    level = msg_level,
-                    "Deleting",
-                    prompt .. ":",
-                    directory
-                }
+                Msg.show {level = msg_level, "Deleting", prompt .. ":", directory}
             end
             if not Options.dry_run then
                 if is_dir(directory) then
                     for _, file in ipairs(glob(directory .. "/*")) do
-                        Exec.run {
-                            as_root = true,
-                            log = true,
-                            "/bin/unlink",
-                            file
-                        }
+                        Exec.run {as_root = true, log = true, "/bin/unlink", file}
                     end
-                    Exec.run {
-                        as_root = true,
-                        log = true,
-                        "/bin/rmdir",
-                        directory
-                    }
+                    Exec.run {as_root = true, log = true, "/bin/rmdir", directory}
                 end
             end
         elseif answer == "q" or answer == "n" then
@@ -711,23 +700,22 @@ local function packagefiles_purge() -- move to new PackageFile module ???
     error("NYI")
 end
 
--- ----------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------
 local function list_stale_libraries()
     -- create list of shared libraries used by packages and create list of compat libs that are not required (anymore)
     local activelibs = {}
     local lines = PkgDb.query {table = true, glob = true, "%B", "*"}
-    for _, lib in ipairs(lines) do activelibs[lib] = true end
+    for _, lib in ipairs(lines) do
+        activelibs[lib] = true
+    end
     -- list all active shared libraries in some compat directory
     local compatlibs = {}
-    local ldconfig_lines = Exec.run {
-        table = true,
-        safe = true,
-        "ldconfig",
-        "-r"
-    } -- safe flag required ???
+    local ldconfig_lines = Exec.run {table = true, safe = true, "ldconfig", "-r"} -- safe flag required ???
     for _, line in ipairs(ldconfig_lines) do
         local lib = line:match(" => " .. PATH.localbase .. "lib/compat/pkg/(.*)")
-        if lib and not activelibs[lib] then compatlibs[lib] = true end
+        if lib and not activelibs[lib] then
+            compatlibs[lib] = true
+        end
     end
     return table.keys(compatlibs)
 end
@@ -744,7 +732,7 @@ local function shlibs_purge()
     end
 end
 
--- ----------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------
 -- delete stale options files
 local function portdb_purge()
     Msg.show {start = true, "Scanning", PATH.port_dbdir, "for stale cached options:"}
@@ -757,7 +745,9 @@ local function portdb_purge()
     assert(chdir(PATH.port_dbdir), "cannot access directory " .. PATH.port_dbdir)
     local stale_origins = {}
     for _, dir in ipairs(glob("*")) do
-        if not origins[dir] then table.insert(stale_origins, dir) end
+        if not origins[dir] then
+            table.insert(stale_origins, dir)
+        end
     end
     if #stale_origins then
         ask_and_delete_directory("stale port options file for", stale_origins)
@@ -772,34 +762,31 @@ local function list_ports(mode)
     local filter = {
         {
             "root ports (no dependencies and not depended on)", function(pkg)
-                return pkg.num_depending == 0 and pkg.num_dependencies == 0 and
-                           pkg.is_automatic == false
-            end
+                return pkg.num_depending == 0 and pkg.num_dependencies == 0 and pkg.is_automatic == false
+            end,
         }, {
             "trunk ports (no dependencies but depended on)", function(pkg)
                 return pkg.num_depending ~= 0 and pkg.num_dependencies == 0
-            end
+            end,
         }, {
-            "branch ports (have dependencies and are depended on)",
-            function(pkg)
+            "branch ports (have dependencies and are depended on)", function(pkg)
                 return pkg.num_depending ~= 0 and pkg.num_dependencies ~= 0
-            end
+            end,
         }, {
-            "leaf ports (have dependencies but are not depended on)",
-            function(pkg)
-                return pkg.num_depending == 0 and pkg.num_dependencies ~= 0 and
-                           pkg.is_automatic == false
-            end
+            "leaf ports (have dependencies but are not depended on)", function(pkg)
+                return pkg.num_depending == 0 and pkg.num_dependencies ~= 0 and pkg.is_automatic == false
+            end,
         }, {
-            "left over ports (e.g. build tools that are not required at run-time)",
-            function(pkg)
+            "left over ports (e.g. build tools that are not required at run-time)", function(pkg)
                 return pkg.num_depending == 0 and pkg.is_automatic == true
-            end
-        }
+            end,
+        },
     }
 
     local pkg_list = Package:installed_pkgs()
-    table.sort(pkg_list, function(a, b) return a.name > b.name end)
+    table.sort(pkg_list, function(a, b)
+        return a.name > b.name
+    end)
     Msg.show {start = true, "List of installed packages by category:"}
     for _, f in ipairs(filter) do
         local descr = f[1]
@@ -808,7 +795,9 @@ local function list_ports(mode)
         local first = true
         local count = 0
         for _, pkg_old in ipairs(pkg_list) do
-            if test(pkg_old) then count = count + 1 end
+            if test(pkg_old) then
+                count = count + 1
+            end
         end
         if count > 0 then
             for _, pkg_old in ipairs(pkg_list) do
@@ -816,8 +805,7 @@ local function list_ports(mode)
                     local line = pkg_old.name
                     if mode == "verbose" then
                         local o_o = pkg_old.origin
-                        assert(o_o,
-                               "no origin for package " .. pkg_old.name)
+                        assert(o_o, "no origin for package " .. pkg_old.name)
                         local pkg_new = o_o.pkg_new
                         local pkgname_new = pkg_new and pkg_new.name
                         local reason
@@ -834,8 +822,7 @@ local function list_ports(mode)
                             if reason then
                                 line = line .. " has been removed: " .. reason
                             else
-                                line = line ..
-                                           " cannot be found in the ports system"
+                                line = line .. " cannot be found in the ports system"
                             end
                         elseif pkgname_new ~= pkg_old.name then
                             line = line .. " needs update to " .. pkgname_new
@@ -856,10 +843,10 @@ local function list_ports(mode)
     assert(pkg_list[1] == nil, "not all packages covered in tests")
 end
 
--- ----------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------
 -- TRACEFILE = "/tmp/pm.cmd-log" -- DEBUGGING EARLY START-UP ONLY -- GLOBAL
 
--- ----------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------
 local function main()
     -- print (umask ("755")) -- ERROR: results in 7755, check the details of this function
     -- shell ({to_tty = true}, "umask")
@@ -873,18 +860,22 @@ local function main()
     -- do not ask for confirmation if not connected to a terminal
     if not ttyname(0) then
         stdin = io.open("/dev/tty", "r")
-        if not stdin then Options.no_confirm = true end
+        if not stdin then
+            Options.no_confirm = true
+        end
     end
 
     -- disable setting the terminal title if output goes to a pipe or file (fd=3 is remapped from STDOUT)
-    if not ttyname(2) then Options.no_term_title = true end
+    if not ttyname(2) then
+        Options.no_term_title = true
+    end
     -- initialize environment variables based on globals set in prior functions
     init_environment()
 
     -- TESTING
-    --if TEST then TEST() end
+    -- if TEST then TEST() end
 
-    -- ----------------------------------------------------------------------------------
+    -------------------------------------------------------------------------------------
     -- plan tasks based on parameters passed on the command line
     PARAM.phase = "scan"
 
@@ -923,22 +914,36 @@ local function main()
 
     Action.execute()
 
-    -- ----------------------------------------------------------------------------------
+    -------------------------------------------------------------------------------------
     -- non-upgrade operations supported by portmaster - executed after upgrades if requested
     if Options.check_depends then
         Exec.run {to_tty = true, "pkg", "check", "-dn"}
     end
-    if Options.list then list_ports(Options.list) end
-    if Options.list_origins then PkgDb.list_origins() end
+    if Options.list then
+        list_ports(Options.list)
+    end
+    if Options.list_origins then
+        PkgDb.list_origins()
+    end
     -- if Options.delete_build_only then delete_build_only () end
     -- should have become obsolete due to build dependency tracking
-    if Options.clean_stale_libraries then shlibs_purge() end
+    if Options.clean_stale_libraries then
+        shlibs_purge()
+    end
     -- if Options.clean_compat_libs then clean_stale_compat_libraries () end -- NYI
-    if Options.clean_packages then packagefiles_purge() end
-    if Options.deinstall_unused then packages_delete_stale() end
-    if Options.check_port_dbdir then portdb_purge() end
+    if Options.clean_packages then
+        packagefiles_purge()
+    end
+    if Options.deinstall_unused then
+        packages_delete_stale()
+    end
+    if Options.check_port_dbdir then
+        portdb_purge()
+    end
     -- if Options.expunge then expunge (Options.expunge) end
-    if Options.scrub_distfiles then distfiles_clean_stale() end
+    if Options.scrub_distfiles then
+        distfiles_clean_stale()
+    end
 
     -- display package messages for all updated ports
     exit_cleanup(0)
@@ -948,7 +953,9 @@ end
 tracefd = io.open("/tmp/pm.log", "w")
 
 local success, errmsg = xpcall(main, debug.traceback)
-if not success then fail(errmsg) end
+if not success then
+    fail(errmsg)
+end
 os.exit(0)
 
 --[[

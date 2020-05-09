@@ -25,11 +25,11 @@ OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 SUCH DAMAGE.
 --]]
 
--- ----------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------
 local stdout = io.stdout
 local stderr = io.stderr
 
--- ----------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------
 local State = {
     level = 0,
     at_start = true,
@@ -38,14 +38,16 @@ local State = {
     sep1 = "# -----\t",
     sep2 = "#\t",
     sepabort = "# !!!!!\t",
-    sepprompt = "#   >>>\t"
+    sepprompt = "#   >>>\t",
 }
 State.sep = State.sep1
 
 -- local table for copies of 4 options that are used in this module
 local Options = {}
 
-local function copy_options(options) Options = options end
+local function copy_options(options)
+    Options = options
+end
 
 -- set window title
 local function title_set(...)
@@ -119,7 +121,7 @@ local function show(args)
     end
 end
 
--- ----------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------
 -- add line to success message to display at the end
 local SUCCESS_MSGS = {}
 local PKGMSG = {}
@@ -128,7 +130,9 @@ local PKGMSG = {}
 local function success_add(text, seconds)
     if not strpfx(text, "Provide ") then -- XXX adapt test
         table.insert(SUCCESS_MSGS, text)
-        if seconds then seconds = "in " .. seconds .. " seconds" end
+        if seconds then
+            seconds = "in " .. seconds .. " seconds"
+        end
         show {text, "successfully completed", seconds}
         show {start = true}
     end
@@ -161,7 +165,7 @@ local function success_show()
     PKGMSG = nil -- required ???
 end
 
--- ----------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------
 -- print abort message at level 0
 local function abort(...)
     State.at_start = true
@@ -169,12 +173,16 @@ local function abort(...)
     show({...})
 end
 
--- ----------------------------------------------------------------------------------
-local function incr_level() State.level = State.level + 1 end
+-------------------------------------------------------------------------------------
+local function incr_level()
+    State.level = State.level + 1
+end
 
-local function level() return State.level end
+local function level()
+    return State.level
+end
 
--- ----------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------
 -- wait for new-line, ignore any input given
 local function read_nl(prompt)
     show {prompt = true, prompt}
@@ -214,25 +222,26 @@ local function read_answer(prompt, default, choices)
                     return reply
                 end
             end
-            show {
-                "Invalid input '" .. reply .. "' ignored - please enter one of",
-                opt_list
-            }
+            show {"Invalid input '" .. reply .. "' ignored - please enter one of", opt_list}
         end
     end
 end
 
 -- read "y" or "n" from STDIN, with default provided for empty input lines
 local function read_yn(prompt, default)
-    if Options.default_yes then default = "y" end
-    if Options.default_no then default = "n" end
+    if Options.default_yes then
+        default = "y"
+    end
+    if Options.default_no then
+        default = "n"
+    end
     return read_answer(prompt, default, {"y", "n"}) == "y"
 end
 
--- ----------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------
 return {
     abort = abort,
-    --display = display,
+    -- display = display,
     incr_level = incr_level,
     level = level,
     read_nl = read_nl,
@@ -242,5 +251,5 @@ return {
     success_add = success_add,
     success_show = success_show,
     title_set = title_set,
-    copy_options = copy_options
+    copy_options = copy_options,
 }

@@ -25,19 +25,19 @@ OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 SUCH DAMAGE.
 --]]
 
--- ----------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------
 local Excludes = require("Excludes")
 local Options = require("Options")
 local Msg = require("Msg")
 local Distfile = require("Distfile")
 local Exec = require("Exec")
 
--- ----------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------
 local P_US = require("posix.unistd")
 local access = P_US.access
 local sleep = P_US.sleep
 
--- ----------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------
 -- return port name without flavor
 local function port(origin)
     return (string.match(origin.name, "^[^:@%%]+"))
@@ -54,8 +54,8 @@ local function check_port_exists(origin)
 end
 
 -- return flavor of passed origin or nil
-local function flavor(origin) return
-    (string.match(origin.name, "%S+@([^:%%]+)"))
+local function flavor(origin)
+    return (string.match(origin.name, "%S+@([^:%%]+)"))
 end
 
 --
@@ -73,7 +73,9 @@ end
 -- call make for origin with arguments used e.g. for variable queries (no state change)
 local function port_make(origin, args)
     local flavor = flavor(origin)
-    if flavor then table.insert(args, 1, "FLAVOR=" .. flavor) end
+    if flavor then
+        table.insert(args, 1, "FLAVOR=" .. flavor)
+    end
     local dir = path(origin)
     --[[
     -- only valid for port_var, not generic port_make !!!
@@ -86,7 +88,9 @@ local function port_make(origin, args)
         return nil, "port directory " .. dir .. " does not exist"
     end
     if Options.make_args then
-        for i, v in ipairs(Options.make_args) do table.insert(args, i, v) end
+        for i, v in ipairs(Options.make_args) do
+            table.insert(args, i, v)
+        end
     end
     table.insert(args, 1, "-C")
     table.insert(args, 2, dir)
@@ -101,7 +105,9 @@ end
 -- return Makefile variables for port (with optional flavor)
 local function port_var(origin, vars)
     local args = {safe = true, table = vars.table}
-    for i = 1, #vars do args[i] = "-V" .. vars[i] end
+    for i = 1, #vars do
+        args[i] = "-V" .. vars[i]
+    end
     if args.trace then
         local dbginfo = debug.getinfo(2, "ln")
         table.insert(args, "LOC=" .. dbginfo.name .. ":" .. dbginfo.currentline)
@@ -136,71 +142,50 @@ end
 -- optionally or forcefully configure port
 local function configure(origin, force)
     local target = force and "config" or "config-conditional"
-    return origin:port_make{
-        to_tty = true,
-        as_root = PARAM.port_dbdir_ro,
-        "-D",
-        "NO_DEPENDS",
-        "-D",
-        "DISABLE_CONFLICTS",
-        target
-    }
+    return origin:port_make{to_tty = true, as_root = PARAM.port_dbdir_ro, "-D", "NO_DEPENDS", "-D", "DISABLE_CONFLICTS", target}
 end
 
 --
-local function checksum(origin) Distfile.fetch(origin) end
+local function checksum(origin)
+    Distfile.fetch(origin)
+end
 
 -- # wait for a line stating success or failure fetching all distfiles for some port origin and return status
 local function wait_checksum(origin)
-    if Options.dry_run then return true end
+    if Options.dry_run then
+        return true
+    end
     local errmsg = "cannot find fetch acknowledgement file"
     local dir = origin.port
     if TMPFILE_FETCH_ACK then
-        local status = Exec.run {
-            safe = true,
-            CMD.grep,
-            "-m",
-            "1",
-            "OK " .. dir .. " ",
-            TMPFILE_FETCH_ACK
-        }
+        local status = Exec.run {safe = true, CMD.grep, "-m", "1", "OK " .. dir .. " ", TMPFILE_FETCH_ACK}
         print("'" .. status .. "'")
         if not status then
             sleep(1)
             repeat
-                Msg.show {
-                    "Waiting for download of all distfiles for", dir,
-                    "to complete"
-                }
-                status = Exec.run {
-                    safe = true,
-                    CMD.grep,
-                    "-m",
-                    "1",
-                    "OK " .. dir .. " ",
-                    TMPFILE_FETCH_ACK
-                }
-                if not status then sleep(3) end
+                Msg.show {"Waiting for download of all distfiles for", dir, "to complete"}
+                status = Exec.run {safe = true, CMD.grep, "-m", "1", "OK " .. dir .. " ", TMPFILE_FETCH_ACK}
+                if not status then
+                    sleep(3)
+                end
             until status
         end
         errmsg = string.match(status, "NOTOK " .. dir .. "(.*)")
-        if not errmsg then return true end
+        if not errmsg then
+            return true
+        end
     end
-    return false,
-           "Download of distfiles for " .. origin.name .. " failed: " .. errmsg
+    return false, "Download of distfiles for " .. origin.name .. " failed: " .. errmsg
 end
 
 -- check wether port is on the excludes list
-local function check_excluded(origin) return Excludes.check_port(origin) end
+local function check_excluded(origin)
+    return Excludes.check_port(origin)
+end
 
 -- install newly built port
 local function install(origin)
-    return origin:port_make{
-        to_tty = true,
-        jailed = true,
-        as_root = true,
-        "install"
-    }
+    return origin:port_make{to_tty = true, jailed = true, as_root = true, "install"}
 end
 
 -- -------------------------
@@ -234,14 +219,15 @@ local function moved_cache_load()
             local n_p, n_f = string.match(new, "([^@]+)@?([%S]*)")
             o_f = o_f ~= "" and o_f or nil
             n_f = n_f ~= "" and n_f or nil
-            if not MOVED_CACHE[o_p] then MOVED_CACHE[o_p] = {} end
+            if not MOVED_CACHE[o_p] then
+                MOVED_CACHE[o_p] = {}
+            end
             table.insert(MOVED_CACHE[o_p], {o_p, o_f, n_p, n_f, date, reason})
             if n_p then
                 if not MOVED_CACHE_REV[n_p] then
                     MOVED_CACHE_REV[n_p] = {}
                 end
-                table.insert(MOVED_CACHE_REV[n_p],
-                             {o_p, o_f, n_p, n_f, date, reason})
+                table.insert(MOVED_CACHE_REV[n_p], {o_p, o_f, n_p, n_f, date, reason})
             end
         end
     end
@@ -250,24 +236,15 @@ local function moved_cache_load()
         MOVED_CACHE = {}
         MOVED_CACHE_REV = {}
         local filename = PATH.portsdir .. "MOVED" -- allow override with configuration parameter ???
-        Msg.show {
-            level = 2,
-            start = true,
-            "Load list of renamed or removed ports from",
-            filename
-        }
+        Msg.show {level = 2, start = true, "Load list of renamed or removed ports from", filename}
         local movedfile = io.open(filename, "r")
         if movedfile then
             for line in movedfile:lines() do
-                register_moved(string.match(line,
-                                            "^([^#][^|]+)|([^|]*)|([^|]+)|([^|]+)"))
+                register_moved(string.match(line, "^([^#][^|]+)|([^|]*)|([^|]+)|([^|]+)"))
             end
             io.close(movedfile)
         end
-        Msg.show {
-            level = 2,
-            "The list of renamed of removed ports has been loaded"
-        }
+        Msg.show {level = 2, "The list of renamed of removed ports has been loaded"}
         Msg.show {level = 2, start = true}
     end
 end
@@ -275,12 +252,16 @@ end
 -- try to find origin in list of moved or deleted ports, returns new origin or nil if found, false if not found, followed by reason text
 local function lookup_moved_origin(origin)
     local function o(p, f)
-        if p and f then p = p .. "@" .. f end
+        if p and f then
+            p = p .. "@" .. f
+        end
         return p
     end
     local function locate_move(p, f, min_i)
         local m = MOVED_CACHE[p]
-        if not m then return p, f, nil end
+        if not m then
+            return p, f, nil
+        end
         local max_i = #m
         local i = max_i
         TRACE("MOVED?", o(p, f), p, f)
@@ -301,10 +282,14 @@ local function lookup_moved_origin(origin)
         return p, f, nil
     end
 
-    if not MOVED_CACHE then moved_cache_load() end
+    if not MOVED_CACHE then
+        moved_cache_load()
+    end
     local p, f, r = locate_move(origin.port, origin.flavor, 1)
     if r then
-        if p then origin = Origin:new(o(p, f)) end
+        if p then
+            origin = Origin:new(o(p, f))
+        end
         origin.reason = r
         return origin
     end
@@ -316,14 +301,8 @@ local function check_config_allow(origin, recursive)
     local function check_ignore(name, field)
         TRACE("CHECK_IGNORE", origin.name, name, field, rawget(origin, field))
         if rawget(origin, field) then
-            Msg.show {
-                origin.name, "will be skipped since it is marked", name .. ":",
-                origin[field]
-            }
-            Msg.show {
-                "If you are sure you can build this port, remove the", name,
-                "line in the Makefile and try again"
-            }
+            Msg.show {origin.name, "will be skipped since it is marked", name .. ":", origin[field]}
+            Msg.show {"If you are sure you can build this port, remove the", name, "line in the Makefile and try again"}
             if not Options.no_confirm then
                 Msg.read_nl("Press the [Enter] or [Return] key to continue ")
             end
@@ -331,27 +310,24 @@ local function check_config_allow(origin, recursive)
             return true
         end
     end
-    if check_ignore("BROKEN", "is_broken") or
-        check_ignore("IGNORE", "is_ignore") or Options.no_make_config and
-        check_ignore("FORBIDDEN", "is_forbidden") then return false end
+    if check_ignore("BROKEN", "is_broken") or check_ignore("IGNORE", "is_ignore") or Options.no_make_config and
+        check_ignore("FORBIDDEN", "is_forbidden") then
+        return false
+    end
     if not recursive then
         local do_config
         if origin.is_forbidden then
             Msg.show {origin.name, "is marked FORBIDDEN:", origin.is_forbidden}
             if origin.all_options then
-                Msg.show {
-                    "You may try to change the port options to allow this port to build"
-                }
+                Msg.show {"You may try to change the port options to allow this port to build"}
                 Msg.show {}
-                if Msg.read_yn(
-                    "Do you want to try again with changed port options") then
+                if Msg.read_yn("Do you want to try again with changed port options") then
                     do_config = true
                 end
             end
         elseif origin.new_options or Options.force_config then
             do_config = true
-        elseif origin.port_options and origin.options_file and
-            not access(origin.options_file, "r") then
+        elseif origin.port_options and origin.options_file and not access(origin.options_file, "r") then
             TRACE("NO_OPTIONS_FILE", origin.options_file)
             -- do_config = true
         end
@@ -371,17 +347,14 @@ local function check_config_allow(origin, recursive)
     end
     -- warn if port is interactive
     if origin.is_interactive then
-        Msg.show {
-            "Warning:", origin.name,
-            "is interactive, and will likely require attention during the build"
-        }
+        Msg.show {"Warning:", origin.name, "is interactive, and will likely require attention during the build"}
         if not Options.no_confirm then
             Msg.read_nl("Press the [Enter] or [Return] key to continue ")
         end
     end
 end
 
--- ----------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------
 -- create new Origins object or return existing one for given name
 -- the Origin class describes a port with optional flavor
 local ORIGINS_CACHE = {}
@@ -400,14 +373,18 @@ local function get(name)
     if name then
         TRACE("GET(o)", name)
         local result = rawget(ORIGINS_CACHE, name)
-        if result == false then return get(ORIGIN_ALIAS[name]) end
+        if result == false then
+            return get(ORIGIN_ALIAS[name])
+        end
         TRACE("GET(o)->", name, tostring(result))
         return result
     end
 end
 
 --
-local function delete(origin) ORIGINS_CACHE[origin.name] = nil end
+local function delete(origin)
+    ORIGINS_CACHE[origin.name] = nil
+end
 
 -- DEBUGGING: DUMP INSTANCES CACHE
 local function dump_cache()
@@ -420,10 +397,12 @@ local function dump_cache()
         end
     end
     local t = ORIGIN_ALIAS
-    for i, v in ipairs(table.keys(t)) do TRACE("ORIGIN_ALIAS", i, v, t[v]) end
+    for i, v in ipairs(table.keys(t)) do
+        TRACE("ORIGIN_ALIAS", i, v, t[v])
+    end
 end
 
--- ----------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------
 --
 local function __index(origin, k)
     local function __port_vars(origin, k, recursive)
@@ -450,15 +429,15 @@ local function __index(origin, k)
             -- check for existing package cache entry and its origin
             local p = origin.pkg_new
             local o = p and p.origin -- MERGE !!!
-            TRACE("CHECK_ORIGIN_ALIAS", origin and origin.name or "<nil>",
-                  o and o.name or "<nil>", p and p.name or "<nil>")
-            if o and o.name ~= origin.name then adjustname(o.name) end
+            TRACE("CHECK_ORIGIN_ALIAS", origin and origin.name or "<nil>", o and o.name or "<nil>", p and p.name or "<nil>")
+            if o and o.name ~= origin.name then
+                adjustname(o.name)
+            end
         end
         local function set_pkgname(origin, var, pkgname)
             if pkgname then
                 local p = Package:new(pkgname)
-                TRACE("PKG_NEW", pkgname, origin.name,
-                      p.origin and p.origin.name or "''")
+                TRACE("PKG_NEW", pkgname, origin.name, p.origin and p.origin.name or "''")
                 origin[var] = p
             end
         end
@@ -492,7 +471,7 @@ local function __index(origin, k)
             "DISTDIR",
             "DIST_SUBDIR",
             "DISTFILES", -- may have ":" followed by fetch label appended
-            "PATCHFILES" -- as above
+            "PATCHFILES", -- as above
         } or {}
         TRACE("PORT_VAR(" .. origin.name .. ", " .. k .. ")", table.unpack(t))
         -- first check for and update port options since they might affect the package name
@@ -531,12 +510,12 @@ local function __index(origin, k)
     local function __port_depends(origin, k)
         local depends_table = {
             build_depends = {
-                "extract_depends_var", "patch_depends_var", "fetch_depends_var",
-                "build_depends_var", "lib_depends_var", "pkg_depends_var"
+                "extract_depends_var", "patch_depends_var", "fetch_depends_var", "build_depends_var", "lib_depends_var",
+                "pkg_depends_var",
             },
             run_depends = {"lib_depends_var", "run_depends_var"},
             test_depends = {"test_depends_var"},
-            special_depends = {"build_depends_var"}
+            special_depends = {"build_depends_var"},
         }
         local t = depends_table[k]
         assert(t, "non-existing dependency " .. k or "<nil>" .. " requested")
@@ -544,7 +523,7 @@ local function __index(origin, k)
         for _, v in ipairs(t) do
             for _, d in ipairs(origin[v] or {}) do
                 local pattern = k == "special_depends" and "^[^:]+:([^:]+:%S+)" or "^[^:]+:([^:]+)$"
-                TRACE ("PORT_DEPENDS", k, d, pattern)
+                TRACE("PORT_DEPENDS", k, d, pattern)
                 local o = string.match(d, pattern)
                 if o then
                     ut[o] = true
@@ -556,7 +535,7 @@ local function __index(origin, k)
     local function __port_conflicts(origin, k)
         local conflicts_table = {
             build_conflicts = {"conflicts_build_var", "conflicts_var"},
-            install_conflicts = {"conflicts_install_var", "conflicts_var"}
+            install_conflicts = {"conflicts_install_var", "conflicts_var"},
         }
         local t = conflicts_table[k]
         assert(t, "non-existing conflict type " .. k or "<nil>" .. " requested")
@@ -564,7 +543,11 @@ local function __index(origin, k)
         for _, v in ipairs(t) do
             local t = origin[v]
             TRACE("CHECK_C?", origin.name, k, v)
-            if t then for _, d in ipairs(t) do ut[d] = true end end
+            if t then
+                for _, d in ipairs(t) do
+                    ut[d] = true
+                end
+            end
         end
         return table.keys(ut)
     end
@@ -607,7 +590,7 @@ local function __index(origin, k)
         conflicts_install_var = __port_vars,
         conflicts_var = __port_vars,
         build_conflicts = __port_conflicts,
-        install_conflicts = __port_conflicts
+        install_conflicts = __port_conflicts,
     }
 
     TRACE("INDEX(o)", origin, k)
@@ -632,14 +615,14 @@ local function __index(origin, k)
     return w
 end
 
--- ----------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------
 --
 local mt = {
     __index = __index,
     __newindex = __newindex, -- DEBUGGING ONLY
     __tostring = function(self)
         return self.name
-    end
+    end,
 }
 
 --
@@ -661,7 +644,7 @@ local function new(Origin, name)
     return nil
 end
 
--- ----------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------
 --
 return {
     -- name = false,
@@ -678,7 +661,7 @@ return {
     wait_checksum = wait_checksum,
     moved_cache_load = moved_cache_load,
     lookup_moved_origin = lookup_moved_origin,
-    dump_cache = dump_cache
+    dump_cache = dump_cache,
 }
 
 --[[

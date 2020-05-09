@@ -25,7 +25,7 @@ OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 SUCH DAMAGE.
 --]]
 
--- ----------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------
 -- local Origin = require ("Origin")
 local Excludes = require("Excludes")
 local Options = require("Options")
@@ -34,7 +34,7 @@ local Msg = require("Msg")
 local Progress = require("Progress")
 local Exec = require("Exec")
 
--- ----------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------
 local P = require("posix")
 local glob = P.glob
 
@@ -47,7 +47,7 @@ local stat_isreg = P_SS.S_ISREG
 local P_US = require("posix.unistd")
 local access = P_US.access
 
--- ----------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------
 -- the Package class describes a package with optional package file
 
 --
@@ -57,7 +57,9 @@ local function filename(args)
     local base = args.base or PATH.packages
     local subdir = args.subdir or "All"
     local extension = args.ext or Options.package_format
-    if string.sub(extension, 1, 1) ~= "." then extension = "." .. extension end
+    if string.sub(extension, 1, 1) ~= "." then
+        extension = "." .. extension
+    end
     local result = path_concat(base, subdir, pkgname .. extension)
     TRACE("FILENAME", base, subdir, pkgname, extension, result)
     return result
@@ -82,7 +84,9 @@ local function pkg_version(pkg)
 end
 
 -- return package basename without version
-local function pkg_basename(pkg) return (string.match(pkg.name, "(%S+)-")) end
+local function pkg_basename(pkg)
+    return (string.match(pkg.name, "(%S+)-"))
+end
 
 -- return package name with only the first part of the version number
 local function pkg_strip_minor(pkg)
@@ -92,42 +96,24 @@ local function pkg_strip_minor(pkg)
     return result
 end
 
--- ----------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------
 -- remove from shlib backup directory all shared libraries replaced by new versions
 -- preserve currently installed shared libraries // <se> check name of control variable
 local function shlibs_backup(pkg)
     local pkg_libs = pkg.shared_libs
     if pkg_libs then
-        local ldconfig_lines = Exec.run {
-            table = true,
-            safe = true,
-            CMD.ldconfig,
-            "-r"
-        } -- "RT?" ??? CACHE LDCONFIG OUTPUT???
+        local ldconfig_lines = Exec.run {table = true, safe = true, CMD.ldconfig, "-r"} -- "RT?" ??? CACHE LDCONFIG OUTPUT???
         for _, line in ipairs(ldconfig_lines) do
-            local libpath, lib = string.match(line, " => (" .. PATH.local_lib ..
-                                                  "*(lib.*%.so%..*))")
+            local libpath, lib = string.match(line, " => (" .. PATH.local_lib .. "*(lib.*%.so%..*))")
             if lib then
                 if stat_isreg(lstat(libpath).st_mode) then
                     for _, l in ipairs(pkg_libs) do
                         if l == lib then
                             local backup_lib = PATH.local_lib_compat .. lib
                             if access(backup_lib, "r") then
-                                Exec.run {
-                                    as_root = true,
-                                    log = true,
-                                    to_tty = true,
-                                    "/bin/unlink",
-                                    backup_lib
-                                }
+                                Exec.run {as_root = true, log = true, to_tty = true, "/bin/unlink", backup_lib}
                             end
-                            Exec.run {
-                                as_root = true,
-                                log = true,
-                                "/bin/cp",
-                                libpath,
-                                backup_lib
-                            }
+                            Exec.run {as_root = true, log = true, "/bin/cp", libpath, backup_lib}
                         end
                     end
                 end
@@ -148,35 +134,20 @@ local function shlibs_backup_remove_stale(pkg)
             end
         end
         if #deletes > 0 then
-            Exec.run {
-                as_root = true,
-                log = true,
-                "/bin/rm",
-                "-f",
-                table.unpack(deletes)
-            }
+            Exec.run {as_root = true, log = true, "/bin/rm", "-f", table.unpack(deletes)}
             Exec.run {as_root = true, log = true, CMD.ldconfig, "-R"}
         end
         return true
     end
 end
 
--- ----------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------
 -- deinstall named package (JAILED)
 local function deinstall(package, make_backup)
     local pkgname = package.name
     if make_backup then
         Progress.show("Create backup package for", pkgname)
-        Exec.pkg {
-            as_root = PARAM.packages_ro,
-            "create",
-            "-q",
-            "-o",
-            PATH.packages_backup,
-            "-f",
-            Options.backup_format,
-            pkgname
-        }
+        Exec.pkg {as_root = PARAM.packages_ro, "create", "-q", "-o", PATH.packages_backup, "-f", Options.backup_format, pkgname}
     end
     if Options.jailed and PARAM.phase ~= "install" then
         Progress.show("De-install", pkgname, "from build jail")
@@ -187,16 +158,18 @@ local function deinstall(package, make_backup)
     end
 end
 
--- ----------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------
 -- get package message in case of an installation to the base system
 local function message(pkg)
     if not Options.dry_run and (not Options.jailed or PARAM.phase == "install") then
         local lines = PkgDb.query {table = true, "%M", pkg.name}
-        if lines then return table.concat(lines, "\n") end
+        if lines then
+            return table.concat(lines, "\n")
+        end
     end
 end
 
--- ----------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------
 -- install package from passed pkg
 local function install(pkg, abi)
     local pkgfile = pkg.pkgfile
@@ -206,29 +179,13 @@ local function install(pkg, abi)
     if string.match(pkgfile, ".*/pkg-[^/]+$") then -- pkg command itself
         if not access(CMD.pkg, "x") then
             env.ASSUME_ALWAYS_YES = "yes"
-            Exec.run {
-                as_root = true,
-                jailed = jailed,
-                log = true,
-                to_tty = true,
-                env = env,
-                "/usr/sbin/pkg",
-                "-v"
-            }
+            Exec.run {as_root = true, jailed = jailed, log = true, to_tty = true, env = env, "/usr/sbin/pkg", "-v"}
         end
         env.SIGNATURE_TYPE = "none"
     elseif abi then
         env.ABI = abi
     end
-    return Exec.pkg {
-        as_root = true,
-        jailed = jailed,
-        to_tty = true,
-        env = env,
-        "add",
-        "-M",
-        pkgfile
-    }
+    return Exec.pkg {as_root = true, jailed = jailed, to_tty = true, env = env, "add", "-M", pkgfile}
 end
 
 -- create category links and a lastest link
@@ -242,8 +199,7 @@ local function category_links_create(pkg_new, categories)
             Exec.run {as_root = true, log = true, "mkdir", "-p", destination}
         end
         if category == "Latest" then
-            destination = destination .. "/" .. pkg_new.name_base .. "." ..
-                              extension
+            destination = destination .. "/" .. pkg_new.name_base .. "." .. extension
         end
         Exec.run {as_root = true, log = true, "ln", "-sf", source, destination}
     end
@@ -261,13 +217,15 @@ local function recover(pkg)
             safe = true,
             "ls",
             "-1t",
-            pkg:filename{base = PATH.packages_backup, subdir = "", ext = ".*"}
+            pkg:filename{base = PATH.packages_backup, subdir = "", ext = ".*"},
         }[1] -- XXX replace with glob and sort by modification time ==> pkg.bakfile
     end
     if pkgfile and access(pkgfile, "r") then
         Msg.show {"Re-installing previous version", pkgname}
         if install(pkgfile, pkg.pkgfile_abi) then
-            if pkg.is_automatic == 1 then pkg:automatic_set(true) end
+            if pkg.is_automatic == 1 then
+                pkg:automatic_set(true)
+            end
             shlibs_backup_remove_stale(pkg)
             -- Exec.run {as_root = true, log = true, "/bin/unlink", PATH.packages_backup .. pkgname .. ".t??"} -- required ???
             return true
@@ -287,7 +245,9 @@ local function file_search(pkg)
                 end
             end
         end
-        if file then return file end
+        if file then
+            return file
+        end
     end
 end
 
@@ -327,7 +287,7 @@ local function delete_old(pkg)
     end
 end
 
--- ----------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------
 -- return true (exit code 0) if named package is locked
 -- set package to auto-installed if automatic == 1, user-installed else
 local function automatic_set(pkg, automatic)
@@ -337,7 +297,9 @@ local function automatic_set(pkg, automatic)
 end
 
 -- check whether package is on includes list
-local function check_excluded(pkg) return Excludes.check_pkg(pkg) end
+local function check_excluded(pkg)
+    return Excludes.check_pkg(pkg)
+end
 
 -- check package name for possibly used default version parameter
 local function check_default_version(origin_name, pkgname)
@@ -352,15 +314,13 @@ local function check_default_version(origin_name, pkgname)
         python2 = "^py(2)(%d)-",
         python3 = "^py(3)(%d)-",
         ruby = "^ruby(%d)(%d)-",
-        tcltk = "^t[ck]l?(%d)(%d)-"
+        tcltk = "^t[ck]l?(%d)(%d)-",
     }
     TRACE("DEFAULT_VERSION", origin_name, pkgname)
     for prog, pattern in pairs(T) do
         local major, minor = string.match(pkgname, pattern)
         if major then
-            local default_version = prog .. "=" ..
-                                        (minor and major .. "." .. minor or
-                                            major)
+            local default_version = prog .. "=" .. (minor and major .. "." .. minor or major)
             origin_name = origin_name .. "%" .. default_version
             TRACE("DEFAULT_VERSION->", origin_name, pkgname)
         end
@@ -368,7 +328,7 @@ local function check_default_version(origin_name, pkgname)
     return origin_name
 end
 
--- ----------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------
 local PACKAGES_CACHE = {} -- should be local with iterator ...
 local PACKAGES_CACHE_LOADED = false -- should be local with iterator ...
 -- setmetatable (PACKAGES_CACHE, {__mode = "v"})
@@ -387,10 +347,7 @@ local function shared_libs_cache_load()
             table.insert(p.shared_libs, lib)
         end
     end
-    Msg.show {
-        level = 2,
-        "The list of provided shared libraries has been loaded"
-    }
+    Msg.show {level = 2, "The list of provided shared libraries has been loaded"}
     Msg.show {level = 2, start = true}
 end
 
@@ -408,16 +365,15 @@ local function req_shared_libs_cache_load()
             table.insert(p.req_shared_libs, lib)
         end
     end
-    Msg.show {
-        level = 2,
-        "The list of required shared libraries has been loaded"
-    }
+    Msg.show {level = 2, "The list of required shared libraries has been loaded"}
     Msg.show {level = 2, start = true}
 end
 
 -- load a list of of origins with flavor for currently installed flavored packages
 local function packages_cache_load()
-    if PACKAGES_CACHE_LOADED then return end
+    if PACKAGES_CACHE_LOADED then
+        return
+    end
     local pkg_flavor = {}
     local pkg_fbsd_version = {}
     Msg.show {level = 2, start = true, "Load list of installed packages ..."}
@@ -436,8 +392,7 @@ local function packages_cache_load()
     local pkg_count = 0
     lines = PkgDb.query {table = true, "%n-%v %o %q %a %k"} -- no dependent packages
     for _, line in ipairs(lines) do
-        local pkgname, origin_name, abi, automatic, locked =
-            string.match(line, "(%S+) (%S+) (%S+) (%d) (%d)")
+        local pkgname, origin_name, abi, automatic, locked = string.match(line, "(%S+) (%S+) (%S+) (%d) (%d)")
         local f = pkg_flavor[pkgname]
         if f then
             origin_name = origin_name .. "@" .. f
@@ -446,7 +401,9 @@ local function packages_cache_load()
         end
         local p = Package:new(pkgname)
         local o = Origin:new(origin_name)
-        if not rawget(o, "old_pkgs") then o.old_pkgs = {} end
+        if not rawget(o, "old_pkgs") then
+            o.old_pkgs = {}
+        end
         o.old_pkgs[pkgname] = true
         p.origin = o
         p.abi = abi
@@ -458,11 +415,7 @@ local function packages_cache_load()
         p.fbsd_version = pkg_fbsd_version[pkgname]
         pkg_count = pkg_count + 1
     end
-    Msg.show {
-        level = 2,
-        "The list of installed packages has been loaded (" .. pkg_count ..
-            " packages)"
-    }
+    Msg.show {level = 2, "The list of installed packages has been loaded (" .. pkg_count .. " packages)"}
     Msg.show {level = 2, start = true, "Load package dependencies"}
     local p = {}
     lines = PkgDb.query {table = true, "%n-%v %rn-%rv"}
@@ -486,12 +439,16 @@ end
 DEP_PKGS_CACHE_LOADED = false
 
 local function dep_pkgs_cache_load(pkg, k)
-    if not DEP_PKGS_CACHE_LOADED then DEP_PKGS_CACHE_LOADED = true end
+    if not DEP_PKGS_CACHE_LOADED then
+        DEP_PKGS_CACHE_LOADED = true
+    end
     return rawget(pkg, k)
 end
 
 --
-local function get(pkgname) return PACKAGES_CACHE[pkgname] end
+local function get(pkgname)
+    return PACKAGES_CACHE[pkgname]
+end
 
 --
 local function installed_pkgs()
@@ -514,7 +471,9 @@ end
 local function __index(pkg, k)
     local function __pkg_vars(pkg, k)
         local function set_field(field, v)
-            if v == "" then v = false end
+            if v == "" then
+                v = false
+            end
             pkg[field] = v
         end
         local t = PkgDb.query {table = true, "%q\n%k\n%a\n%#r", pkg.name_base}
@@ -529,8 +488,7 @@ local function __index(pkg, k)
         local t = PkgDb.query {table = true, "%#d %n-%v"}
         for _, line in ipairs(t) do
             local num_dependencies, pkgname = string.match(line, "(%d+) (%S+)")
-            PACKAGES_CACHE[pkgname].num_dependencies =
-                tonumber(num_dependencies)
+            PACKAGES_CACHE[pkgname].num_dependencies = tonumber(num_dependencies)
         end
         Msg.show {level = 2, "Dependency counts have been loaded"}
         Msg.show {level = 2, start = true}
@@ -581,12 +539,8 @@ local function __index(pkg, k)
             return filename {subdir = "All", pkg}
         end,
         bak_filename = function(pkg, k)
-            return filename {
-                subdir = "portmaster-backup",
-                ext = Options.backup_format,
-                pkg
-            }
-        end
+            return filename {subdir = "portmaster-backup", ext = Options.backup_format, pkg}
+        end,
         --[[
       origin = function (pkg, k)
 	 error ("should be cached")
@@ -614,7 +568,7 @@ local function __index(pkg, k)
                 w = false
             end
         else
-            --error("illegal field requested: Package." .. k)
+            -- error("illegal field requested: Package." .. k)
         end
         TRACE("INDEX(p)->", pkg, k, w)
     else
@@ -637,7 +591,7 @@ local mt = {
     __newindex = __newindex, -- DEBUGGING ONLY
     __tostring = function(self)
         return self.name
-    end
+    end,
 }
 
 -- create new Package object or return existing one for given name
@@ -660,7 +614,7 @@ local function new(Package, name)
     return nil
 end
 
--- ----------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------
 return {
     name = false,
     new = new,
@@ -682,9 +636,8 @@ return {
     shlibs_backup_remove_stale = shlibs_backup_remove_stale,
     automatic_set = automatic_set,
     packages_cache_load = packages_cache_load,
-    dump_cache = dump_cache
+    dump_cache = dump_cache,
 }
-
 
 --[[
    Instance variables of class Package:

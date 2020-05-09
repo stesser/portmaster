@@ -25,7 +25,7 @@ OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 SUCH DAMAGE.
 --]]
 
--- ----------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------
 --
 local EXCLUDED_PKG = {}
 local EXCLUDED_PKG_PREFIX = {}
@@ -119,11 +119,4 @@ local function list()
 end
 
 -- module interface
-return {
-    add = add,
-    add_pkg = add_pkg,
-    add_port = add_port,
-    check_pkg = check_pkg,
-    check_port = check_port,
-    list = list
-}
+return {add = add, add_pkg = add_pkg, add_port = add_port, check_pkg = check_pkg, check_port = check_port, list = list}

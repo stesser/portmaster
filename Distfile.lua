@@ -25,14 +25,14 @@ OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 SUCH DAMAGE.
 --]]
 
--- ----------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------
 -- local Origin = require ("Origin")
 -- local PkgDb = require ("PkgDb")
 -- local Msg = require ("Msg")
 -- local Distfile = require ("Distfile")
 local Exec = require("Exec")
 
--- ----------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------
 --[[
 local P = require ("posix")
 local _exit = P._exit
@@ -68,11 +68,12 @@ local function parse_distinfo(di_filename)
     local di_file = io.open(di_filename, "r")
     if di_file then --  meta-ports do not have a distinfo file
         for line in di_file:lines() do
-            local key, file, value = string.match(line,
-                                                  "(%S+) %((%S+)%) = (%S+)")
+            local key, file, value = string.match(line, "(%S+) %((%S+)%) = (%S+)")
             if key then
                 local t = result[file]
-                if not t then t = {TIMESTAMP = timestamp} end
+                if not t then
+                    t = {TIMESTAMP = timestamp}
+                end
                 t[key] = value
                 TRACE("DISTINFO", key, file, value)
                 result[file] = t
@@ -89,7 +90,9 @@ end
 local function dist_fetch(origin)
     --   Msg.show {level = 3, "Fetch distfiles for '" .. port .. "'"}
     TRACE("DIST_FETCH", origin and origin.name or "<nil>")
-    if not origin then return end
+    if not origin then
+        return
+    end
     local distinfo = parse_distinfo(origin.distinfo_file)
     local port = origin.port
     local result = ""
@@ -104,7 +107,7 @@ local function dist_fetch(origin)
         "-D",
         "PARAM.disable_licenses",
         "DEV_WARNING_WAIT=0",
-        "checksum"
+        "checksum",
     } -- as_root?
     for _, l in ipairs(lines) do
         TRACE("FETCH:", l)
@@ -123,7 +126,7 @@ local function dist_fetch(origin)
 end
 
 --
---local TMPFILE_FETCH_ACK = nil -- GLOABL
+-- local TMPFILE_FETCH_ACK = nil -- GLOABL
 local fetchq = nil -- pipe used as fetch request queue -- GLOBAL
 
 --[[
@@ -304,7 +307,7 @@ end
 return {
     -- fetch = fetch,
     fetch = dist_fetch, -- TESTING ONLY XXX
-    fetch_finish = fetch_finish
+    fetch_finish = fetch_finish,
     -- update_list = update_list,
     -- clean_stale = clean_stale,
 }

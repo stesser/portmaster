@@ -25,10 +25,10 @@ OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 SUCH DAMAGE.
 --]]
 
--- ----------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------
 local Msg = require("Msg")
 
--- ----------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------
 local PROGRESS = {count = 0, max = nil, state = nil}
 
 -- set the upper limit for counter ranges
@@ -76,5 +76,5 @@ return {
     show = show,
     show_task = show_task,
     -- list = list,
-    set_max = set_max
+    set_max = set_max,
 }

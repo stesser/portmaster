@@ -25,11 +25,11 @@ OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 SUCH DAMAGE.
 --]]
 
--- ----------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------
 local Options = require("Options")
 local Msg = require("Msg")
 
--- ----------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------
 local P = require("posix")
 local _exit = P._exit
 
@@ -63,11 +63,11 @@ local function shell(args)
     assert(pid, errmsg)
     if pid == 0 then
         -- child process
-	if args.env then
-	    for k, v in pairs(args.env) do
-		setenv(k, v)
-	    end
-	end
+        if args.env then
+            for k, v in pairs(args.env) do
+                setenv(k, v)
+            end
+        end
         if not args.to_tty then
             close(fd1r)
             dup2(fd1w, fileno(io.stdout)) -- stdout
@@ -105,8 +105,7 @@ end
 
 -- execute command according to passed flags argument
 local function run(args)
-    TRACE("run", "[" .. table.concat(table.keys(args), ",") .. "]",
-          table.unpack(args))
+    TRACE("run", "[" .. table.concat(table.keys(args), ",") .. "]", table.unpack(args))
     if PARAM.jailbase and args.jailed then
         table.insert(args, 1, CMD.chroot)
         table.insert(args, 2, PARAM.jailbase)
@@ -135,10 +134,7 @@ local function run(args)
             end
             args.level = args.safe and 2 or 0
             if Options.dry_run then
-                Msg.show {
-                    verbatim = true,
-                    "\t" .. table.concat(args, " ") .. "\n"
-                }
+                Msg.show {verbatim = true, "\t" .. table.concat(args, " ") .. "\n"}
             else
                 Msg.show(args)
             end
@@ -160,8 +156,12 @@ local function make(args)
     -- local result = shell (args)
     local result = run(args)
     if result then
-        if args.split then result = split_words(result) end
-        if result == "" then result = nil end
+        if args.split then
+            result = split_words(result)
+        end
+        if result == "" then
+            result = nil
+        end
     end
     return result
 end
@@ -175,7 +175,9 @@ local function pkg(args)
         end
         args.jailed = nil
     end
-    if Options.developer_mode then table.insert(args, 1, "--debug") end
+    if Options.developer_mode then
+        table.insert(args, 1, "--debug")
+    end
     table.insert(args, 1, CMD.pkg)
     -- return shell (args)
     return run(args)

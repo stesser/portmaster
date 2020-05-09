@@ -23,32 +23,28 @@ HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
 LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
 OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 SUCH DAMAGE.
---]]
-
--- ----------------------------------------------------------------------------------
+--]] -------------------------------------------------------------------------------------
 --
 -- list dependencies for given origin and phase (build, run, test, all)
 local DEPEND_ARGS = {
-   build = "-V PKG_DEPENDS -V EXTRACT_DEPENDS -V PATCH_DEPENDS -V FETCH_DEPENDS -V BUILD_DEPENDS -V LIB_DEPENDS",
-   run = "-V RUN_DEPENDS -V LIB_DEPENDS",
-   test = "-V TEST_DEPENDS",
-   -- package = "",
+    build = "-V PKG_DEPENDS -V EXTRACT_DEPENDS -V PATCH_DEPENDS -V FETCH_DEPENDS -V BUILD_DEPENDS -V LIB_DEPENDS",
+    run = "-V RUN_DEPENDS -V LIB_DEPENDS",
+    test = "-V TEST_DEPENDS",
+    -- package = "",
 }
 DEPEND_ARGS.all = DEPEND_ARGS.build .. " -V RUN_DEPENDS"
 
-local function list (origin, dep_type)
-   TRACE (origin.name, dep_type)
-   local args = DEPEND_ARGS[dep_type]
-   assert (args, "No dependency check defined for phase '" .. dep_type .. "'")
-   local lines = origin:port_make {table = true, safe = true, dep_type .. "-depends-list"}
-   local result = {}
-   for i, line in ipairs (lines) do
-      table.insert (result, Origin:new (line:match (".*/([^/]+/[^/]+)$")))
-   end
-   return result
+local function list(origin, dep_type)
+    TRACE(origin.name, dep_type)
+    local args = DEPEND_ARGS[dep_type]
+    assert(args, "No dependency check defined for phase '" .. dep_type .. "'")
+    local lines = origin:port_make{table = true, safe = true, dep_type .. "-depends-list"}
+    local result = {}
+    for i, line in ipairs(lines) do
+        table.insert(result, Origin:new(line:match(".*/([^/]+/[^/]+)$")))
+    end
+    return result
 end
 
 -- module interface
-return {
-   list = list,
-}
+return {list = list}

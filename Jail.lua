@@ -25,11 +25,11 @@ OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 SUCH DAMAGE.
 --]]
 
--- ----------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------
 local Options = require("Options")
 local Exec = require("Exec")
 
--- ----------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------
 local P_US = require("posix.unistd")
 local rmdir = P_US.rmdir
 
@@ -80,14 +80,13 @@ local JAIL_FS = {
     ["/var/db/pkg"] = {fs_type = "dir"},
     ["/var/db/ports"] = {fs_type = "null"},
     ["/var/run"] = {fs_type = "dir"},
-    ["/var/tmp"] = {fs_type = "dir"}
+    ["/var/tmp"] = {fs_type = "dir"},
 }
 
 -- ---------------------------------------------------------------------------
 local function unmount_all(jaildir)
     TRACE("UNMOUNT_ALL", jaildir)
-    assert(jaildir and jaildir == PARAM.jailbase,
-           "invalid jail directory " .. jaildir .. " passed")
+    assert(jaildir and jaildir == PARAM.jailbase, "invalid jail directory " .. jaildir .. " passed")
     local mnt_dev, mnt_point, md_unit
     local df_lines = Exec.run {table = true, safe = true, "df"}
     for i = #df_lines, 2, -1 do
@@ -97,14 +96,7 @@ local function unmount_all(jaildir)
             TRACE("UNMOUNT", mnt_point, md_unit)
             Exec.run {as_root = true, log = true, "umount", mnt_point}
             if md_unit then
-                Exec.run {
-                    as_root = true,
-                    log = true,
-                    "mdconfig",
-                    "-d",
-                    "-u",
-                    md_unit
-                }
+                Exec.run {as_root = true, log = true, "mdconfig", "-d", "-u", md_unit}
             end
             rmdir(mnt_point)
         end
@@ -135,8 +127,7 @@ end
 local function mount_null(fs_type, what, where, param)
     TRACE("MOUNT_NULL", fs_type, what, where, param)
     param = param or "ro"
-    assert(param == "rw" or param == "ro", "Invalid parameter '" .. param ..
-               "' passed to jail mount of " .. where)
+    assert(param == "rw" or param == "ro", "Invalid parameter '" .. param .. "' passed to jail mount of " .. where)
     --   local real_fs = Exec.run {safe = true, "realpath", what}
     --   if dir_is_fsroot (real_fs) then
     return do_mount("null", what, where, param)
@@ -146,8 +137,7 @@ end
 
 local function mount_special(fs_type, what, where, param)
     assert(not param or param == "linrdlnk",
-           "Invalid parameter '" .. (param or "<nil>") ..
-               "' passed to jail mount of " .. where)
+           "Invalid parameter '" .. (param or "<nil>") .. "' passed to jail mount of " .. where)
     return do_mount(fs_type, what, where, param)
 end
 
@@ -166,7 +156,7 @@ local MOUNT_PROCS = {
     linsys = mount_special,
     null = mount_null,
     proc = mount_special,
-    tmp = mount_tmp
+    tmp = mount_tmp,
     -- union =	mount_union,
 }
 
@@ -174,12 +164,7 @@ local MOUNT_PROCS = {
 local function mount_all(jaildir)
     local dirs = table.keys(JAIL_FS)
     table.sort(dirs)
-    local df_lines = Exec.run {
-        table = true,
-        safe = true,
-        "df",
-        table.unpack(dirs)
-    }
+    local df_lines = Exec.run {table = true, safe = true, "df", table.unpack(dirs)}
     for i, dir in ipairs(dirs) do
         local mnt_point = string.match(df_lines[i + 1], ".*%s(/%S*)$")
         local spec = JAIL_FS[dir]
@@ -187,15 +172,13 @@ local function mount_all(jaildir)
         local mount_opt = spec.fs_opt
         local real_fs = Exec.run {safe = true, "realpath", dir}
         local where = path_concat(jaildir, real_fs)
-        TRACE("MOUNT", fs_type, jaildir, dir, mnt_point, real_fs, where,
-              mount_opt or "<nil>")
+        TRACE("MOUNT", fs_type, jaildir, dir, mnt_point, real_fs, where, mount_opt or "<nil>")
         if not is_dir(where) then
             Exec.run {as_root = true, "mkdir", "-p", where}
             assert(is_dir(where)) -- assert that mount point directory has been created
         end
         local mount_proc = MOUNT_PROCS[fs_type]
-        assert(mount_proc,
-               "unknown file system type " .. fs_type .. " for " .. dir)
+        assert(mount_proc, "unknown file system type " .. fs_type .. " for " .. dir)
         mount_proc(fs_type, real_fs, where, mount_opt)
     end
 end
@@ -221,8 +204,7 @@ end
 -- create (partially filtered) copies of most relevant files from /etc in the jail (must be run under root account, currently)
 local function setup_etc(jaildir)
     assert(jaildir and #jaildir > 0, "Empty jaildir in jail_create_etc")
-    assert(is_dir(path_concat(jaildir, "/etc")),
-           "Destination directory " .. jaildir .. "/etc does not exist")
+    assert(is_dir(path_concat(jaildir, "/etc")), "Destination directory " .. jaildir .. "/etc does not exist")
     -- create /etc/passwd and /etc/master.passwd
     local inpf = io.open("/etc/passwd", "r")
     assert(inpf)
@@ -232,14 +214,12 @@ local function setup_etc(jaildir)
     local gids = {}
     for line in inpf:lines() do
         local user, pwd, uid, gid, geos, home, shell =
-            line:match(
-                "^([^#][^:]*):([^:]*):([^:]*):([^:]*):([^:]*):([^:]*):([^:]*)")
+            line:match("^([^#][^:]*):([^:]*):([^:]*):([^:]*):([^:]*):([^:]*):([^:]*)")
         if user then
             uid = tonumber(uid)
             if uid < JAIL_UID_EXCL_LOW or JAIL_UID_EXCL_HIGH < uid then
                 outf1:write(line .. "\n")
-                outf2:write(user .. ":" .. pwd .. ":" .. uid .. ":" .. gid ..
-                                "::0:0:" .. geos .. ":" .. home .. ":" .. shell ..
+                outf2:write(user .. ":" .. pwd .. ":" .. uid .. ":" .. gid .. "::0:0:" .. geos .. ":" .. home .. ":" .. shell ..
                                 "\n")
             end
             gids[gid] = true
@@ -248,10 +228,7 @@ local function setup_etc(jaildir)
     inpf:close()
     outf1:close()
     outf2:close()
-    Exec.run {
-        "pwd_mkdb", "-d", path_concat(jaildir, "/etc"),
-        path_concat(jaildir, "/etc/master.passwd")
-    }
+    Exec.run {"pwd_mkdb", "-d", path_concat(jaildir, "/etc"), path_concat(jaildir, "/etc/master.passwd")}
 
     -- create /etc/group
     local inpf = io.open("/etc/group", "r")
@@ -259,8 +236,7 @@ local function setup_etc(jaildir)
     local outf1 = io.open(path_concat(jaildir, "/etc/group"), "w+")
     assert(outf1)
     for line in inpf:lines() do
-        local group, pwd, gid, groups = line:match(
-                                            "^([^#][^:]*):([^:]*):([^:]*):([^:]*)")
+        local group, pwd, gid, groups = line:match("^([^#][^:]*):([^:]*):([^:]*):([^:]*)")
         if group then
             gid = tonumber(gid)
             if gids[gid] or gid < JAIL_GID_EXCL_LOW or JAIL_GID_EXCL_HIGH < gid then
@@ -271,31 +247,13 @@ local function setup_etc(jaildir)
     inpf:close()
     outf1:close()
     -- further required files are copied unmodified
-    provide_file(jaildir, "/etc/shells", "/etc/rc.subr", "/etc/make.conf",
-                 "/etc/src.conf", "/etc/rc.d", "/etc/defaults")
-    provide_file(jaildir, PATH.localbase .. "/etc/pkg.conf", PATH.localbase .. "/etc/pkg",
-                 "/var/log/utx.log")
+    provide_file(jaildir, "/etc/shells", "/etc/rc.subr", "/etc/make.conf", "/etc/src.conf", "/etc/rc.d", "/etc/defaults")
+    provide_file(jaildir, PATH.localbase .. "/etc/pkg.conf", PATH.localbase .. "/etc/pkg", "/var/log/utx.log")
 end
 
 local function setup_var_run(jaildir)
-    Exec.run {
-        as_root = true,
-        jailed = true,
-        log = true,
-        "ldconfig",
-        "/lib",
-        "/usr/lib",
-        PATH.localbase .. "/lib"
-    }
-    Exec.run {
-        as_root = true,
-        jailed = true,
-        log = true,
-        "ldconfig",
-        "-32",
-        "/usr/lib32",
-        PATH.localbase .. "/lib32"
-    }
+    Exec.run {as_root = true, jailed = true, log = true, "ldconfig", "/lib", "/usr/lib", PATH.localbase .. "/lib"}
+    Exec.run {as_root = true, jailed = true, log = true, "ldconfig", "-32", "/usr/lib32", PATH.localbase .. "/lib32"}
 end
 
 local function setup_usr_local(jaildir)
@@ -318,7 +276,9 @@ local function create()
 end
 
 local function destroy()
-    if not Options.dry_run then unmount_all(PARAM.jailbase) end
+    if not Options.dry_run then
+        unmount_all(PARAM.jailbase)
+    end
     PARAM.jailbase = nil
 end
 

@@ -182,6 +182,21 @@ function split_lines(str)
     return result
 end
 
+-- split line at blanks into parts at most columns long and return as table
+function split_at (line, columns)
+    local result = {}
+    while #line > columns do
+        local l0 = string.sub (line, 1, columns)
+        local l1, l2 = string.match (l0, "([%S ]+) (.*)")
+        line = l2 .. string.sub(line, columns +1)
+        table.insert (result, l1)
+    end
+    if #line > 0 then
+        table.insert (result, line)
+    end
+    return result
+end
+
 --
 function set_str(self, field, v)
     self[field] = v ~= "" and v or false

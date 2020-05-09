@@ -753,12 +753,6 @@ local function print_version()
     Msg.show {start = true, PROGRAM, "version", VERSION}
 end
 
--- convert option to rc file form (upper case and dash instead of underscore)
-local function opt_name_rc(opt)
-    opt = string.gsub(opt, "_", "-")
-    return string.upper(opt)
-end
-
 -- print rc file line to set option to "yes" or to "no" for all passed option names
 local function opt_state_rc(...)
     local opts = {...}
@@ -766,7 +760,6 @@ local function opt_state_rc(...)
     for i = 1, #opts do
         local opt = opts[i]
         if Options[opt] then
-            opt = opt_name_rc(opt)
             table.insert(result, opt .. "=yes")
         else
             table.insert(result, opt .. "=no")

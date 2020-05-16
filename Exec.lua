@@ -32,6 +32,8 @@ local Msg = require("Msg")
 -------------------------------------------------------------------------------------
 local P = require("posix")
 local _exit = P._exit
+local poll = P.poll
+local read = P.read
 
 local P_IO = require("posix.stdio")
 local fdopen = P_IO.fdopen
@@ -50,9 +52,43 @@ local execp = P_US.execp
 local fork = P_US.fork
 local pipe = P_US.pipe
 
--- execute shell command and return its standard output (UTIL) -- not exported !!!
--- the return value is a list with one entry per line without the trailing new-line
-local function shell(args)
+-------------------
+-- indexed by fd:
+local pollfds = {} -- file descriptors for poll
+local result = {} -- table of tables with output received from file descriptor
+local fdpid = {} -- table mapping file descriptors to pids
+-- indexed by pid:
+local numpidfds = {} -- number of open file descriptors for given pid
+local pidfd = {} -- file descriptors (stdout, stderr) for this pid
+local tasks = {} -- task table with arguments for finalization of background jobs per pid
+
+local function add_poll_fd(pid, fd)
+    TRACE("ADDPOLL", pid, fd)
+    if not pidfd[pid] then
+        pidfd[pid] = {}
+    end
+    table.insert(pidfd[pid], fd)
+    pollfds[fd] = {events = {IN = true}}
+    result[fd] = {}
+    fdpid[fd] = pid
+    numpidfds[pid] = (numpidfds[pid] or 0) + 1
+end
+
+local function rm_poll_fd(fd)
+    local pid = fdpid[fd]
+    TRACE("RMPOLL", pid, fd)
+    fdpid[fd] = nil
+    close(fd)
+    pollfds[fd] = nil
+    numpidfds[pid] = numpidfds[pid] - 1
+    if numpidfds[pid] == 0 then
+        return pid
+    end
+end
+
+------------
+local function task_create (args)
+    --TRACE("TASK_CREATE", table.unpack(args))
     local fd1r, fd1w
     local fd2r, fd2w
     if not args.to_tty then
@@ -63,43 +99,120 @@ local function shell(args)
     assert(pid, errmsg)
     if pid == 0 then
         -- child process
-        if args.env then
-            for k, v in pairs(args.env) do
-                setenv(k, v)
-            end
-        end
         if not args.to_tty then
             close(fd1r)
             dup2(fd1w, fileno(io.stdout)) -- stdout
             close(fd2r)
             dup2(fd2w, fileno(io.stderr)) -- stderr
         end
+        if args.env then
+            for k, v in pairs(args.env) do
+                setenv(k, v)
+            end
+        end
         local cmd = table.remove(args, 1)
-        assert(execp(cmd, args))
-        _exit(1) -- not reached ???
+        local exitcode, errmsg = execp (cmd, args)
+        TRACE("EXECP", exitcode, errmsg)
+        assert (exitcode, errmsg)
+        _exit (1) -- not reached ???
     end
     if args.to_tty then
         local pid, status, exitcode = wait(pid)
         TRACE("==>", exitcode, status)
-        return exitcode == 0, status
+        return exitcode == 0
     end
     close(fd1w)
-    close(fd2r) -- OK to ignore any output to stderr ???
     close(fd2w)
-    local inp = fdopen(fd1r, "r")
-    local result = {}
-    local line = inp:read()
-    while line do
-        table.insert(result, line)
-        line = inp:read()
+    add_poll_fd(pid, fd1r)
+    add_poll_fd(pid, fd2r)
+    if args.finalize then
+        TRACE ("ADDTASK", pid, args)
+        tasks[pid] = args
     end
-    inp:close()
-    local pid, status, exitcode = wait(pid)
-    TRACE("==>", exitcode, status)
-    if (args.table) then
-        return result
-    else
-        return result[1]
+    return pid
+end
+
+--
+local function poll_fds(timeout)
+  timeout = timeout or -1
+  local idle
+  while not idle do
+    idle = true
+    if poll(pollfds, timeout) == 0 then
+      return
+    end
+    for fd in pairs (pollfds) do
+      if pollfds[fd].revents.IN then
+        local data = read (fd, 128 * 1024) -- 4096 max on FreeBSD
+        if #data > 0 then
+          table.insert(result[fd], data)
+          idle = false
+        else
+          if pollfds[fd].revents.HUP then
+            local pid = rm_poll_fd(fd)
+            if pid then
+              return pid
+            end
+          end
+        end
+      end
+    end
+  end
+end
+
+--
+local function shell_run (timeout)
+  local function fetch_result (pid, n)
+    local fd = pidfd[pid][n]
+    local text = table.concat(result[fd],"")
+    result[fd] = nil
+    return text
+  end
+  while next(pollfds) do
+    local pid = poll_fds (timeout)
+    if pid then
+      local _, _, exitcode = wait (pid)
+      return pid, exitcode, fetch_result(pid, 1), fetch_result(pid, 2)
+    end
+  end
+end
+
+--
+local function tasks_poll(waitpid)
+    TRACE("TASKSPOLL", waitpid, next(tasks))
+    local timeout = waitpid and -1 or 0
+    while next(tasks) or waitpid do
+        local pid, exitcode, stdout, stderr = shell_run(timeout)
+        if pid then
+            TRACE("WAIT->", pid, exitcode)
+            if waitpid == pid then
+                tasks[pid] = nil
+                TRACE("TASKSPOLL->", stdout)
+                return exitcode, stdout, stderr
+            end
+            local args = tasks[pid]
+            local f = args.finalize
+            f(args.finalize_arg, stdout, stderr, exitcode)
+            tasks[pid] = nil
+        end
+        if not waitpid then
+            return
+        end
+    end
+end
+
+-- execute shell command and return its standard output (UTIL) -- not exported !!!
+-- the return value is a list with one entry per line without the trailing new-line
+local function shell(args)
+    local pid = task_create(args)
+    if not args.to_tty then
+        local exitcode, stdout, stderr = tasks_poll(pid)
+        TRACE("==>", exitcode)
+        if (args.table) then
+            return split_lines(stdout)
+        else
+            return stdout
+        end
     end
 end
 

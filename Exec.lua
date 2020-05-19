@@ -25,6 +25,33 @@ OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 SUCH DAMAGE.
 --]]
 
+--[[
+
+Concept for background execution of functions:
+
+- functions that may block waiting for I/O are executed as coroutines
+- the I/O is actually performed in the main program (not in a coroutine)
+- when I/O is complete (HUP detected) the program waiting for the output is resumed
+- when the background job needs to execute an external program it calls yield with
+  return values that control the execution (cmd, arguments, flags)
+- coroutines for such background functions just return at the end of their code path
+  (no return value, results provided by side-effects)
+- I/O may be due to execution of an external program or a request for user input
+- both reading from a pipe for an external program and STDIN or TTY must be supported
+- posix.poll is used to select file descriptors that have data to be read
+- the poll timeout should be 0 until some number of tasks has been created
+- the poll timeout shall grow with the number of tasks to slow down the main program
+  and to limit the number of background tasks it creates
+- it might be useful to support tags for background tasks and to be able to wait
+  for all tasks with a given tag to have completed
+- each task creation should end with a call to polling and reading new data
+- there must be a function that waits for all or selected tasks to have terminated
+- a use case is the fetching of distribution files
+- another use case is adding new actions (which needs to run "make" to obtain values
+  for the port and package object instances being created)
+
+--]]
+
 -------------------------------------------------------------------------------------
 local Options = require("Options")
 local Msg = require("Msg")
@@ -119,7 +146,7 @@ local function task_create (args)
     if args.to_tty then
         local pid, status, exitcode = wait(pid)
         TRACE("==>", exitcode, status)
-        return exitcode == 0
+        return pid -- exitcode == 0
     end
     close(fd1w)
     close(fd2w)
@@ -205,6 +232,7 @@ end
 -- the return value is a list with one entry per line without the trailing new-line
 local function shell(args)
     local pid = task_create(args)
+    TRACE ("EXECPID", pid)
     if not args.to_tty then
         local exitcode, stdout, stderr = tasks_poll(pid)
         TRACE("==>", exitcode)
@@ -214,6 +242,7 @@ local function shell(args)
             return stdout
         end
     end
+    return pid ~= nil
 end
 
 -- execute command according to passed flags argument

@@ -3,7 +3,7 @@
 --[[
 SPDX-License-Identifier: BSD-2-Clause-FreeBSD
 
-Copyright (c) 2019, 2020 Stefan Eßer <se@freebsd.org>
+Copyright (c) 2019, 2020 Stefan EÃŸer <se@freebsd.org>
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions
@@ -29,6 +29,8 @@ SUCH DAMAGE.
 
 -------------------------------------------------------------------------------------
 package.path = package.path .. ";/home/se/src/GIT/portmaster/?.lua"
+
+--local dbg = require("debugger")
 
 -------------------------------------------------------------------------------------
 local P = require("posix")
@@ -137,14 +139,6 @@ function TRACE(...)
                           dbginfo.currentline .. "\t" .. tracemsg .. "\n")
     end
 end
-
---[[
--- override LUA error function
-function error(...)
-    TRACE("ERROR", ...)
-    -- error (...)
-end
---]]
 
 -- abort script execution with an internal error message on unexpected error
 function fail_bug(...)
@@ -259,6 +253,7 @@ function table:index(val)
 end
 
 ------------------------------------------------------------------------------------- (UTIL)
+-- move all path and file specific functions into module(s) Path and/or File???
 -- create tempfile with a name that contains "$type" and the portmaster PID
 function tempfile_create(type)
     local pattern = "pm-" .. getpid() .. "-" .. type
@@ -892,6 +887,7 @@ local function main()
 
     --  allow the specification of -a and -r together with further individual ports to install or upgrade
     if #args > 0 then
+        --dbg()
         args.force = Options.force
         ports_add_multiple(args)
     end

@@ -15,3 +15,5 @@ BACKUP-*
 *.tar.gz
 .lua-format.conf
 portmaster-devel
+debugger.lua
+Coroutine-Test/test.lua

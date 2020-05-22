@@ -188,6 +188,11 @@ local function install(origin)
     return origin:port_make{to_tty = true, jailed = true, as_root = true, "install"}
 end
 
+--
+local function check_license(origin)
+    return true -- DUMMY return value XXX
+end
+
 -- -------------------------
 local MOVED_CACHE = nil -- table indexed by old origin (as text) and giving struct with new origin (as text), date and reason for move
 local MOVED_CACHE_REV = nil -- table indexed by new origin (as text) giving previous origin (as text)
@@ -662,6 +667,7 @@ return {
     moved_cache_load = moved_cache_load,
     lookup_moved_origin = lookup_moved_origin,
     dump_cache = dump_cache,
+    check_license = check_license,
 }
 
 --[[

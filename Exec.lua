@@ -79,7 +79,7 @@ local execp = P_US.execp
 local fork = P_US.fork
 local pipe = P_US.pipe
 
--------------------
+-------------------------------------------------------------------------------------
 -- indexed by fd:
 local pollfds = {} -- file descriptors for poll
 local result = {} -- table of tables with output received from file descriptor
@@ -92,9 +92,10 @@ local tasks = {} -- task table with arguments for finalization of background job
 local function add_poll_fd(pid, fd)
     TRACE("ADDPOLL", pid, fd)
     if not pidfd[pid] then
-        pidfd[pid] = {}
+        pidfd[pid] = {fd}
+    else
+        table.insert(pidfd[pid], fd)
     end
-    table.insert(pidfd[pid], fd)
     pollfds[fd] = {events = {IN = true}}
     result[fd] = {}
     fdpid[fd] = pid
@@ -103,7 +104,7 @@ end
 
 local function rm_poll_fd(fd)
     local pid = fdpid[fd]
-    TRACE("RMPOLL", pid, fd)
+    TRACE("RMPOLL", pid, fd, numpidfds[pid])
     fdpid[fd] = nil
     close(fd)
     pollfds[fd] = nil
@@ -113,7 +114,7 @@ local function rm_poll_fd(fd)
     end
 end
 
-------------
+-------------------------------------------------------------------------------------
 local function task_create (args)
     --TRACE("TASK_CREATE", table.unpack(args))
     local fd1r, fd1w
@@ -139,110 +140,92 @@ local function task_create (args)
         end
         local cmd = table.remove(args, 1)
         local exitcode, errmsg = execp (cmd, args)
-        TRACE("EXECP", exitcode, errmsg)
+        TRACE("EXEC(Child)->", exitcode, errmsg)
         assert (exitcode, errmsg)
         _exit (1) -- not reached ???
     end
     if args.to_tty then
         local pid, status, exitcode = wait(pid)
-        TRACE("==>", exitcode, status)
-        return pid -- exitcode == 0
+        TRACE("EXEC(Parent)->", exitcode, status)
+        return pid
     end
     close(fd1w)
     close(fd2w)
     add_poll_fd(pid, fd1r)
     add_poll_fd(pid, fd2r)
-    if args.finalize then
-        TRACE ("ADDTASK", pid, args)
-        tasks[pid] = args
-    end
     return pid
 end
 
 --
-local function poll_fds(timeout)
-  timeout = timeout or -1
-  local idle
-  while not idle do
-    idle = true
-    if poll(pollfds, timeout) == 0 then
-      return
+local function tasks_poll(timeout)
+    local function fetch_result (pid, n)
+        local fd = pidfd[pid][n]
+        local text = result[fd] and table.concat(result[fd],"")
+        result[fd] = nil
+        return text
     end
-    for fd in pairs (pollfds) do
-      if pollfds[fd].revents.IN then
-        local data = read (fd, 128 * 1024) -- 4096 max on FreeBSD
-        if #data > 0 then
-          table.insert(result[fd], data)
-          idle = false
-        else
-          if pollfds[fd].revents.HUP then
+    if next(pollfds) then
+        local idle
+        timeout = timeout or 0
+        while not idle and poll(pollfds, timeout) > 0 do
+        idle = true
+        for fd in pairs (pollfds) do
+            if pollfds[fd].revents.IN then
+            local data = read (fd, 128 * 1024) -- 4096 max on FreeBSD
+            if #data > 0 then
+                table.insert(result[fd], data)
+                idle = false
+            end
+            end
+            if pollfds[fd].revents.HUP then
             local pid = rm_poll_fd(fd)
             if pid then
-              return pid
-            end
-          end
-        end
-      end
-    end
-  end
-end
-
---
-local function shell_run (timeout)
-  local function fetch_result (pid, n)
-    local fd = pidfd[pid][n]
-    local text = table.concat(result[fd],"")
-    result[fd] = nil
-    return text
-  end
-  while next(pollfds) do
-    local pid = poll_fds (timeout)
-    if pid then
-      local _, _, exitcode = wait (pid)
-      return pid, exitcode, fetch_result(pid, 1), fetch_result(pid, 2)
-    end
-  end
-end
-
---
-local function tasks_poll(waitpid)
-    TRACE("TASKSPOLL", waitpid, next(tasks))
-    local timeout = waitpid and -1 or 0
-    while next(tasks) or waitpid do
-        local pid, exitcode, stdout, stderr = shell_run(timeout)
-        if pid then
-            TRACE("WAIT->", pid, exitcode)
-            if waitpid == pid then
+                local _, _, exitcode = wait (pid)
+                local stdout = fetch_result(pid, 1)
+                local stderr = fetch_result(pid, 2)
+                local co = tasks[pid]
                 tasks[pid] = nil
-                TRACE("TASKSPOLL->", stdout)
+                if co then
+                coroutine.resume(co, exitcode, stdout, stderr)
+                else
                 return exitcode, stdout, stderr
+                end
             end
-            local args = tasks[pid]
-            local f = args.finalize
-            f(args.finalize_arg, stdout, stderr, exitcode)
-            tasks[pid] = nil
+            end
         end
-        if not waitpid then
-            return
         end
     end
 end
 
--- execute shell command and return its standard output (UTIL) -- not exported !!!
--- the return value is a list with one entry per line without the trailing new-line
+-----------------------
+local function spawn(f, ...)
+    tasks_poll()
+    local co = coroutine.create(f)
+    coroutine.resume(co, ...)
+end
+
 local function shell(args)
-    local pid = task_create(args)
-    TRACE ("EXECPID", pid)
-    if not args.to_tty then
-        local exitcode, stdout, stderr = tasks_poll(pid)
-        TRACE("==>", exitcode)
-        if (args.table) then
-            return split_lines(stdout)
-        else
-            return stdout
-        end
+    local co = coroutine.running()
+    local bg = coroutine.isyieldable(co)
+    if (bg) then
+        local pid = task_create(args)
+        tasks[pid] = co
+        return coroutine.yield()
+    else
+        local pid = task_create(args)
+        tasks[pid] = false
     end
-    return pid ~= nil
+        local exitcode, stdout, stderr = tasks_poll(bg and 0 or -1)
+    if not args.to_tty then
+            TRACE("SHELL(stdout)", "<" .. stdout .. ">")
+            TRACE("SHELL(stderr)", "<" .. stderr .. ">")
+            TRACE("SHELL(exitcode)", exitcode)
+            if stdout and args.table then
+                return split_lines(stdout)
+            else
+                return chomp(stdout)
+            end
+        end
 end
 
 -- execute command according to passed flags argument

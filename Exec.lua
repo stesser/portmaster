@@ -145,9 +145,9 @@ local function task_create (args)
         _exit (1) -- not reached ???
     end
     if args.to_tty then
-        local pid, status, exitcode = wait(pid)
+        local _, status, exitcode = wait(pid)
         TRACE("EXEC(Parent)->", exitcode, status)
-        return pid
+        return exitcode
     end
     close(fd1w)
     close(fd2w)
@@ -188,6 +188,7 @@ local function tasks_poll(timeout)
                         if co then
                             coroutine.resume(co, exitcode, stdout, stderr)
                         else
+                            TRACE ("EXIT", exitcode, stdout, stderr)
                             return exitcode, stdout, stderr
                         end
                     end
@@ -207,28 +208,29 @@ end
 
 --
 local function shell(args)
+    if args.to_tty then
+        return task_create(args)
+    end
     local co = coroutine.running()
     local bg = coroutine.isyieldable(co)
     if (bg) then
         -- in coroutine: execute background process
         local pid = task_create(args)
         tasks[pid] = co
-        return coroutine.yield()
+        coroutine.yield()
+        return true
     else
         -- in main program wait for and return results
         local pid = task_create(args)
         tasks[pid] = false
-        local exitcode, stdout, stderr = tasks_poll(-1)
-        if not args.to_tty then
-            TRACE("SHELL(stdout)", "<" .. stdout .. ">")
-            TRACE("SHELL(stderr)", "<" .. stderr .. ">")
-            TRACE("SHELL(exitcode)", exitcode)
-            if stdout and args.table then
-                return split_lines(stdout), chomp(stderr), exitcode
-            else
-                return chomp(stdout), chomp(stderr), exitcode
-            end
+        local exitcode, stdout, stderr
+        while not exitcode do
+            exitcode, stdout, stderr = tasks_poll(-1)
         end
+        TRACE("SHELL(stdout)", "<" .. (stdout or "") .. ">")
+        TRACE("SHELL(stderr)", "<" .. (stderr or "").. ">")
+        TRACE("SHELL(exitcode)", exitcode)
+        return exitcode, stdout, stderr
     end
 end
 
@@ -272,27 +274,34 @@ local function run(args)
     if Options.dry_run and not args.safe then
         return args.table and {} or "" -- dummy return value for --dry-run
     end
-    return shell(args)
+    local exitcode, stdout, stderr = shell(args)
+    if args.to_tty then
+        return exitcode == 0
+    else
+        stdout = chomp(stdout)
+        stderr = chomp(stderr)
+        if stdout == "" then
+            stdout = nil
+        end
+        if stdout then
+            if args.table then
+                stdout = split_lines(stdout)
+            elseif args.split then
+                stdout = split_words(stdout)
+            end
+        end
+        return stdout, stderr, exitcode
+    end
 end
 
 -- run make command
 local function make(args)
     table.insert(args, 1, CMD.make)
     if args.trace then
-        table.insert(args, 1, "ktrace")
+        table.insert(args, 1, "ktrace") -- CMD.ktrace = /usr/bin/ktrace
         table.insert(args, 2, "-dia")
     end
-    -- local result = shell (args)
-    local result = run(args)
-    if result then
-        if args.split then
-            result = split_words(result)
-        end
-        if result == "" then
-            result = nil
-        end
-    end
-    return result
+    return run(args)
 end
 
 -- execute and log a package command that does not modify any state (JAILED)
@@ -308,7 +317,6 @@ local function pkg(args)
         table.insert(args, 1, "--debug")
     end
     table.insert(args, 1, CMD.pkg)
-    -- return shell (args)
     return run(args)
 end
 

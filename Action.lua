@@ -209,7 +209,7 @@ local function port_clean(action)
     for _, origin_target in ipairs(special_depends) do
         TRACE("PORT_CLEAN_SPECIAL_DEPENDS", o_n.name, origin_target)
         local target = target_part(origin_target)
-        local origin = Origin.get(origin_target:gsub(":.*", ""))
+        local origin = Origin:new(origin_target:gsub(":.*", ""))
         if target ~= "fetch" and target ~= "checksum" then
             return origin:port_make(args)
         end
@@ -937,8 +937,8 @@ local function fixup_conflict(action1, action2)
     else
         -- other cases
     end
-    error("Duplicate actions for " .. pkgname .. ":\n#	1) " .. (action1 and describe(action1) or "") .. "\n#	2) " ..
-              (action2 and describe(action2) or ""))
+    --error("Duplicate actions for " .. pkgname .. ":\n#	1) " .. (action1 and describe(action1) or "") .. "\n#	2) " ..
+    --          (action2 and describe(action2) or ""))
 end
 
 -- object that controls the upgrading and other changes
@@ -949,8 +949,8 @@ local function cache_add(action)
         clear_cached_action(action)
         clear_cached_action(action0)
         fixup_conflict(action, action0) -- re-register in ACTION_CACHE after fixup???
-        error("Duplicate actions resolved for " .. pkgname .. ":\n#	1) " .. (action and describe(action) or "") .. "\n#	2) " ..
-                  (action0 and describe(action0) or ""))
+        --error("Duplicate actions resolved for " .. pkgname .. ":\n#	1) " .. (action and describe(action) or "") .. "\n#	2) " ..
+        --          (action0 and describe(action0) or ""))
         set_cached_action(action0)
     end
     return set_cached_action(action)

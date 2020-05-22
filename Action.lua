@@ -880,7 +880,7 @@ local function set_cached_action(action)
         end
     end
     assert(action, "set_cached_action called with nil argument")
-    TRACE("SET_CACHED_ACTION", describe(action))
+    TRACE("SET_ACTION", describe(action))
     check_and_set("pkg_old")
     if not action_is(action, "delete") then
         check_and_set("pkg_new")

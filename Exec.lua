@@ -170,26 +170,29 @@ local function tasks_poll(timeout)
         while not idle and poll(pollfds, timeout) > 0 do
             idle = true
             for fd in pairs (pollfds) do
-                if pollfds[fd].revents.IN then
-                    local data = read (fd, 128 * 1024) -- 4096 max on FreeBSD
-                    if #data > 0 then
-                        table.insert(result[fd], data)
-                        idle = false
+                local revents = pollfds[fd].revents
+                if revents then
+                    if revents.IN then
+                        local data = read (fd, 128 * 1024) -- 4096 max on FreeBSD
+                        if #data > 0 then
+                            table.insert(result[fd], data)
+                            idle = false
+                        end
                     end
-                end
-                if pollfds[fd].revents.HUP then
-                    local pid = rm_poll_fd(fd)
-                    if pid then
-                        local _, _, exitcode = wait (pid)
-                        local stdout = fetch_result(pid, 1)
-                        local stderr = fetch_result(pid, 2)
-                        local co = tasks[pid]
-                        tasks[pid] = nil
-                        if co then
-                            coroutine.resume(co, exitcode, stdout, stderr)
-                        else
-                            TRACE ("EXIT", exitcode, stdout, stderr)
-                            return exitcode, stdout, stderr
+                    if revents.HUP then
+                        local pid = rm_poll_fd(fd)
+                        if pid then
+                            local _, _, exitcode = wait (pid)
+                            local stdout = fetch_result(pid, 1)
+                            local stderr = fetch_result(pid, 2)
+                            local co = tasks[pid]
+                            tasks[pid] = nil
+                            TRACE ("EXIT", co, exitcode, stdout, stderr)
+                            if co then
+                                coroutine.resume(co, exitcode, stdout, stderr)
+                            else
+                                return exitcode, stdout, stderr
+                            end
                         end
                     end
                 end
@@ -202,6 +205,7 @@ end
 -- create coroutine that will allow processes to be executed in the background
 local function spawn(f, ...)
     tasks_poll()
+    TRACE ("SPAWN", ...)
     local co = coroutine.create(f)
     coroutine.resume(co, ...)
 end
@@ -217,8 +221,7 @@ local function shell(args)
         -- in coroutine: execute background process
         local pid = task_create(args)
         tasks[pid] = co
-        coroutine.yield()
-        return true
+        return coroutine.yield()
     else
         -- in main program wait for and return results
         local pid = task_create(args)
@@ -321,4 +324,4 @@ local function pkg(args)
 end
 
 --
-return {make = make, pkg = pkg, run = run}
+return {make = make, pkg = pkg, run = run, spawn = spawn}

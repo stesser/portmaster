@@ -97,7 +97,7 @@ local function add_poll_fd(pid, fd)
         table.insert(pidfd[pid], fd)
     end
     pollfds[fd] = {events = {IN = true}}
-    result[fd] = {}
+    result[fd] = nil
     fdpid[fd] = pid
     numpidfds[pid] = (numpidfds[pid] or 0) + 1
 end
@@ -140,7 +140,7 @@ local function task_create (args)
         end
         local cmd = table.remove(args, 1)
         local exitcode, errmsg = execp (cmd, args)
-        TRACE("EXEC(Child)->", exitcode, errmsg)
+        TRACE("FAILED-EXEC(Child)->", exitcode, errmsg)
         assert (exitcode, errmsg)
         _exit (1) -- not reached ???
     end
@@ -160,7 +160,7 @@ end
 local function tasks_poll(timeout)
     local function fetch_result (pid, n)
         local fd = pidfd[pid][n]
-        local text = result[fd] and table.concat(result[fd],"")
+        local text = result[fd] and chomp(table.concat(result[fd],""))
         result[fd] = nil
         return text
     end
@@ -175,7 +175,11 @@ local function tasks_poll(timeout)
                     if revents.IN then
                         local data = read (fd, 128 * 1024) -- 4096 max on FreeBSD
                         if #data > 0 then
-                            table.insert(result[fd], data)
+                            if not result[fd] then
+                                result[fd] = {data}
+                            else
+                                table.insert(result[fd], data)
+                            end
                             idle = false
                         end
                     end
@@ -202,6 +206,12 @@ local function tasks_poll(timeout)
 end
 
 -------------------------------------------------------------------------------------
+function wait_spawned ()
+    while next(tasks) do
+        print (tasks_poll(-1))
+    end
+end
+
 -- create coroutine that will allow processes to be executed in the background
 local function spawn(f, ...)
     tasks_poll()
@@ -217,17 +227,17 @@ local function shell(args)
     end
     local co = coroutine.running()
     local bg = coroutine.isyieldable(co)
+    local pid = task_create(args)
     if (bg) then
         -- in coroutine: execute background process
-        local pid = task_create(args)
         tasks[pid] = co
         return coroutine.yield()
     else
         -- in main program wait for and return results
-        local pid = task_create(args)
         tasks[pid] = false
         local exitcode, stdout, stderr
         while not exitcode do
+            TRACE("WAIT FOR DATA - PID=", pid)
             exitcode, stdout, stderr = tasks_poll(-1)
         end
         TRACE("SHELL(stdout)", "<" .. (stdout or "") .. ">")
@@ -238,6 +248,8 @@ local function shell(args)
 end
 
 -- execute command according to passed flags argument
+local tasks_count = 0
+
 local function run(args)
     TRACE("run", "[" .. table.concat(table.keys(args), ",") .. "]", table.unpack(args))
     if PARAM.jailbase and args.jailed then
@@ -277,12 +289,14 @@ local function run(args)
     if Options.dry_run and not args.safe then
         return args.table and {} or "" -- dummy return value for --dry-run
     end
+    tasks_count =tasks_count + 1
+    TRACE("NUM_TASKS+", tasks_count)
     local exitcode, stdout, stderr = shell(args)
+    tasks_count =tasks_count - 1
+    TRACE("NUM_TASKS-", tasks_count)
     if args.to_tty then
         return exitcode == 0
     else
-        stdout = chomp(stdout)
-        stderr = chomp(stderr)
         if stdout == "" then
             stdout = nil
         end
@@ -324,4 +338,4 @@ local function pkg(args)
 end
 
 --
-return {make = make, pkg = pkg, run = run, spawn = spawn}
+return {make = make, pkg = pkg, run = run, spawn = spawn, wait_spawned = wait_spawned}

@@ -129,7 +129,7 @@ local function pkgfiles_rename(action) -- UNTESTED !!!
     for _, pkgfile_old in ipairs(pkgfiles) do
         if access(pkgfile_old, "r") and not strpfx(pkgfile_old, PATH.packages_backup) then
             local pkgfile_new = path_concat(dirname(pkgfile_old), pkgname_new .. pkgfile_old:gsub(".*(%.%w+)", "%1"))
-            return Exec.run {"/bin/mv", as_root = true, to_tty = true, pkgfile_old, pkgfile_new}
+            return Exec.run {CMD.mv, as_root = true, to_tty = true, pkgfile_old, pkgfile_new}
         end
     end
 end
@@ -142,7 +142,7 @@ local function portdb_update_origin(action)
     if is_dir(portdb_dir_old) and access(portdb_dir_old .. "/options", "r") then
         local portdb_dir_new = action.o_n:portdb_path()
         if not is_dir(portdb_dir_new) then
-            return Exec.run {"/bin/mv", as_root = true, to_tty = true, portdb_dir_old, portdb_dir_new}
+            return Exec.run {CMD.mv, as_root = true, to_tty = true, portdb_dir_old, portdb_dir_new}
         end
     end
 end
@@ -188,7 +188,7 @@ local function package_create(action)
                     tmpfile = path_concat(PARAM.jailbase, tmpfile)
                 end
                 chown(tmpfile, 0, 0)
-                Exec.run {as_root = as_root, "/bin/mv", tmpfile, pkgfile}
+                Exec.run {as_root = as_root, CMD.mv, tmpfile, pkgfile}
             end
             assert(Options.dry_run or access(pkgfile, "r"), "Package file has not been created")
             action.pkg_new:category_links_create(o_n.categories)
@@ -360,15 +360,15 @@ local function perform_installation(action)
             end
             -- preserve pkg-static even when deleting the "pkg" package
             if portname == "ports-mgmt/pkg" then
-                Exec.run {as_root = true, "unlink", CMD.pkg .. "~"}
+                Exec.run {as_root = true, CMD.unlink, CMD.pkg .. "~"}
                 Exec.run {as_root = true, "ln", CMD.pkg, CMD.pkg .. "~"}
             end
             -- delete old package version
             p_o:deinstall(create_backup) -- OUTPUT
             -- restore pkg-static if it has been preserved
             if portname == "ports-mgmt/pkg" then
-                Exec.run {as_root = true, "unlink", CMD.pkg}
-                Exec.run {as_root = true, "mv", CMD.pkg .. "~", CMD.pkg}
+                Exec.run {as_root = true, CMD.mv, CMD.pkg}
+                Exec.run {as_root = true, CMD.unlink, CMD.pkg .. "~", CMD.pkg}
             end
         end
     end

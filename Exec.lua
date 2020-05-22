@@ -75,9 +75,10 @@ local wait = P_SW.wait
 local P_US = require("posix.unistd")
 local close = P_US.close
 local dup2 = P_US.dup2
-local execp = P_US.execp
+local exec = P_US.exec
 local fork = P_US.fork
 local pipe = P_US.pipe
+local sleep = P_US.sleep
 
 -------------------------------------------------------------------------------------
 -- indexed by fd:
@@ -139,7 +140,7 @@ local function task_create (args)
             end
         end
         local cmd = table.remove(args, 1)
-        local exitcode, errmsg = execp (cmd, args)
+        local exitcode, errmsg = exec (cmd, args)
         TRACE("FAILED-EXEC(Child)->", exitcode, errmsg)
         assert (exitcode, errmsg)
         _exit (1) -- not reached ???
@@ -157,6 +158,9 @@ local function task_create (args)
 end
 
 --
+local tasks_count = 0
+local max_tasks
+
 local function tasks_poll(timeout)
     local function fetch_result (pid, n)
         local fd = pidfd[pid][n]
@@ -164,9 +168,14 @@ local function tasks_poll(timeout)
         result[fd] = nil
         return text
     end
+    local function pollms()
+        max_tasks = max_tasks or PARAM.ncpu and (PARAM.ncpu * 2 + 2)
+        local n = tasks_count - (max_tasks or 4)
+        return n <= 0 and 0 or (10 * n)
+    end
     if next(pollfds) then
         local idle
-        timeout = timeout or 0
+        timeout = timeout or pollms()
         while not idle and poll(pollfds, timeout) > 0 do
             idle = true
             for fd in pairs (pollfds) do
@@ -248,8 +257,6 @@ local function shell(args)
 end
 
 -- execute command according to passed flags argument
-local tasks_count = 0
-
 local function run(args)
     TRACE("run", "[" .. table.concat(table.keys(args), ",") .. "]", table.unpack(args))
     if PARAM.jailbase and args.jailed then

@@ -111,9 +111,9 @@ local function shlibs_backup(pkg)
                         if l == lib then
                             local backup_lib = PATH.local_lib_compat .. lib
                             if access(backup_lib, "r") then
-                                Exec.run {as_root = true, log = true, to_tty = true, "/bin/unlink", backup_lib}
+                                Exec.run {as_root = true, log = true, to_tty = true, CMD.unlink, backup_lib}
                             end
-                            Exec.run {as_root = true, log = true, "/bin/cp", libpath, backup_lib}
+                            Exec.run {as_root = true, log = true, CMD.cp, libpath, backup_lib}
                         end
                     end
                 end
@@ -134,7 +134,7 @@ local function shlibs_backup_remove_stale(pkg)
             end
         end
         if #deletes > 0 then
-            Exec.run {as_root = true, log = true, "/bin/rm", "-f", table.unpack(deletes)}
+            Exec.run {as_root = true, log = true, CMD.rm, "-f", table.unpack(deletes)}
             Exec.run {as_root = true, log = true, CMD.ldconfig, "-R"}
         end
         return true
@@ -179,7 +179,7 @@ local function install(pkg, abi)
     if string.match(pkgfile, ".*/pkg-[^/]+$") then -- pkg command itself
         if not access(CMD.pkg, "x") then
             env.ASSUME_ALWAYS_YES = "yes"
-            Exec.run {as_root = true, jailed = jailed, log = true, to_tty = true, env = env, "/usr/sbin/pkg", "-v"}
+            Exec.run {as_root = true, jailed = jailed, log = true, to_tty = true, env = env, CMD.pkg_b, "-v"}
         end
         env.SIGNATURE_TYPE = "none"
     elseif abi then
@@ -196,12 +196,12 @@ local function category_links_create(pkg_new, categories)
     for _, category in ipairs(categories) do
         local destination = PATH.packages .. category
         if not is_dir(destination) then
-            Exec.run {as_root = true, log = true, "mkdir", "-p", destination}
+            Exec.run {as_root = true, log = true, CMD.mkdir, "-p", destination}
         end
         if category == "Latest" then
             destination = destination .. "/" .. pkg_new.name_base .. "." .. extension
         end
-        Exec.run {as_root = true, log = true, "ln", "-sf", source, destination}
+        Exec.run {as_root = true, log = true, CMD.ln, "-sf", source, destination}
     end
 end
 
@@ -212,13 +212,7 @@ local function recover(pkg)
     local pkgname = pkg.name
     local pkgfile = pkg.pkgfile
     if not pkgfile then
-        pkgfile = Exec.run{
-            table = true,
-            safe = true,
-            "ls",
-            "-1t",
-            pkg:filename{base = PATH.packages_backup, subdir = "", ext = ".*"},
-        }[1] -- XXX replace with glob and sort by modification time ==> pkg.bakfile
+        pkgfile = Exec.run{table = true, safe = true, CMD.ls, "-1t", pkg:filename{base = PATH.packages_backup, subdir = "", ext = ".*"}}[1] -- XXX replace with glob and sort by modification time ==> pkg.bakfile
     end
     if pkgfile and access(pkgfile, "r") then
         Msg.show {"Re-installing previous version", pkgname}
@@ -227,7 +221,7 @@ local function recover(pkg)
                 pkg:automatic_set(true)
             end
             shlibs_backup_remove_stale(pkg)
-            -- Exec.run {as_root = true, log = true, "/bin/unlink", PATH.packages_backup .. pkgname .. ".t??"} -- required ???
+            -- Exec.run {as_root = true, log = true, CMD.unlink, PATH.packages_backup .. pkgname .. ".t??"} -- required ???
             return true
         end
     end
@@ -270,7 +264,7 @@ local function backup_delete(pkg)
     local g = filename {subdir = "portmaster-backup", ext = ".t??", pkg}
     for _, backupfile in pairs(glob(g) or {}) do
         TRACE("BACKUP_DELETE", backupfile, PATH.packages .. "portmaster-backup/")
-        Exec.run {as_root = true, log = true, "/bin/unlink", backupfile}
+        Exec.run {as_root = true, log = true, CMD.unlink, backupfile}
     end
 end
 
@@ -282,7 +276,7 @@ local function delete_old(pkg)
     for _, pkgfile in pairs(glob(g) or {}) do
         TRACE("CHECK_BACKUP", pkgfile, bakfile)
         if pkgfile ~= bakfile then
-            Exec.run {as_root = true, log = true, "/bin/unlink", pkgfile}
+            Exec.run {as_root = true, log = true, CMD.unlink, pkgfile}
         end
     end
 end

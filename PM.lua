@@ -454,6 +454,27 @@ local function init_globals()
     PARAM.abi = chomp(Exec.run {safe = true, CMD.pkg, "config", "abi"})
     PARAM.abi_noarch = string.match(PARAM.abi, "^[^:]+:[^:]+:") .. "*"
 
+    CMD.sysctl = "/sbin/sysctl"
+    CMD.mv = "/bin/mv"
+    CMD.unlink = "/bin/unlink"
+    CMD.df = "/bin/df"
+    CMD.umount = "/sbin/umount"
+    CMD.mdconfig = "/sbin/mdconfig"
+    CMD.realpath = "/bin/realpath"
+    CMD.mkdir = "/bin/mkdir"
+    CMD.rmdir = "/bin/rmdir"
+    CMD.cp = "/bin/cp"
+    CMD.pwd_mkdb = "/usr/sbin/pwd_mkdb"
+    CMD.rm = "/bin/rm"
+    CMD.ln = "/bin/ln"
+    CMD.pkg_b = "/usr/sbin/pkg" -- pkg dummy in base system used for pkg bootstrap
+    CMD.env = "/usr/bin/env"
+    CMD.sh = "/bin/sh"
+
+    -- determine number of CPUs (threads)
+    PARAM.ncpu = tonumber (Exec.run {safe = true, CMD.sysctl, "-n", "hw.ncpu"})
+    TRACE ("NCPU", PARAM.ncpu)
+
     -- global variables for use by the distinfo cache and distfile names file (for ports to be built)
     -- PARAM.distfiles_perport = PATH.distdir .. "DISTFILES.perport" -- port names and names of distfiles required by the latest port version
     -- PARAM.distfiles_list = PATH.distdir .. "DISTFILES.list" -- current distfile names of all ports
@@ -476,17 +497,7 @@ local function init_environment()
         setenv(var, value)
     end
     --
-    -- local env_lines = Exec.run {table = true, safe = true, "env", "SCRIPTSDIR=" .. PORTSDIR ..  "Mk/Scripts", "PORTSDIR=" .. PATH.portsdir, "MAKE=make", "/bin/sh", PATH.portsdir .. "Mk/Scripts/ports_env.sh"}
-    local env_lines = Exec.run {
-        table = true,
-        safe = true,
-        "env",
-        "SCRIPTSDIR=" .. PATH.portsdir .. "Mk/Scripts",
-        "PORTSDIR=" .. PATH.portsdir,
-        "MAKE=make",
-        "/bin/sh",
-        PATH.portsdir .. "Mk/Scripts/ports_env.sh",
-    }
+    local env_lines = Exec.run {table = true, safe = true, CMD.env, "SCRIPTSDIR=" .. PATH.portsdir .. "Mk/Scripts", "PORTSDIR=" .. PATH.portsdir, "MAKE=make", CMD.sh, PATH.portsdir .. "Mk/Scripts/ports_env.sh"}
     TRACE("ENVLINES", table.unpack(env_lines))
     for _, line in ipairs(env_lines) do
         local var, value = line:match("^export ([%w_]+)=(.+)")
@@ -648,7 +659,7 @@ local function ask_and_delete(prompt, ...)
                 Msg.show {level = msg_level, "Deleting", prompt .. ":", file}
             end
             if not Options.dry_run then
-                Exec.run {as_root = true, log = true, "/bin/unlink", file}
+                Exec.run {as_root = true, log = true, CMD.unlink, file}
             end
         elseif answer == "q" or answer == "n" then
             if Options.default_no or answer == "q" then
@@ -684,9 +695,9 @@ local function ask_and_delete_directory(prompt, ...)
             if not Options.dry_run then
                 if is_dir(directory) then
                     for _, file in ipairs(glob(directory .. "/*")) do
-                        Exec.run {as_root = true, log = true, "/bin/unlink", file}
+                        Exec.run {as_root = true, log = true, CMD.unlink, file}
                     end
-                    Exec.run {as_root = true, log = true, "/bin/rmdir", directory}
+                    Exec.run {as_root = true, log = true, CMD.rmdir, directory}
                 end
             end
         elseif answer == "q" or answer == "n" then
@@ -712,7 +723,7 @@ local function list_stale_libraries()
     end
     -- list all active shared libraries in some compat directory
     local compatlibs = {}
-    local ldconfig_lines = Exec.run {table = true, safe = true, "ldconfig", "-r"} -- safe flag required ???
+    local ldconfig_lines = Exec.run {table = true, safe = true, CMD.ldconfig, "-r"} -- safe flag required ???
     for _, line in ipairs(ldconfig_lines) do
         local lib = line:match(" => " .. PATH.localbase .. "lib/compat/pkg/(.*)")
         if lib and not activelibs[lib] then
@@ -922,7 +933,7 @@ local function main()
     -------------------------------------------------------------------------------------
     -- non-upgrade operations supported by portmaster - executed after upgrades if requested
     if Options.check_depends then
-        Exec.run {to_tty = true, "pkg", "check", "-dn"}
+        Exec.run {to_tty = true, CMD.pkg, "check", "-dn"}
     end
     if Options.list then
         list_ports(Options.list)

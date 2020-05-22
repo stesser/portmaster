@@ -522,13 +522,20 @@ end
 --]]
 
 --
+local function add_action (args)
+    --Action:new(args)
+    Exec.spawn(Action.new, Action, args)
+    TRACE ("ADD_ACTION_SPAWNED", table.keys(args))
+end
+
+--
 local function ports_update(filters)
     local pkgs, rest = Package:installed_pkgs(), {}
     for _, filter in ipairs(filters) do
         for _, pkg in ipairs(pkgs) do
             local selected, force = filter(pkg)
             if selected then
-                Action:new{build_type = "user", dep_type = "run", force = force, pkg_old = pkg}
+                add_action{build_type = "user", dep_type = "run", force = force, pkg_old = pkg}
             else
                 table.insert(rest, pkg)
             end
@@ -891,6 +898,8 @@ local function main()
         args.force = Options.force
         ports_add_multiple(args)
     end
+
+    Exec.wait_spawned()
 
     -- add missing dependencies
     local action_list = Strategy.add_missing_deps(Action.list())

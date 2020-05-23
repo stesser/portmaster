@@ -96,19 +96,9 @@ local function dist_fetch(origin)
     local distinfo = parse_distinfo(origin.distinfo_file)
     local port = origin.port
     local result = ""
-    local lines = origin:port_make{
-        as_root = PARAM.distdir_ro,
-        table = true,
-        "FETCH_BEFORE_ARGS=-v",
-        "-D",
-        "NO_DEPENDS",
-        "-D",
-        "DISABLE_CONFLICTS",
-        "-D",
-        "PARAM.disable_licenses",
-        "DEV_WARNING_WAIT=0",
-        "checksum",
-    } -- as_root?
+    local lines = origin:port_make{as_root = PARAM.distdir_ro, table = true,
+            "FETCH_BEFORE_ARGS=-v", "NO_DEPENDS=1", "DISABLE_CONFLICTS=1",
+            "PARAM.disable_licenses=1", "DEV_WARNING_WAIT=0", "fetch"} -- "checksum"}
     for _, l in ipairs(lines) do
         TRACE("FETCH:", l)
         local files = string.match(l, "Giving up on fetching files: (.*)")

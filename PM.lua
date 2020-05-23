@@ -535,107 +535,6 @@ local function ports_add_changed_origin(build_type, name, o_n) -- 3rd arg is NOT
 end
 --]]
 
---
-local function add_action (args)
-    --Action:new(args)
-    Exec.spawn(Action.new, Action, args)
-    TRACE ("ADD_ACTION_SPAWNED", table.keys(args))
-end
-
---
-local function ports_update(filters)
-    local pkgs, rest = Package:installed_pkgs(), {}
-    for _, filter in ipairs(filters) do
-        for _, pkg in ipairs(pkgs) do
-            local selected, force = filter(pkg)
-            if selected then
-                add_action{build_type = "user", dep_type = "run", force = force, pkg_old = pkg}
-            else
-                table.insert(rest, pkg)
-            end
-        end
-        pkgs, rest = rest, {}
-    end
-end
-
--- add all matching ports identified by pkgnames and/or portnames with optional flavor
-local function ports_add_multiple(args)
-    local pattern_table = {}
-    for _, name_glob in ipairs(args) do
-        local pattern = string.gsub(name_glob, "%.", "%%.")
-        pattern = string.gsub(pattern, "%?", ".")
-        pattern = string.gsub(pattern, "%*", ".*")
-        table.insert(pattern_table, "^(" .. pattern .. ")")
-    end
-    local function filter_match(pkg)
-        for _, v in ipairs(pattern_table) do
-            if string.match(pkg.name_base, v .. "$") then
-                return true
-            end
-            if pkg.origin and (string.match(pkg.origin.name, v .. "$") or string.match(pkg.origin.name, v .. "@%S+$")) then
-                return true
-            end
-        end
-    end
-    TRACE("PORTS_ADD_MULTIPLE-<", table.unpack(args))
-    TRACE("PORTS_ADD_MULTIPLE->", table.unpack(pattern_table))
-    ports_update {filter_match}
-    for _, v in ipairs(args) do
-        if string.match(v, "/") and access(path_concat(PATH.portsdir, v, "Makefile"), "r") then
-            local o = Origin:new(v)
-            local p = o.pkg_new
-            Action:new{build_type = "user", dep_type = "run", force = Options.force, o_n = o, pkg_new = p}
-        end
-    end
-    --[[
-   for i, name_glob in ipairs (args) do
-      local filenames = glob (path_concat (PATH.portsdir, name_glob, "Makefile"))
-      if filenames then
-	 for j, filename in ipairs (filenames) do
-	    if access (filename, "r") then
-	       local port = string.match (filename, "/([^/]+/[^/]+)/Makefile")
-	       local origin = Origin:new (port)
-	       Action:new {build_type = "user", dep_type = "run", o_n = origin}
-	    end
-	 end
-      else
-	 error ("No ports match " .. name_glob)
-      end
-   end
-   --]]
-end
-
--- process all outdated ports (may upgrade, install, change, or delete ports)
--- process all ports with old ABI or linked against outdated shared libraries
-local function ports_add_all_outdated()
-    local current_libs = {}
-    -- filter return values are: match, force
-    local function filter_old_abi(pkg)
-        return pkg.abi ~= PARAM.abi and pkg.abi ~= PARAM.abi_noarch, false -- true XXX
-    end
-    local function filter_old_shared_libs(pkg)
-        if pkg.shared_libs then
-            for lib, v in pairs(pkg.shared_libs) do
-                return not current_libs[lib], true
-            end
-        end
-    end
-    local function filter_is_required(pkg)
-        return not pkg.is_automatic or pkg.num_depending > 0, false
-    end
-    local function filter_pass_all()
-        return true, false
-    end
-
-    for _, lib in ipairs(PkgDb.query {table = true, "%b"}) do
-        current_libs[lib] = true
-    end
-    ports_update {
-        filter_old_abi, -- filter_old_shared_libs,
-        filter_is_required, filter_pass_all,
-    }
-end
-
 -- ---------------------------------------------------------------------------
 -- ask whether some file should be deleted (except when -n or -y enforce a default answer)
 -- move to Msg module
@@ -901,7 +800,7 @@ local function main()
         end
         ports_add_changed_origin("force", args, Options.replace_origin)
     elseif Options.all then
-        ports_add_all_outdated()
+        Strategy.add_all_outdated()
     elseif Options.all_old_abi then
         ports_add_all_old_abi() -- create from ports_add_all_outdated() ???
     end
@@ -910,29 +809,11 @@ local function main()
     if #args > 0 then
         --dbg()
         args.force = Options.force
-        ports_add_multiple(args)
+        Strategy.add_multiple(args)
     end
 
-    -- wait for all spawned tasks to complete
-    Exec.finish_spawned()
-
-    -- add missing dependencies
-    local action_list = Strategy.add_missing_deps(Action.list())
-
-    -- sort actions according to registered dependencies
-    action_list = Strategy.sort_list(action_list)
-
-    --[[
-   -- DEBUGGING!!!
-   Origin.dump_cache ()
-   Package.dump_cache ()
-   Action.dump_cache ()
-   --]]
-
-    -- end of scan phase, all required actions are known at this point, builds may start
-    PARAM.phase = "build"
-
-    Strategy.execute(action_list)
+    --
+    Strategy.execute()
 
     -------------------------------------------------------------------------------------
     -- non-upgrade operations supported by portmaster - executed after upgrades if requested

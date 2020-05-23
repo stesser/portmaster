@@ -83,34 +83,40 @@ local sleep = P_US.sleep
 -------------------------------------------------------------------------------------
 -- indexed by fd:
 local pollfds = {} -- file descriptors for poll
-local result = {} -- table of tables with output received from file descriptor
-local fdpid = {} -- table mapping file descriptors to pids
+local fdstat = {} -- result, pid
+--local result = {} -- table of tables with output received from file descriptor
+--local fdpid = {} -- table mapping file descriptors to pids
 -- indexed by pid:
-local numpidfds = {} -- number of open file descriptors for given pid
-local pidfd = {} -- file descriptors (stdout, stderr) for this pid
-local tasks = {} -- task table with arguments for finalization of background jobs per pid
+local pidstat = {} -- fds, numfds
+--local numpidfds = {} -- number of open file descriptors for given pid
+--local pidfd = {} -- file descriptors (stdout, stderr) for this pid
 
-local function add_poll_fd(pid, fd)
-    TRACE("ADDPOLL", pid, fd)
-    if not pidfd[pid] then
-        pidfd[pid] = {fd}
-    else
-        table.insert(pidfd[pid], fd)
-    end
-    pollfds[fd] = {events = {IN = true}}
-    result[fd] = nil
-    fdpid[fd] = pid
-    numpidfds[pid] = (numpidfds[pid] or 0) + 1
+local function add_poll_fds(pid, fds)
+    TRACE("ADDPOLL", pid, fds[1], fds[2])
+    pidstat[pid] = {fds = fds, numfds = 2}
+    local fd1, fd2 = fds[1], fds[2]
+    fdstat[fd1] = {pid = pid, result = {}}
+    fdstat[fd2] = {pid = pid, result = {}}
+    pollfds[fd1] = {events = {IN = true}}
+    pollfds[fd2] = {events = {IN = true}}
 end
 
 local function rm_poll_fd(fd)
-    local pid = fdpid[fd]
-    TRACE("RMPOLL", pid, fd, numpidfds[pid])
-    fdpid[fd] = nil
-    close(fd)
+    TRACE("RM", fd)
+    local pid = fdstat[fd].pid
+    TRACE("RMPOLL", pid, fd, pidstat[pid].numfds)
     pollfds[fd] = nil
-    numpidfds[pid] = numpidfds[pid] - 1
-    if numpidfds[pid] == 0 then
+    local numfds = pidstat[pid].numfds - 1
+    if numfds > 0 then
+        if fd == pidstat[pid].fds[1] then
+            TRACE("RMPOLLFD", pid, fd, "STDOUT")
+        elseif fd == pidstat[pid].fds[2] then
+            TRACE("RMPOLLFD", pid, fd, "STDERR")
+        else
+            TRACE("RMPOLLFD", pid, fd, "???")
+        end
+        pidstat[pid].numfds = numfds
+    else
         return pid
     end
 end
@@ -152,24 +158,33 @@ local function task_create (args)
     end
     close(fd1w)
     close(fd2w)
-    add_poll_fd(pid, fd1r)
-    add_poll_fd(pid, fd2r)
+    add_poll_fds(pid, {fd1r, fd2r})
     return pid
 end
 
 --
 local tasks_count = 0
 local max_tasks
+local tasks = {} -- coroutines table
 
 local function tasks_poll(timeout)
     local function fetch_result (pid, n)
-        local fd = pidfd[pid][n]
-        local text = result[fd] and chomp(table.concat(result[fd],""))
-        result[fd] = nil
+        local fd = pidstat[pid].fds[n]
+        local fdrec = fdstat[fd]
+        fdstat[fd] = nil
+        close(fd)
+        local t = fdrec.result
+        local count = t and #t or 0
+        local text
+        if count > 0 then
+            t[count] = chomp(t[count])
+            text = table.concat(t, "")
+        end
+        TRACE("FETCH_RESULT", pid, fd, n, text and #text or 0)
         return text
     end
     local function pollms()
-        max_tasks = max_tasks or PARAM.ncpu and (PARAM.ncpu * 2 + 2)
+        max_tasks = max_tasks or PARAM.ncpu and (PARAM.ncpu + 4)
         local n = tasks_count - (max_tasks or 4)
         return n <= 0 and 0 or (10 * n)
     end
@@ -184,11 +199,11 @@ local function tasks_poll(timeout)
                     if revents.IN then
                         local data = read (fd, 128 * 1024) -- 4096 max on FreeBSD
                         if #data > 0 then
-                            if not result[fd] then
-                                result[fd] = {data}
-                            else
-                                table.insert(result[fd], data)
+                            if not fdstat[fd] or not fdstat[fd].result then
+                                TRACE("READ", fd, "NOT INIT")
                             end
+                            table.insert(fdstat[fd].result, data)
+                            TRACE("READ", fdstat[fd].pid, fd, #data)
                             idle = false
                         end
                     end
@@ -198,6 +213,7 @@ local function tasks_poll(timeout)
                             local _, _, exitcode = wait (pid)
                             local stdout = fetch_result(pid, 1)
                             local stderr = fetch_result(pid, 2)
+                            pidstat[pid] = nil
                             local co = tasks[pid]
                             tasks[pid] = nil
                             TRACE ("EXIT", co, exitcode, stdout, stderr)
@@ -215,7 +231,7 @@ local function tasks_poll(timeout)
 end
 
 -------------------------------------------------------------------------------------
-function finish_spawned ()
+local function finish_spawned ()
     while next(tasks) do
         print (tasks_poll(-1))
     end

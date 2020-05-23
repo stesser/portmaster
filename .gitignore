@@ -17,3 +17,6 @@ BACKUP-*
 portmaster-devel
 debugger.lua
 Coroutine-Test/test.lua
+Coroutine-Test/vscode-debuggee.lua
+vscode-debuggee.lua
+.vscode/launch.json

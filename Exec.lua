@@ -215,7 +215,7 @@ local function tasks_poll(timeout)
 end
 
 -------------------------------------------------------------------------------------
-function wait_spawned ()
+function finish_spawned ()
     while next(tasks) do
         print (tasks_poll(-1))
     end
@@ -322,7 +322,7 @@ end
 local function make(args)
     table.insert(args, 1, CMD.make)
     if args.trace then
-        table.insert(args, 1, "ktrace") -- CMD.ktrace = /usr/bin/ktrace
+        table.insert(args, 1, CMD.ktrace)
         table.insert(args, 2, "-dia")
     end
     return run(args)
@@ -345,4 +345,4 @@ local function pkg(args)
 end
 
 --
-return {make = make, pkg = pkg, run = run, spawn = spawn, wait_spawned = wait_spawned}
+return {make = make, pkg = pkg, run = run, spawn = spawn, finish_spawned = finish_spawned}

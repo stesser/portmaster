@@ -257,7 +257,7 @@ end
 -- create tempfile with a name that contains "$type" and the portmaster PID
 function tempfile_create(type)
     local pattern = "pm-" .. getpid() .. "-" .. type
-    local p = io.popen("/usr/bin/mktemp -qt " .. pattern)
+    local p = io.popen(CMD.mktemp .. " -qt " .. pattern) -- use EXEC.run
     local filename = p:read()
     p:close()
     return filename
@@ -404,7 +404,9 @@ local function init_globals()
     PATH.distdir = init_global_path(ports_var {"DISTDIR"}, path_concat(PATH.portsdir, "distfiles"))
     PARAM.distdir_ro = not access(PATH.distdir, "rw") -- need sudo to fetch or purge distfiles
 
-    PATH.packages = init_global_path(Options.local_packagedir, ports_var {"PACKAGES"}, path_concat(PATH.portsdir, "packages"),
+    PATH.packages = init_global_path(Options.local_packagedir,
+                                     ports_var {"PACKAGES"},
+                                     path_concat(PATH.portsdir, "packages"),
                                      "/usr/packages")
     PATH.packages_backup = init_global_path(PATH.packages .. "portmaster-backup")
     PARAM.packages_ro = not access(PATH.packages, "rw") -- need sudo to create or delete package files
@@ -470,10 +472,11 @@ local function init_globals()
     CMD.pkg_b = "/usr/sbin/pkg" -- pkg dummy in base system used for pkg bootstrap
     CMD.env = "/usr/bin/env"
     CMD.sh = "/bin/sh"
+    CMD.ktrace = "/usr/bin/ktrace" -- testing only
+    CMD.mktemp = "/usr/bin/mktemp"
 
     -- determine number of CPUs (threads)
     PARAM.ncpu = tonumber (Exec.run {safe = true, CMD.sysctl, "-n", "hw.ncpu"})
-    TRACE ("NCPU", PARAM.ncpu)
 
     -- global variables for use by the distinfo cache and distfile names file (for ports to be built)
     -- PARAM.distfiles_perport = PATH.distdir .. "DISTFILES.perport" -- port names and names of distfiles required by the latest port version
@@ -910,7 +913,8 @@ local function main()
         ports_add_multiple(args)
     end
 
-    Exec.wait_spawned()
+    -- wait for all spawned tasks to complete
+    Exec.finish_spawned()
 
     -- add missing dependencies
     local action_list = Strategy.add_missing_deps(Action.list())

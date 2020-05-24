@@ -59,12 +59,20 @@ end
 --
 local function show(args)
     -- TRACE ("MSG_SHOW", table.unpack (table.keys (args)), table.unpack (args))
+    local function empty_line()
+        if not State.empty_line then
+            stdout:write("\n")
+            State.empty_line = true
+            State.at_start = true
+        end
+    end
     local level = args.level or 0
     if level <= State.level then
         if args.start then
             -- print message with separator for new message section
             State.at_start = true
             State.sep = State.sep1
+            TRACE("MSG_START")
         end
         if args.verbatim then
             -- print message with separator for new message section
@@ -87,26 +95,25 @@ local function show(args)
             local lines = split_lines(text)
             if lines then
                 -- extra blank line if not a continuation and not following a blank line anyway
-                if not (State.empty_line or not State.at_start) then
-                    stdout:write("\n")
-                    State.empty_line = true
+                if State.at_start then
+                    empty_line()
                 end
                 -- print lines prefixed with SEP
-                for _, line in ipairs(lines) do
+                for i, line in ipairs(lines) do
                     if not line or line == "" then
-                        if not State.empty_line then
-                            stdout:write("\n")
-                            State.empty_line = true
-                        end
+                        empty_line()
                     else
                         State.empty_line = false
+                        local  nl = "\n"
                         if State.doprompt then
-                            -- no newline after prompt
-                            stdout:write(State.sep, line)
+                            if i == #lines then
+                                -- no newline after final line of prompt message
+                                nl = ""
+                            end
                         else
-                            stdout:write(State.sep, line, "\n")
                             State.sep = State.sep2
                         end
+                        stdout:write(State.sep, line, nl)
                     end
                     State.at_start = false
                 end

@@ -172,8 +172,8 @@ local function tasks_poll(timeout)
         local fd = pidstat[pid].fds[n]
         local fdrec = fdstat[fd]
         fdstat[fd] = nil
-        close(fd)
         local t = fdrec.result
+        close(fd) -- do not move, must stay behind copying of result
         local count = t and #t or 0
         local text
         if count > 0 then
@@ -188,12 +188,13 @@ local function tasks_poll(timeout)
         local n = tasks_count - (max_tasks or 4)
         return n <= 0 and 0 or (10 * n)
     end
+    --local numreads = 0
     if next(pollfds) then
         local idle
         timeout = timeout or pollms()
         while not idle and poll(pollfds, timeout) > 0 do
             idle = true
-            for fd in pairs (pollfds) do
+            for fd in pairs(pollfds) do
                 local revents = pollfds[fd].revents
                 if revents then
                     if revents.IN then
@@ -205,22 +206,23 @@ local function tasks_poll(timeout)
                             table.insert(fdstat[fd].result, data)
                             TRACE("READ", fdstat[fd].pid, fd, #data)
                             idle = false
-                        end
-                    end
-                    if revents.HUP then
-                        local pid = rm_poll_fd(fd)
-                        if pid then
-                            local _, _, exitcode = wait (pid)
-                            local stdout = fetch_result(pid, 1)
-                            local stderr = fetch_result(pid, 2)
-                            pidstat[pid] = nil
-                            local co = tasks[pid]
-                            tasks[pid] = nil
-                            TRACE ("EXIT", co, exitcode, stdout, stderr)
-                            if co then
-                                coroutine.resume(co, exitcode, stdout, stderr)
-                            else
-                                return exitcode, stdout, stderr
+                            --numreads = numreads + 1
+                        elseif revents.HUP then
+                            local pid = rm_poll_fd(fd)
+                            if pid then
+                                local _, _, exitcode = wait (pid)
+                                local stdout = fetch_result(pid, 1)
+                                local stderr = fetch_result(pid, 2)
+                                pidstat[pid] = nil
+                                local co = tasks[pid]
+                                tasks[pid] = nil
+                                --TRACE("NUMREADS", numreads)
+                                TRACE ("EXIT", co, exitcode, stdout, stderr)
+                                if co then
+                                    coroutine.resume(co, exitcode, stdout, stderr)
+                                else
+                                    return exitcode, stdout, stderr
+                                end
                             end
                         end
                     end
@@ -228,6 +230,7 @@ local function tasks_poll(timeout)
             end
         end
     end
+    --TRACE("NUMREADS", numreads)
 end
 
 -------------------------------------------------------------------------------------
@@ -361,4 +364,9 @@ local function pkg(args)
 end
 
 --
-return {make = make, pkg = pkg, run = run, spawn = spawn, finish_spawned = finish_spawned}
+return {
+    make = make,
+    pkg = pkg,
+    run = run,
+    spawn = spawn,
+    finish_spawned = finish_spawned}

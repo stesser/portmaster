@@ -37,6 +37,14 @@ local Distfile = require("Distfile")
 local Exec = require("Exec")
 local PkgDb = require("PkgDb")
 
+
+--
+local function add_action (args)
+    --Action:new(args)
+    Exec.spawn(Action.new, Action, args)
+    TRACE ("ADD_ACTION_SPAWNED", table.keys(args))
+end
+
 --
 local function add_missing_deps(action_list)
     for i, a in ipairs(action_list) do
@@ -86,8 +94,26 @@ end
 local function sort_list(action_list) -- remove ACTION_CACHE from function arguments !!!
     local max_str = tostring(#action_list)
     local sorted_list = {}
-    local function add_action(action)
+    local function add_deps(action)
+        local function add_dep_type(type)
+            local deps = rawget(action, type .. "_depends")
+            if deps then
+                for _, o in ipairs(deps) do
+                    local origin = Origin.get(o)
+                    local pkg_new = origin.pkg_new
+                    local a = Action.get(pkg_new.name)
+                    TRACE("ADD_DEPS", type, a and rawget(a, "action"), origin.name, origin.pkg_new,
+                          origin.pkg_new and rawget(origin.pkg_new, "is_installed"))
+                    -- if a and not rawget (a, "planned") then
+                    if a and not rawget(a, "planned") and not rawget(origin.pkg_new, "is_installed") then
+                        add_deps(a)
+                    end
+                end
+            end
+        end
         if not rawget(action, "planned") then
+            add_dep_type("build")
+            --[[
             local deps = rawget(action, "build_depends")
             if deps then
                 for _, o in ipairs(deps) do
@@ -98,16 +124,19 @@ local function sort_list(action_list) -- remove ACTION_CACHE from function argum
                           origin.pkg_new and rawget(origin.pkg_new, "is_installed"))
                     -- if a and not rawget (a, "planned") then
                     if a and not rawget(a, "planned") and not rawget(origin.pkg_new, "is_installed") then
-                        add_action(a)
+                        add_deps(a)
                     end
                 end
             end
+            --]]
             assert(not rawget(action, "planned"), "Dependency loop for: " .. action:describe())
             table.insert(sorted_list, action)
             action.listpos = #sorted_list
             action.planned = true
             Msg.show {"[" .. tostring(#sorted_list) .. "/" .. max_str .. "]", tostring(action)}
             --
+            add_dep_type("run")
+            --[[
             deps = rawget(action, "run_depends")
             if deps then
                 for _, o in ipairs(deps) do
@@ -118,27 +147,21 @@ local function sort_list(action_list) -- remove ACTION_CACHE from function argum
                           origin.pkg_new and rawget(origin.pkg_new, "is_installed"))
                     -- if a and not rawget (a, "planned") then
                     if a and not rawget(a, "planned") and not rawget(origin.pkg_new, "is_installed") then
-                        add_action(a)
+                        add_deps(a)
                     end
                 end
             end
+            --]]
         end
     end
 
     Msg.show {start = true, "Sort", #action_list, "actions"}
     for _, a in ipairs(action_list) do
         Msg.show {start = true}
-        add_action(a)
+        add_deps(a)
     end
     -- assert (#action_list == #sorted_list, "action_list items have been lost: " .. #action_list .. " vs. " .. #sorted_list)
     return sorted_list
-end
-
---
-local function add_action (args)
-    --Action:new(args)
-    Exec.spawn(Action.new, Action, args)
-    TRACE ("ADD_ACTION_SPAWNED", table.keys(args))
 end
 
 --

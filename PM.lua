@@ -787,8 +787,8 @@ local function main()
     -- initialize environment variables based on globals set in prior functions
     init_environment()
 
-    -- TESTING
-    -- if TEST then TEST() end
+    --
+    --Exec.spawn(Package.installed_pkgs, "")
 
     -------------------------------------------------------------------------------------
     -- plan tasks based on parameters passed on the command line

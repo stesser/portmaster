@@ -52,7 +52,7 @@ local function add_missing_deps(action_list)
             -- print (a, "is already installed")
         else
             local add_dep_hdr = "Add build dependencies of " .. a.short_name
-            local deps = a.build_depends or {}
+            local deps = a.build_depends or {} -- rename build_depends --> depends.build
             for _, dep in ipairs(deps) do
                 local o = Origin:new(dep)
                 local p = o.pkg_new
@@ -113,45 +113,12 @@ local function sort_list(action_list) -- remove ACTION_CACHE from function argum
         end
         if not rawget(action, "planned") then
             add_dep_type("build")
-            --[[
-            local deps = rawget(action, "build_depends")
-            if deps then
-                for _, o in ipairs(deps) do
-                    local origin = Origin.get(o)
-                    local pkg_new = origin.pkg_new
-                    local a = Action.get(pkg_new.name)
-                    TRACE("BUILD_DEP", a and rawget(a, "action"), origin.name, origin.pkg_new,
-                          origin.pkg_new and rawget(origin.pkg_new, "is_installed"))
-                    -- if a and not rawget (a, "planned") then
-                    if a and not rawget(a, "planned") and not rawget(origin.pkg_new, "is_installed") then
-                        add_deps(a)
-                    end
-                end
-            end
-            --]]
             assert(not rawget(action, "planned"), "Dependency loop for: " .. action:describe())
             table.insert(sorted_list, action)
             action.listpos = #sorted_list
             action.planned = true
             Msg.show {"[" .. tostring(#sorted_list) .. "/" .. max_str .. "]", tostring(action)}
-            --
             add_dep_type("run")
-            --[[
-            deps = rawget(action, "run_depends")
-            if deps then
-                for _, o in ipairs(deps) do
-                    local origin = Origin.get(o)
-                    local pkg_new = origin.pkg_new
-                    local a = Action.get(pkg_new.name)
-                    TRACE("RUN_DEP", a and rawget(a, "action"), origin.name, origin.pkg_new,
-                          origin.pkg_new and rawget(origin.pkg_new, "is_installed"))
-                    -- if a and not rawget (a, "planned") then
-                    if a and not rawget(a, "planned") and not rawget(origin.pkg_new, "is_installed") then
-                        add_deps(a)
-                    end
-                end
-            end
-            --]]
         end
     end
 

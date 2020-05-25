@@ -63,7 +63,7 @@ local poll = P.poll
 local read = P.read
 
 local P_IO = require("posix.stdio")
-local fdopen = P_IO.fdopen
+--local fdopen = P_IO.fdopen
 local fileno = P_IO.fileno
 
 local P_SL = require("posix.stdlib")
@@ -78,7 +78,7 @@ local dup2 = P_US.dup2
 local exec = P_US.exec
 local fork = P_US.fork
 local pipe = P_US.pipe
-local sleep = P_US.sleep
+--local sleep = P_US.sleep
 
 -------------------------------------------------------------------------------------
 -- indexed by fd:
@@ -166,6 +166,7 @@ end
 local tasks_count = 0
 local max_tasks
 local tasks = {} -- coroutines table
+local task_conds = {}
 
 local function tasks_poll(timeout)
     local function fetch_result (pid, n)
@@ -215,6 +216,7 @@ local function tasks_poll(timeout)
                                 local stderr = fetch_result(pid, 2)
                                 pidstat[pid] = nil
                                 local co = tasks[pid]
+                                assert(task_conds[co] == nil, "attempt to resume blocked coroutine")
                                 tasks[pid] = nil
                                 --TRACE("NUMREADS", numreads)
                                 TRACE ("EXIT", co, exitcode, stdout, stderr)
@@ -230,13 +232,30 @@ local function tasks_poll(timeout)
             end
         end
     end
+    if next (task_conds) then
+      local workdone
+      TRACE("POLL")
+      for co, t in pairs(task_conds) do
+        TRACE("CHECK", table.unpack (t.args))
+        if t.f (table.unpack (t.args)) then
+          TRACE("WAITDONE", table.unpack(t.args))
+          task_conds[co] = nil
+          workdone = true
+          coroutine.resume(co)
+        end
+      end
+      if not workdone then
+        task_create{"/bin/sleep", "1"}
+      end
+    end
     --TRACE("NUMREADS", numreads)
 end
 
 -------------------------------------------------------------------------------------
 local function finish_spawned ()
     while next(tasks) do
-        print (tasks_poll(-1))
+        TRACE("FINISH_SPAWNED")
+        return tasks_poll(-1)
     end
 end
 
@@ -246,6 +265,15 @@ local function spawn(f, ...)
     TRACE ("SPAWN", ...)
     local co = coroutine.create(f)
     coroutine.resume(co, ...)
+end
+
+-- register a function that blocks dispatching to this coroutine until f(...) returns true
+local function task_conds(f, ...)
+  TRACE("WAIT_COND", ...)
+  local co = coroutine.running()
+  assert (coroutine.isyieldable(co), "task_conds called ouside spawned function")
+  task_conds[co] = {f = f, args = {...}}
+  coroutine.yield()
 end
 
 --
@@ -293,6 +321,7 @@ local function run(args)
             for k, v in pairs(args.env) do
                 table.insert(args, 2, k .. "=" .. v)
             end
+            table.insert(args, 2, "-p" .. "#   >>>\tEnter password of user %p: ")
             args.env = nil
         end
     end
@@ -369,4 +398,6 @@ return {
     pkg = pkg,
     run = run,
     spawn = spawn,
-    finish_spawned = finish_spawned}
+    task_conds = task_conds,
+    finish_spawned = finish_spawned,
+}

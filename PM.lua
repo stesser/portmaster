@@ -697,7 +697,35 @@ local function list_ports(mode)
             end,
         },
     }
-
+    local listdata = {}
+    local function check_version(pkg_old)
+        TRACE("CHECK_VERSION_SPAWNED", pkg_old.name)
+        local o_o = pkg_old.origin
+        assert(o_o, "no origin for package " .. pkg_old.name)
+        local pkg_new = o_o.pkg_new
+        local pkgname_new = pkg_new and pkg_new.name
+        local reason
+        if not pkgname_new then
+            local o_n = o_o:lookup_moved_origin()
+            reason = o_o.reason
+            TRACE("MOVED??", reason)
+            if o_n and o_n ~= o_o then
+                pkg_new = o_n.pkg_new
+                pkgname_new = pkg_new and pkg_new.name
+            end
+        end
+        local result
+        if not pkgname_new then
+            if reason then
+                result = "has been removed: " .. reason
+            else
+                result = "cannot be found in the ports system"
+            end
+        elseif pkgname_new ~= pkg_old.name then
+            result = "needs update to " .. pkgname_new
+        end
+        listdata[pkg_old.name] = result or ""
+    end
     local pkg_list = Package:installed_pkgs()
     table.sort(pkg_list, function(a, b)
         return a.name > b.name
@@ -707,7 +735,6 @@ local function list_ports(mode)
         local descr = f[1]
         local test = f[2]
         local rest = {}
-        local first = true
         local count = 0
         for _, pkg_old in ipairs(pkg_list) do
             if test(pkg_old) then
@@ -715,42 +742,30 @@ local function list_ports(mode)
             end
         end
         if count > 0 then
+            listdata = {}
             for _, pkg_old in ipairs(pkg_list) do
                 if test(pkg_old) then
-                    local line = pkg_old.name
                     if mode == "verbose" then
-                        local o_o = pkg_old.origin
-                        assert(o_o, "no origin for package " .. pkg_old.name)
-                        local pkg_new = o_o.pkg_new
-                        local pkgname_new = pkg_new and pkg_new.name
-                        local reason
-                        if not pkgname_new then
-                            local o_n = o_o:lookup_moved_origin()
-                            reason = o_o.reason
-                            TRACE("MOVED??", reason)
-                            if o_n and o_n ~= o_o then
-                                pkg_new = o_n.pkg_new
-                                pkgname_new = pkg_new and pkg_new.name
-                            end
-                        end
-                        if not pkgname_new then
-                            if reason then
-                                line = line .. " has been removed: " .. reason
-                            else
-                                line = line .. " cannot be found in the ports system"
-                            end
-                        elseif pkgname_new ~= pkg_old.name then
-                            line = line .. " needs update to " .. pkgname_new
-                        end
+                        Exec.spawn(check_version, pkg_old)
+                    else
+                        listdata[pkg_old.name] = true
                     end
-                    if first then
-                        Msg.show {start = true, count, descr}
-                        first = false
-                    end
-                    Msg.show {line}
                 else
                     table.insert(rest, pkg_old)
                 end
+            end
+            Exec.finish_spawned()
+            local pkgnames = table.keys(listdata)
+            TRACE("PKGNAMES", #pkgnames)
+            table.sort(pkgnames)
+            local first = true
+            for _, pkg_old in ipairs(pkgnames) do
+                if first then
+                    Msg.show{start = true, count, descr}
+                    first = false
+                end
+                TRACE("LIST", pkg_old)
+                Msg.show{pkg_old, listdata[pkg_old]}
             end
             pkg_list = rest
         end

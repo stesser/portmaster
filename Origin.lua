@@ -295,7 +295,7 @@ local function lookup_moved_origin(origin)
         if p then
             origin = Origin:new(o(p, f))
         end
-        origin.reason = r
+        origin.reason = r -- XXX reason might be set on wrong port (old vs. new???)
         return origin
     end
 end

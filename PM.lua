@@ -727,9 +727,6 @@ local function list_ports(mode)
         listdata[pkg_old.name] = result or ""
     end
     local pkg_list = Package:installed_pkgs()
-    table.sort(pkg_list, function(a, b)
-        return a.name > b.name
-    end)
     Msg.show {start = true, "List of installed packages by category:"}
     for _, f in ipairs(filter) do
         local descr = f[1]
@@ -748,7 +745,7 @@ local function list_ports(mode)
                     if mode == "verbose" then
                         Exec.spawn(check_version, pkg_old)
                     else
-                        listdata[pkg_old.name] = true
+                        listdata[pkg_old.name] = ""
                     end
                 else
                     table.insert(rest, pkg_old)

@@ -164,9 +164,10 @@ end
 
 --
 local tasks_count = 0
-local max_tasks
+local tasks_stopped = 0
+local max_tasks -- initialised when count of CPUs/HW-threads is known
 local tasks = {} -- coroutines table
-local task_conds = {}
+local task_conds = {} -- table of check functions for blocked tasks
 
 local function tasks_poll(timeout)
     local function fetch_result (pid, n)
@@ -190,9 +191,10 @@ local function tasks_poll(timeout)
         return n <= 0 and 0 or (10 * n)
     end
     --local numreads = 0
-    if next(pollfds) then
+    if timeout or next(pollfds) then
         local idle
         timeout = timeout or pollms()
+        TRACE("POLL", timeout)
         while not idle and poll(pollfds, timeout) > 0 do
             idle = true
             for fd in pairs(pollfds) do
@@ -201,9 +203,6 @@ local function tasks_poll(timeout)
                     if revents.IN then
                         local data = read (fd, 128 * 1024) -- 4096 max on FreeBSD
                         if #data > 0 then
-                            if not fdstat[fd] or not fdstat[fd].result then
-                                TRACE("READ", fd, "NOT INIT")
-                            end
                             table.insert(fdstat[fd].result, data)
                             TRACE("READ", fdstat[fd].pid, fd, #data)
                             idle = false
@@ -232,30 +231,25 @@ local function tasks_poll(timeout)
             end
         end
     end
-    if next (task_conds) then
-      local workdone
-      TRACE("POLL")
-      for co, t in pairs(task_conds) do
-        TRACE("CHECK", table.unpack (t.args))
-        if t.f (table.unpack (t.args)) then
-          TRACE("WAITDONE", table.unpack(t.args))
-          task_conds[co] = nil
-          workdone = true
-          coroutine.resume(co)
+    if tasks_stopped > 0 then
+        for co, t in pairs(task_conds) do
+            local cond = t.f (table.unpack (t.args))
+            TRACE("WAIT_CHECK", cond, table.unpack(t.args))
+            if cond then
+                TRACE("WAIT_DONE", table.unpack(t.args))
+                task_conds[co] = nil
+                coroutine.resume(co)
+            end
         end
-      end
-      if not workdone then
-        task_create{"/bin/sleep", "1"}
-      end
     end
     --TRACE("NUMREADS", numreads)
 end
 
 -------------------------------------------------------------------------------------
 local function finish_spawned ()
-    while next(tasks) do
-        TRACE("FINISH_SPAWNED")
-        return tasks_poll(-1)
+    while tasks_count > 0 or tasks_stopped > 0 do
+        TRACE("FINISH", tasks_count, tasks_stopped)
+        tasks_poll(tasks_stopped > 0 and 100 or -1)
     end
 end
 
@@ -267,13 +261,17 @@ local function spawn(f, ...)
     coroutine.resume(co, ...)
 end
 
--- register a function that blocks dispatching to this coroutine until f(...) returns true
-local function task_conds(f, ...)
-  TRACE("WAIT_COND", ...)
-  local co = coroutine.running()
-  assert (coroutine.isyieldable(co), "task_conds called ouside spawned function")
-  task_conds[co] = {f = f, args = {...}}
-  coroutine.yield()
+--
+local function cond_wait(f, ...)
+    TRACE("COND_WAIT", ...)
+    local co = coroutine.running()
+    assert (coroutine.isyieldable(co), "cond_wait called ouside of spawned function")
+    task_conds[co] = {f = f, args = {...}}
+    tasks_stopped = tasks_stopped + 1
+    TRACE("NUM_TASKS<", tasks_count, tasks_stopped)
+    coroutine.yield()
+    tasks_stopped = tasks_stopped - 1
+    TRACE("NUM_TASKS>", tasks_count, tasks_stopped)
 end
 
 --
@@ -333,22 +331,27 @@ local function run(args)
                     args[i] = "'" .. v .. "'"
                 end
             end
-            args.level = args.safe and 2 or 0
             if Options.dry_run then
                 Msg.show {verbatim = true, "\t" .. table.concat(args, " ") .. "\n"}
             else
+                args.level = args.safe and 2 or 0
                 Msg.show(args)
             end
         end
     end
     if Options.dry_run and not args.safe then
-        return args.table and {} or "" -- dummy return value for --dry-run
+         -- dummy return values for --dry-run
+        if args.table then
+            return {}, "", 0
+        else
+            return "", "", 0
+        end
     end
-    tasks_count =tasks_count + 1
-    TRACE("NUM_TASKS+", tasks_count)
+    tasks_count = tasks_count + 1
+    TRACE("NUM_TASKS+", tasks_count, tasks_stopped)
     local exitcode, stdout, stderr = shell(args)
-    tasks_count =tasks_count - 1
-    TRACE("NUM_TASKS-", tasks_count)
+    tasks_count = tasks_count - 1
+    TRACE("NUM_TASKS-", tasks_count, tasks_stopped)
     if args.to_tty then
         return exitcode == 0
     else
@@ -398,6 +401,6 @@ return {
     pkg = pkg,
     run = run,
     spawn = spawn,
-    task_conds = task_conds,
+    cond_wait = cond_wait,
     finish_spawned = finish_spawned,
 }

@@ -739,6 +739,7 @@ local function list_ports(mode)
             end
         end
         if count > 0 then
+            Msg.show{start = true, count, descr}
             listdata = {}
             for _, pkg_old in ipairs(pkg_list) do
                 if test(pkg_old) then
@@ -755,12 +756,7 @@ local function list_ports(mode)
             local pkgnames = table.keys(listdata)
             TRACE("PKGNAMES", #pkgnames)
             table.sort(pkgnames)
-            local first = true
             for _, pkg_old in ipairs(pkgnames) do
-                if first then
-                    Msg.show{start = true, count, descr}
-                    first = false
-                end
                 TRACE("LIST", pkg_old)
                 Msg.show{pkg_old, listdata[pkg_old]}
             end

@@ -473,7 +473,6 @@ local function __index(origin, k)
             "CONFLICTS_INSTALL", -- 23
             "CONFLICTS", -- 24
             "OPTIONS_FILE", -- 25
-            "DISTDIR",
             "DIST_SUBDIR",
             "DISTFILES", -- may have ":" followed by fetch label appended
             "PATCHFILES", -- as above
@@ -507,7 +506,6 @@ local function __index(origin, k)
         set_table(origin, "conflicts_var", t.CONFLICTS)
         set_table(origin, "distfiles", t.DISTFILES)
         set_table(origin, "patchfiles", t.PATCHFILES)
-        origin.distdir = t.DISTDIR
         origin.dist_subdir = t.DIST_SUBDIR
         origin.options_file = t.OPTIONS_FILE
         return rawget(origin, k)

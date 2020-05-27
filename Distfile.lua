@@ -131,8 +131,13 @@ local function fetch(origin)
    Exec.spawn(dist_fetch, origin)
 end
 
+local function fetch_finish()
+   TRACE("FETCH_FINISH")
+   Exec.finish_spawned(fetch, "Finish background fetching and checking of distribution files")
+end
+
 return {
     fetch = fetch,
-    fetch_finish = Exec.finish_spawned,
+    fetch_finish = fetch_finish,
     -- clean_stale = clean_stale,
 }

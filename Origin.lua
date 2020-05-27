@@ -45,7 +45,7 @@ end
 
 -- return full path to the port directory
 local function path(origin)
-    return PATH.portsdir .. port(origin)
+    return path_concat(PATH.portsdir, port(origin))
 end
 
 --

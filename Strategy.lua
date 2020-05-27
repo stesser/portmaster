@@ -288,7 +288,7 @@ end
 
 local function execute()
     -- wait for all spawned tasks to complete
-    Exec.finish_spawned()
+    Exec.finish_spawned(Action.new)
 
     -- add missing dependencies
     local action_list = add_missing_deps(Action.list())

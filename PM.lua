@@ -290,14 +290,10 @@ end
 -- concatenate file path, first element must not be empty
 function path_concat(result, ...)
     TRACE("PATH_CONCAT", result, ...)
-    if result and result ~= "" then
+    if result ~= "" then
         for _, v in ipairs({...}) do
-            if string.sub(v, 1, 1) == "/" then
-                v = string.sub(v, 2)
-            end
-            if v and v ~= "" then
-                result = result .. (string.sub(result, -1) ~= "/" and "/" or "") .. v
-            end
+            local sep = string.sub(result, -1) ~= "/" and string.sub(v, 1, 1) ~= "/" and "/" or ""
+            result = result .. sep .. v
         end
         TRACE("PATH_CONCAT->", result)
         return result

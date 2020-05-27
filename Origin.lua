@@ -408,76 +408,77 @@ local function dump_cache()
 end
 
 -------------------------------------------------------------------------------------
---
-local function __index(origin, k)
-    local function __port_vars(origin, k, recursive)
-        local function check_origin_alias() -- origin is UPVALUE
-            local function adjustname(new_name) -- origin is UPVALUE
-                TRACE("ORIGIN_SETALIAS", origin.name, new_name)
-                ORIGIN_ALIAS[origin.name] = new_name
-                local o = Origin.get(new_name)
-                if o then -- origin with alias has already been seen, move fields over and continue with new table
-                    o.flavors = rawget(origin, "flavors")
-                    o.pkg_new = rawget(origin, "pkg_new")
-                    origin = o
-                end
-                ORIGINS_CACHE[origin.name] = false -- poison old value to cause error if accessed
-                origin.name = new_name
-                ORIGINS_CACHE[new_name] = origin
+local __port_vars_table = {
+    table = true,
+    "PKGNAME",
+    "FLAVOR",
+    "FLAVORS",
+    "DISTINFO_FILE",
+    "BROKEN",
+    "FORBIDDEN",
+    "IGNORE",
+    "IS_INTERACTIVE",
+    "LICENSE",
+    "ALL_OPTIONS",
+    "NEW_OPTIONS",
+    "PORT_OPTIONS",
+    "CATEGORIES",
+    "FETCH_DEPENDS",
+    "EXTRACT_DEPENDS",
+    "PATCH_DEPENDS",
+    "BUILD_DEPENDS",
+    "LIB_DEPENDS",
+    "RUN_DEPENDS",
+    "TEST_DEPENDS",
+    "PKG_DEPENDS",
+    "CONFLICTS_BUILD",
+    "CONFLICTS_INSTALL",
+    "CONFLICTS",
+    "DISTFILES", -- may have ":" followed by fetch label appended
+    "PATCHFILES", -- as above
+    "DIST_SUBDIR",
+    "OPTIONS_FILE",
+}
+
+local function __port_vars(origin, k, recursive)
+    local function check_origin_alias(origin)
+        local function adjustname(origin, new_name)
+            TRACE("ORIGIN_SETALIAS", origin.name, new_name)
+            ORIGIN_ALIAS[origin.name] = new_name
+            local o = Origin.get(new_name)
+            if o then -- origin with alias has already been seen, move fields over and continue with new table
+                o.flavors = rawget(origin, "flavors")
+                o.pkg_new = rawget(origin, "pkg_new")
+                origin = o
             end
-            -- add missing default flavor, if applicable
-            local default_flavor = origin.flavors and origin.flavors[1]
-            local name = origin.name
-            if default_flavor and not string.match(name, "@") then -- flavor and default_version do not mix !!! check required ???
-                adjustname(name .. "@" .. default_flavor)
-            end
-            -- check for existing package cache entry and its origin
-            local p = origin.pkg_new
-            local o = p and p.origin -- MERGE !!!
-            TRACE("CHECK_ORIGIN_ALIAS", origin and origin.name or "<nil>", o and o.name or "<nil>", p and p.name or "<nil>")
-            if o and o.name ~= origin.name then
-                adjustname(o.name)
-            end
+            ORIGINS_CACHE[origin.name] = false -- poison old value to cause error if accessed
+            origin.name = new_name
+            ORIGINS_CACHE[new_name] = origin
         end
-        local function set_pkgname(origin, var, pkgname)
-            if pkgname then
-                local p = Package:new(pkgname)
-                TRACE("PKG_NEW", pkgname, origin.name, p.origin and p.origin.name or "''")
-                origin[var] = p
-            end
+        -- add missing default flavor, if applicable
+        local default_flavor = origin.flavors and origin.flavors[1]
+        local name = origin.name
+        if default_flavor and not string.match(name, "@") then -- flavor and default_version do not mix !!! check required ???
+            adjustname(origin, name .. "@" .. default_flavor)
         end
-        local t = origin:port_var{
-            table = true,
-            "PKGNAME", --  1
-            "FLAVOR", --  2
-            "FLAVORS", --  3
-            "DISTINFO_FILE", --  4
-            "BROKEN", --  5
-            "FORBIDDEN", --  6
-            "IGNORE", --  7
-            "IS_INTERACTIVE", --  8
-            "LICENSE", --  9
-            "ALL_OPTIONS", -- 10
-            "NEW_OPTIONS", -- 11
-            "PORT_OPTIONS", -- 12
-            "CATEGORIES", -- 13
-            "FETCH_DEPENDS", -- 14
-            "EXTRACT_DEPENDS", -- 15
-            "PATCH_DEPENDS", -- 16
-            "BUILD_DEPENDS", -- 17
-            "LIB_DEPENDS", -- 18
-            "RUN_DEPENDS", -- 19
-            "TEST_DEPENDS", -- 20
-            "PKG_DEPENDS", -- 21
-            "CONFLICTS_BUILD", -- 22
-            "CONFLICTS_INSTALL", -- 23
-            "CONFLICTS", -- 24
-            "OPTIONS_FILE", -- 25
-            "DIST_SUBDIR",
-            "DISTFILES", -- may have ":" followed by fetch label appended
-            "PATCHFILES", -- as above
-        } or {}
-        TRACE("PORT_VAR(" .. origin.name .. ", " .. k .. ")", table.unpack(t))
+        -- check for existing package cache entry and its origin
+        local p = origin.pkg_new
+        local o = p and p.origin -- MERGE !!!
+        TRACE("CHECK_ORIGIN_ALIAS", origin and origin.name or "<nil>", o and o.name or "<nil>", p and p.name or "<nil>")
+        if o and o.name ~= origin.name then
+            adjustname(origin, o.name)
+        end
+    end
+    local function set_pkgname(origin, var, pkgname)
+        if pkgname then
+            local p = Package:new(pkgname)
+            TRACE("PKG_NEW", pkgname, origin.name, p.origin and p.origin.name or "''")
+            origin[var] = p
+        end
+    end
+    local t = origin:port_var(__port_vars_table)
+    TRACE("PORT_VAR(" .. origin.name .. ", " .. k .. ")", table.unpack(t))
+    if t then
         -- first check for and update port options since they might affect the package name
         set_table(origin, "new_options", t.NEW_OPTONS)
         origin.is_broken = t.BROKEN
@@ -486,7 +487,7 @@ local function __index(origin, k)
         set_pkgname(origin, "pkg_new", t.PKGNAME)
         origin.flavor = t.FLAVOR
         set_table(origin, "flavors", t.FLAVORS)
-        check_origin_alias() ---- SEARCH FOR AND MERGE WITH POTENTIAL ALIAS
+        check_origin_alias(origin) ---- SEARCH FOR AND MERGE WITH POTENTIAL ALIAS
         origin.distinfo_file = t.DISTINFO_FILE
         set_bool(origin, "is_interactive", t.IS_INTERACTIVE)
         set_table(origin, "license", t.LICENSE)
@@ -509,99 +510,108 @@ local function __index(origin, k)
         set_table(origin, "patchfiles", t.PATCHFILES)
         origin.dist_subdir = t.DIST_SUBDIR
         origin.options_file = t.OPTIONS_FILE
-        return rawget(origin, k)
     end
-    local function __port_depends(origin, k)
-        local depends_table = {
-            build_depends = {
-                "extract_depends_var", "patch_depends_var", "fetch_depends_var", "build_depends_var", "lib_depends_var",
-                "pkg_depends_var",
-            },
-            run_depends = {"lib_depends_var", "run_depends_var"},
-            test_depends = {"test_depends_var"},
-            special_depends = {"build_depends_var"},
-        }
-        local t = depends_table[k]
-        assert(t, "non-existing dependency " .. k or "<nil>" .. " requested")
-        local ut = {}
-        for _, v in ipairs(t) do
-            for _, d in ipairs(origin[v] or {}) do
-                local pattern = k == "special_depends" and "^[^:]+:([^:]+:%S+)" or "^[^:]+:([^:]+)$"
-                TRACE("PORT_DEPENDS", k, d, pattern)
-                local o = string.match(d, pattern)
-                if o then
-                    ut[o] = true
-                end
-            end
-        end
-        return table.keys(ut)
-    end
-    local function __port_conflicts(origin, k)
-        local conflicts_table = {
-            build_conflicts = {"conflicts_build_var", "conflicts_var"},
-            install_conflicts = {"conflicts_install_var", "conflicts_var"},
-        }
-        local t = conflicts_table[k]
-        assert(t, "non-existing conflict type " .. k or "<nil>" .. " requested")
-        local ut = {}
-        for _, v in ipairs(t) do
-            local t = origin[v]
-            TRACE("CHECK_C?", origin.name, k, v)
-            if t then
-                for _, d in ipairs(t) do
-                    ut[d] = true
-                end
-            end
-        end
-        return table.keys(ut)
-    end
+    return rawget(origin, k)
+end
 
-    local dispatch = {
-        distinfo_file = __port_vars,
-        is_broken = __port_vars,
-        is_forbidden = __port_vars,
-        is_ignore = __port_vars,
-        is_interactive = __port_vars,
-        license = __port_vars,
-        flavors = __port_vars,
-        flavor = port_flavor_get,
-        all_options = __port_vars,
-        new_options = __port_vars,
-        port_options = __port_vars,
-        categories = __port_vars,
-        -- pkg_old = Package.packages_cache_load,
-        pkg_new = __port_vars,
-        -- old_pkgs = PkgDb.pkgname_from_origin,
-        path = path,
-        port = port,
-        port_exists = check_port_exists,
-        fetch_depends = __port_depends,
-        extract_depends = __port_depends,
-        patch_depends = __port_depends,
-        build_depends = __port_depends,
-        run_depends = __port_depends,
-        pkg_depends = __port_depends,
-        special_depends = __port_depends,
-        fetch_depends_var = __port_vars,
-        extract_depends_var = __port_vars,
-        patch_depends_var = __port_vars,
-        build_depends_var = __port_vars,
-        lib_depends_var = __port_vars,
-        pkg_depends_var = __port_vars,
-        run_depends_var = __port_vars,
-        test_depends_var = __port_vars,
-        conflicts_build_var = __port_vars,
-        conflicts_install_var = __port_vars,
-        conflicts_var = __port_vars,
-        build_conflicts = __port_conflicts,
-        install_conflicts = __port_conflicts,
+--
+local function __port_depends(origin, k)
+    local depends_table = {
+        build_depends = {
+            "extract_depends_var", "patch_depends_var", "fetch_depends_var", "build_depends_var", "lib_depends_var",
+            "pkg_depends_var",
+        },
+        run_depends = {"lib_depends_var", "run_depends_var"},
+        test_depends = {"test_depends_var"},
+        special_depends = {"build_depends_var"},
     }
+    local t = depends_table[k]
+    assert(t, "non-existing dependency " .. k or "<nil>" .. " requested")
+    local ut = {}
+    for _, v in ipairs(t) do
+        for _, d in ipairs(origin[v] or {}) do
+            local pattern = k == "special_depends" and "^[^:]+:([^:]+:%S+)" or "^[^:]+:([^:]+)$"
+            TRACE("PORT_DEPENDS", k, d, pattern)
+            local o = string.match(d, pattern)
+            if o then
+                ut[o] = true
+            end
+        end
+    end
+    return table.keys(ut)
+end
 
+--
+local function __port_conflicts(origin, k)
+    local conflicts_table = {
+        build_conflicts = {"conflicts_build_var", "conflicts_var"},
+        install_conflicts = {"conflicts_install_var", "conflicts_var"},
+    }
+    local t = conflicts_table[k]
+    assert(t, "non-existing conflict type " .. k or "<nil>" .. " requested")
+    local ut = {}
+    for _, v in ipairs(t) do
+        local t = origin[v]
+        TRACE("CHECK_C?", origin.name, k, v)
+        if t then
+            for _, d in ipairs(t) do
+                ut[d] = true
+            end
+        end
+    end
+    return table.keys(ut)
+end
+
+-------------------------------------------------------------------------------------
+--
+local __index_dispatch = {
+    distinfo_file = __port_vars,
+    is_broken = __port_vars,
+    is_forbidden = __port_vars,
+    is_ignore = __port_vars,
+    is_interactive = __port_vars,
+    license = __port_vars,
+    flavors = __port_vars,
+    flavor = port_flavor_get,
+    all_options = __port_vars,
+    new_options = __port_vars,
+    port_options = __port_vars,
+    categories = __port_vars,
+    options_file = __port_vars,
+    -- pkg_old = Package.packages_cache_load,
+    pkg_new = __port_vars,
+    -- old_pkgs = PkgDb.pkgname_from_origin,
+    path = path,
+    port = port,
+    port_exists = check_port_exists,
+    fetch_depends = __port_depends,
+    extract_depends = __port_depends,
+    patch_depends = __port_depends,
+    build_depends = __port_depends,
+    run_depends = __port_depends,
+    pkg_depends = __port_depends,
+    special_depends = __port_depends,
+    fetch_depends_var = __port_vars,
+    extract_depends_var = __port_vars,
+    patch_depends_var = __port_vars,
+    build_depends_var = __port_vars,
+    lib_depends_var = __port_vars,
+    pkg_depends_var = __port_vars,
+    run_depends_var = __port_vars,
+    test_depends_var = __port_vars,
+    conflicts_build_var = __port_vars,
+    conflicts_install_var = __port_vars,
+    conflicts_var = __port_vars,
+    build_conflicts = __port_conflicts,
+    install_conflicts = __port_conflicts,
+}
+
+local function __index(origin, k)
     TRACE("INDEX(o)", origin, k)
     local w = rawget(origin.__class, k)
     if w == nil then
         rawset(origin, k, false)
-        local f = dispatch[k]
+        local f = __index_dispatch[k]
         if f then
             w = f(origin, k)
             if w then
@@ -631,7 +641,6 @@ local mt = {
 
 --
 local function new(Origin, name)
-    -- local TRACE = print -- TESTING
     if name then
         local O = get(name)
         if not O then
@@ -668,32 +677,3 @@ return {
     dump_cache = dump_cache,
     check_license = check_license,
 }
-
---[[
-   Instance variables of class Origin:
-   - pkg_new = package object (to be installed from this origin)
-   - categories = table of categories
-   - conflicts = table of package objects for conflicting packages
-   - distinfo_file = full path name of distinfo file of this port
-   - is_broken = Makefile is marked BROKEN
-   - is_forbidden = Makefile is marked FORBIDDEN
-   - is_ignore = Makefile is marked IGNORE
-   - is_interactive = Makefile is marked IGNORE
-   - path = pathname of port corresponding to origin
-   - port = sub-directory of port in ports tree
-   - flavor = flavor part of given origin with flavor
-   - flavors = table of supported flavors for this port
-   - all_options = all available options of this port
-   - port_optiomns = currently selected options of this port
-   - fetch_depends = table of origin names required for make fetch
-   - extract_depends = table of origin names required for make extract
-   - patch_depends = table of origin names required for make patch
-   - build_depends = table of origin names required for make depends
-   - run_depends = table of origin names required to execute the products of this port
-   - pkg_depends = table of origin names required for make package
---]]
-
---[[
-   PROBLEM: different packages can be built from the same port (without flavor)
-   EXAMPLE: devel/lua-posix will create different packages depending on the default LUA version
---]]

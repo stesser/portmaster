@@ -37,6 +37,9 @@ local Distfile = require("Distfile")
 local Exec = require("Exec")
 local PkgDb = require("PkgDb")
 
+-------------------------------------------------------------------------------------
+local P_US = require("posix.unistd")
+local access = P_US.access
 
 --
 local function add_action (args)

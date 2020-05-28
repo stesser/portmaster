@@ -212,7 +212,7 @@ local function recover(pkg)
     local pkgname = pkg.name
     local pkgfile = pkg.pkgfile
     if not pkgfile then
-        pkgfile = Exec.run{table = true, safe = true, CMD.ls, "-1t", pkg:filename{base = PATH.packages_backup, subdir = "", ext = ".*"}}[1] -- XXX replace with glob and sort by modification time ==> pkg.bakfile
+        pkgfile = Exec.run{table = true, safe = true, CMD.ls, "-1t", filename{base = PATH.packages_backup, subdir = "", ext = ".*", pkg}}[1] -- XXX replace with glob and sort by modification time ==> pkg.bakfile
     end
     if pkgfile and access(pkgfile, "r") then
         Msg.show {"Re-installing previous version", pkgname}

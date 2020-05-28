@@ -256,7 +256,7 @@ local function provide_special_depends(special_depends)
                 "NO_DEPENDS=1",
                 "DEFER_CONFLICTS_CHECK=1",
                 "DISABLE_CONFLICTS=1",
-                "CMD.fetch=true",
+                "FETCH_CMD=true",
                 target,
             }
             if not origin:port_make(args) then

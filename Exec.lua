@@ -283,8 +283,8 @@ end
 --
 local function cond_wait(f, ...)
     TRACE("COND_WAIT", ...)
-    local co = coroutine.running()
-    assert (coroutine.isyieldable(co), "cond_wait called ouside of spawned function")
+    local co, in_main = coroutine.running()
+    assert (not in_main, "cond_wait called outside of spawned function")
     task_wait_func[co] = {f = f, args = {...}}
     tasks_blocked = tasks_blocked + 1
     TRACE("NUM_TASKS<", tasks_spawned, tasks_forked, tasks_blocked)

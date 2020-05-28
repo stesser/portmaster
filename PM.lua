@@ -28,7 +28,11 @@ SUCH DAMAGE.
 --]]
 
 -------------------------------------------------------------------------------------
-package.path = package.path .. ";/home/se/src/GIT/portmaster/?.lua"
+local package_dir = "/home/se/src/GIT/portmaster"
+
+if package_dir then
+    package.path = package.path .. ";" .. package_dir .. "/?.lua"
+end
 
 --local dbg = require("debugger")
 

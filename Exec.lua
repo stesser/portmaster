@@ -298,14 +298,9 @@ local function shell(args)
     if args.to_tty then
         return task_create(args)
     end
-    local co = coroutine.running()
-    local bg = coroutine.isyieldable(co)
+    local co, in_main = coroutine.running()
     local pid = task_create(args)
-    if (bg) then
-        -- in coroutine: execute background process
-        co_table[pid] = co
-        return coroutine.yield()
-    else
+    if (in_main) then
         -- in main program wait for and return results
         co_table[pid] = false
         local exitcode, stdout, stderr
@@ -318,6 +313,10 @@ local function shell(args)
         TRACE("SHELL(exitcode)", exitcode)
         co_table[pid] = nil
         return exitcode, stdout, stderr
+    else
+        -- in coroutine: execute background process
+        co_table[pid] = co
+        return coroutine.yield()
     end
 end
 

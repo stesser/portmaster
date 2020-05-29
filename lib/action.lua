@@ -29,10 +29,8 @@ SUCH DAMAGE.
 local Origin = require("portmaster.origin")
 local Options = require("portmaster.options")
 local PkgDb = require("portmaster.pkgdb")
-local Jail = require("portmaster.jail")
 local Msg = require("portmaster.msg")
 local Progress = require("portmaster.progress")
-local Distfile = require("portmaster.distfiles")
 local Exec = require("portmaster.exec")
 
 -------------------------------------------------------------------------------------

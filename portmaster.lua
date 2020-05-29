@@ -28,6 +28,8 @@ SUCH DAMAGE.
 --]]
 
 -------------------------------------------------------------------------------------
+package.path = "/home/se/src/GIT/portmaster/lib/?.lua;" .. package.path
+
 --local dbg = require("debugger")
 
 local P = require("posix")
@@ -673,6 +675,26 @@ local function portdb_purge()
     chdir("/")
 end
 
+--
+local function list_origins()
+    local origins = {}
+    for k, pkg in ipairs(Package:installed_pkgs()) do
+        if pkg.num_depending == 0 and not pkg.is_automtic then
+            local o = pkg.origin
+            if o then
+                local n = o.name
+                if n then
+                    n = string.match (n, "^[^%%]*")
+                    origins[n] = true
+                end
+            end
+        end
+    end
+    local list = table.keys(origins)
+    table.sort(list)
+    Msg.show{verbatim = true, table.concat(list, "\n"), "\n"}
+end
+
 -- list ports (optionally with information about updates / moves / deletions)
 local function list_ports(mode)
     local filter = {
@@ -833,7 +855,7 @@ local function main()
         list_ports(Options.list)
     end
     if Options.list_origins then
-        PkgDb.list_origins()
+        list_origins()
     end
     -- if Options.delete_build_only then delete_build_only () end
     -- should have become obsolete due to build dependency tracking

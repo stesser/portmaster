@@ -219,8 +219,8 @@ local function read_answer(prompt, default, choices)
         end
         while true do
             show {prompt = true, prompt, opt_list, display_default .. ": "}
-            reply = stdin:read(1)
-            if not reply or #reply == 0 or reply == "\n" then
+            reply = stdin:read()
+            if reply == "" then
                 reply = default
             end
             for i = 1, #choices do

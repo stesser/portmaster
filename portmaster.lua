@@ -93,8 +93,6 @@ local function exit_cleanup(exit_code)
     exit_code = exit_code or 0
     Progress.clear()
     Distfile.fetch_finish()
-    tempfile_delete("FETCH_ACK")
-    tempfile_delete("BUILD_LOG")
     Options.save()
     Msg.success_show()
     if tracefd then

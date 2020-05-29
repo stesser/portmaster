@@ -72,32 +72,36 @@ end
 
 -- call make for origin with arguments used e.g. for variable queries (no state change)
 local function port_make(origin, args)
-    local flavor = flavor(origin)
-    if flavor then
-        table.insert(args, 1, "FLAVOR=" .. flavor)
-    end
-    local dir = path(origin)
-    --[[
-    -- only valid for port_var, not generic port_make !!!
-    if args.jailed and PARAM.jailbase then
-      dir = PARAM.jailbase .. dir
-      args.jailed = false
-   end
-   --]]
-    if not is_dir(dir) then
-        return nil, "port directory " .. dir .. " does not exist"
+    if origin then
+        local dir = path(origin)
+        local flv = flavor(origin)
+        if flv then
+            table.insert(args, 1, "FLAVOR=" .. flv)
+        end
+        --[[
+        -- only valid for port_var, not generic port_make !!!
+        if args.jailed and PARAM.jailbase then
+            dir = PARAM.jailbase .. dir
+            args.jailed = false
+        end
+        --]]
+        if not is_dir(dir) then
+            return nil, "port directory " .. dir .. " does not exist"
+        end
+        table.insert(args, 1, "-C")
+        table.insert(args, 2, dir)
+        local pf = pseudo_flavor(origin)
+        if pf then
+            table.insert(args, 1, "DEFAULT_VERSIONS='" .. pf .. "'")
+            TRACE("DEFAULT_VERSIONS", pf)
+        end
+    else
+        table.insert(args, 1, "-f/usr/share/mk/bsd.port.mk")
     end
     if Options.make_args then
         for i, v in ipairs(Options.make_args) do
             table.insert(args, i, v)
         end
-    end
-    table.insert(args, 1, "-C")
-    table.insert(args, 2, dir)
-    local pf = pseudo_flavor(origin)
-    if pf then
-        table.insert(args, 1, "DEFAULT_VERSIONS='" .. pf .. "'")
-        TRACE("DEFAULT_VERSIONS", pf)
     end
     return Exec.make(args)
 end

@@ -249,36 +249,6 @@ function table:index(val)
     end
 end
 
-------------------------------------------------------------------------------------- (UTIL)
--- move all path and file specific functions into module(s) Path and/or File???
--- create tempfile with a name that contains "$type" and the portmaster PID
-function tempfile_create(type)
-    local pattern = "pm-" .. getpid() .. "-" .. type
-    local p = io.popen(CMD.mktemp .. " -qt " .. pattern) -- use EXEC.run
-    local filename = p:read()
-    p:close()
-    return filename
-end
-
--- list temporary files created by the current process for "$type" (UTIL)
-function tempfile_list(type, key)
-    if not PATH.tmpdir then
-        return nil
-    end
-    local pattern = PATH.tmpdir .. "pm-" .. getpid() .. "-" .. type .. "." .. (key or "*")
-    return glob(pattern)
-end
-
--- delete all temporary files matching the passed parameters (may also be "*" for all)
-function tempfile_delete(...)
-    local files = tempfile_list(...)
-    if files then
-        for _, file in ipairs(files) do
-            os.remove(file)
-        end
-    end
-end
-
 -- directory name part of file path
 function dirname(filename)
     return string.match(filename, ".*/") or "."

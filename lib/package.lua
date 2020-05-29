@@ -26,13 +26,13 @@ SUCH DAMAGE.
 --]]
 
 -------------------------------------------------------------------------------------
--- local Origin = require ("Origin")
-local Excludes = require("Excludes")
-local Options = require("Options")
-local PkgDb = require("PkgDb")
-local Msg = require("Msg")
-local Progress = require("Progress")
-local Exec = require("Exec")
+-- local Origin = require ("portmaster.origin")
+local Excludes = require("portmaster.excludes")
+local Options = require("portmaster.options")
+local PkgDb = require("portmaster.pkgdb")
+local Msg = require("portmaster.msg")
+local Progress = require("portmaster.progress")
+local Exec = require("portmaster.exec")
 
 -------------------------------------------------------------------------------------
 local P = require("posix")

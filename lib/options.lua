@@ -26,8 +26,8 @@ SUCH DAMAGE.
 --]]
 
 -------------------------------------------------------------------------------------
-local Excludes = require("Excludes")
-local Msg = require("Msg")
+local Excludes = require("portmaster.excludes")
+local Msg = require("portmaster.msg")
 
 -------------------------------------------------------------------------------------
 local P = require "posix"

@@ -26,14 +26,14 @@ SUCH DAMAGE.
 --]]
 
 -------------------------------------------------------------------------------------
-local Origin = require("Origin")
-local Options = require("Options")
-local PkgDb = require("PkgDb")
-local Jail = require("Jail")
-local Msg = require("Msg")
-local Progress = require("Progress")
-local Distfile = require("Distfile")
-local Exec = require("Exec")
+local Origin = require("portmaster.origin")
+local Options = require("portmaster.options")
+local PkgDb = require("portmaster.pkgdb")
+local Jail = require("portmaster.jail")
+local Msg = require("portmaster.jsg")
+local Progress = require("portmaster.progress")
+local Distfile = require("portmaster.distfiles")
+local Exec = require("portmaster.exec")
 
 -------------------------------------------------------------------------------------
 local P = require("posix")

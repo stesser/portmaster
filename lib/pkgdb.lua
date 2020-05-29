@@ -26,7 +26,7 @@ SUCH DAMAGE.
 --]]
 
 -------------------------------------------------------------------------------------
-local Exec = require("Exec")
+local Exec = require("portmaster.exec")
 
 -------------------------------------------------------------------------------------
 -- query package DB for passed origin (with optional flavor) or passed package name

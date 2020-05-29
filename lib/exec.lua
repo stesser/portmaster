@@ -53,8 +53,8 @@ Concept for background execution of functions:
 --]]
 
 -------------------------------------------------------------------------------------
-local Options = require("Options")
-local Msg = require("Msg")
+local Options = require("portmaster.options")
+local Msg = require("portmaster.msg")
 
 -------------------------------------------------------------------------------------
 local P = require("posix")

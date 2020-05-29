@@ -26,7 +26,7 @@ SUCH DAMAGE.
 --]]
 
 -------------------------------------------------------------------------------------
-local Exec = require("Exec")
+local Exec = require("portmaster.exec")
 
 -------------------------------------------------------------------------------------
 local DISTINFO_CACHE = {}
@@ -37,6 +37,7 @@ SHA256 (bash/bash-5.0.tar.gz) = b4a80f2ac66170b2913efbfb9f2594f1f76c7b1afd11f799
 SIZE (bash/bash-5.0.tar.gz) = 10135110
 --]]
 
+-- return table indexed by filename
 local function parse_distinfo(di_filename)
     local result = {}
     local timestamp
@@ -104,7 +105,6 @@ local function dist_fetch(origin)
          Exec.cond_wait(not_fetching, distinfo)
       end
       if fetch_required(distinfo) then
-         local result = ""
          setall(distinfo, "fetching", true)
          local lines = origin:port_make{as_root = PARAM.distdir_ro, table = true,
                   "FETCH_BEFORE_ARGS=-v", "NO_DEPENDS=1", "DISABLE_CONFLICTS=1",
@@ -127,10 +127,12 @@ local function dist_fetch(origin)
     return success
 end
 
+--
 local function fetch(origin)
    Exec.spawn(dist_fetch, origin)
 end
 
+--
 local function fetch_finish()
    TRACE("FETCH_FINISH")
    Exec.finish_spawned(fetch, "Finish background fetching and checking of distribution files")
@@ -139,5 +141,5 @@ end
 return {
     fetch = fetch,
     fetch_finish = fetch_finish,
-    -- clean_stale = clean_stale,
+    parse_distinfo = parse_distinfo,
 }

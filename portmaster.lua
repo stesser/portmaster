@@ -71,16 +71,16 @@ R = require("std.strict")
 
 -- local _debug = require 'std._debug'(true)
 
-Package = require("Package")
-Origin = require("Origin")
-local Options = require("Options")
-local Msg = require("Msg")
-local Progress = require("Progress")
-local Distfile = require("Distfile")
-local Action = require("Action")
-local Exec = require("Exec")
-local PkgDb = require("PkgDb")
-local Strategy = require("Strategy")
+Package = require("portmaster.package")
+Origin = require("portmaster.origin")
+local Options = require("portmaster.options")
+local Msg = require("portmaster.msg")
+local Progress = require("portmaster.progress")
+local Distfile = require("portmaster.distfiles")
+local Action = require("portmaster.action")
+local Exec = require("portmaster.exec")
+local PkgDb = require("portmaster.pkgdb")
+local Strategy = require("portmaster.strategy")
 
 -------------------------------------------------------------------------------------
 stdin = io.stdin

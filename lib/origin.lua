@@ -26,11 +26,11 @@ SUCH DAMAGE.
 --]]
 
 -------------------------------------------------------------------------------------
-local Excludes = require("Excludes")
-local Options = require("Options")
-local Msg = require("Msg")
-local Distfile = require("Distfile")
-local Exec = require("Exec")
+local Excludes = require("portmaster.excludes")
+local Options = require("portmaster.options")
+local Msg = require("portmaster.msg")
+local Distfile = require("portmaster.distfiles")
+local Exec = require("portmaster.exec")
 
 -------------------------------------------------------------------------------------
 local P_US = require("posix.unistd")

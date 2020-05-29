@@ -26,8 +26,8 @@ SUCH DAMAGE.
 --]]
 
 -------------------------------------------------------------------------------------
-local Options = require("Options")
-local Exec = require("Exec")
+local Options = require("portmaster.options")
+local Exec = require("portmaster.exec")
 
 -------------------------------------------------------------------------------------
 local P_US = require("posix.unistd")

@@ -28,15 +28,8 @@ SUCH DAMAGE.
 --]]
 
 -------------------------------------------------------------------------------------
-local package_dir = "/home/se/src/GIT/portmaster"
-
-if package_dir then
-    package.path = package.path .. ";" .. package_dir .. "/?.lua"
-end
-
 --local dbg = require("debugger")
 
--------------------------------------------------------------------------------------
 local P = require("posix")
 local glob = P.glob
 

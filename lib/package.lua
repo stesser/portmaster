@@ -402,7 +402,6 @@ local function packages_cache_load()
         p.origin = o
         p.abi = abi
         p.flavor = f
-        TRACE("F", o.name, f)
         p.is_automatic = automatic == "1"
         p.is_locked = locked == "1"
         p.is_installed = not Options.jailed

@@ -47,7 +47,7 @@ local P_SL = require("posix.stdlib")
 local setenv = P_SL.setenv
 
 local P_SS = require("posix.sys.stat")
--- local stat = P_SS.stat
+local stat = P_SS.stat
 local lstat = P_SS.lstat
 local stat_isdir = P_SS.S_ISDIR
 -- local stat_isreg = P_SS.S_ISREG
@@ -316,24 +316,44 @@ function is_dir(path)
     end
 end
 
---[[
 --
-function scan_dir(dir)
+function scan_files(dir)
+    TRACE("SCANFILES", dir)
     local result = {}
     assert(dir, "empty directory argument")
-    local files = glob(path_concat(dir, "*")) or {}
-    for i, f in ipairs(files) do
-        if is_dir(f) then
-            for i, f in ipairs(scan_dir(f)) do
+    local files = glob(path_concat(dir, "*"))
+    if files then
+        for _, f in ipairs(files) do
+            if is_dir(f) then
+                for _, ff in ipairs(scan_files(f)) do
+                    table.insert(result, ff)
+                end
+            else
                 table.insert(result, f)
             end
-        else
-            table.insert(result, f)
         end
     end
     return result
 end
---]]
+
+--
+function scan_dirs(dir)
+    TRACE("SCANDIRS", dir)
+    local result = {}
+    assert(dir, "empty directory argument")
+    local files = glob(path_concat(dir, "*"))
+    if files then
+        for _, f in ipairs(files) do
+            if is_dir(f) then
+                table.insert(result, f)
+                for _, ff in ipairs(scan_dirs(f)) do
+                    table.insert(result, ff)
+                end
+            end
+        end
+    end
+    return result
+end
 
 -- set global variable to first parameter that is a directory
 local function init_global_path(...)
@@ -513,7 +533,7 @@ end
 -- ask whether some file should be deleted (except when -n or -y enforce a default answer)
 -- move to Msg module
 -- convert to return table of files to delete?
-local function ask_and_delete(prompt, ...)
+local function ask_and_delete(prompt, files)
     local msg_level = 1
     local answer
     if Options.default_no then
@@ -522,7 +542,7 @@ local function ask_and_delete(prompt, ...)
     if Options.default_yes then
         answer = "a"
     end
-    for _, file in ipairs(...) do
+    for _, file in ipairs(files) do
         if answer ~= "a" and answer ~= "q" then
             answer = Msg.read_answer("Delete " .. prompt .. " '" .. file .. "'", "y", {"y", "n", "a", "q"})
         end
@@ -534,19 +554,18 @@ local function ask_and_delete(prompt, ...)
             if Options.default_yes or answer == "a" then
                 Msg.show {level = msg_level, "Deleting", prompt .. ":", file}
             end
-            if not Options.dry_run then
-                Exec.run {as_root = true, log = true, CMD.unlink, file}
-            end
+            Exec.spawn(Exec.run, {as_root = PARAM.distdir_ro, log = true, CMD.unlink, file})
         elseif answer == "q" or answer == "n" then
             if Options.default_no or answer == "q" then
                 Msg.show {level = 1, "Not deleting", prompt .. ":", file}
             end
         end
     end
+    Exec.finish_spawned()
 end
 
 -- ask whether some directory and its contents  should be deleted (except when -n or -y enforce a default answer)
-local function ask_and_delete_directory(prompt, ...)
+local function ask_and_delete_directory(prompt, dirs)
     -- move to Msg module -- convert to return table of directories to delete?
     local msg_level = 1
     local answer
@@ -556,7 +575,7 @@ local function ask_and_delete_directory(prompt, ...)
     if Options.default_yes then
         answer = "a"
     end
-    for _, directory in ipairs(...) do
+    for _, directory in ipairs(dirs) do
         if answer ~= "a" and answer ~= "q" then
             answer = Msg.read_answer("Delete " .. prompt .. " '" .. directory .. "'", "y", {"y", "n", "a", "q"})
         end
@@ -590,6 +609,53 @@ local function packagefiles_purge() -- move to new PackageFile module ???
 end
 
 -------------------------------------------------------------------------------------
+--
+local distinfo_cache = {}
+
+local function fetch_distinfo(pkg)
+   local o_o = pkg.origin
+   if o_o then
+      local f = o_o.distinfo_file
+      if f then
+         local t = Distfile.parse_distinfo(f)
+         for k, v in pairs(t) do
+            distinfo_cache[k] = v
+         end
+      end
+   end
+end
+
+-- offer to delete old distfiles that are no longer required by any port
+local function clean_stale_distfiles ()
+    Msg.show {start = true, "Gathering list of distribution files of all installed ports ..."}
+    local packages = Package.installed_pkgs()
+    for _, pkg in ipairs(packages) do
+        Exec.spawn (fetch_distinfo, pkg)
+    end
+    Exec.finish_spawned(fetch_distinfo)
+    chdir(PATH.distdir)
+    local distfiles = scan_files("")
+    local unused = {}
+    for _, f in ipairs(distfiles) do
+        if not distinfo_cache[f] then
+            unused[#unused + 1] = f
+        end
+    end
+    if #unused == 0 then
+        Msg.show {"No stale distfiles found"}
+    else
+        ask_and_delete ("stale file", unused)
+        local distdirs = scan_dirs("")
+        if #distdirs > 0 then
+            table.sort(distdirs, function (a, b) return a > b end)
+        end
+        for _, v in ipairs(distdirs) do
+            Exec.run{as_root = PARAM.distdir_ro, CMD.rmdir, v}
+        end
+    end
+end
+
+--
 local function list_stale_libraries()
     -- create list of shared libraries used by packages and create list of compat libs that are not required (anymore)
     local activelibs = {}
@@ -825,7 +891,7 @@ local function main()
     end
     -- if Options.expunge then expunge (Options.expunge) end
     if Options.scrub_distfiles then
-        distfiles_clean_stale()
+        clean_stale_distfiles()
     end
 
     -- display package messages for all updated ports

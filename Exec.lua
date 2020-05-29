@@ -335,16 +335,17 @@ local function run(args)
     if PARAM.jailbase and args.jailed then
         table.insert(args, 1, CMD.chroot)
         table.insert(args, 2, PARAM.jailbase)
-        if not args.as_root and CMD.sudo then -- chroot needs root but can then switch back to user
+        if not args.as_root and PARAM.uid ~= 0 then -- chroot needs root but can then switch back to user
             args.as_root = true
             table.insert(args, 2, "-u")
             table.insert(args, 3, PARAM.user)
         end
     end
-    if args.as_root and CMD.sudo then
+    if args.as_root and PARAM.uid ~= 0 then
         table.insert(args, 1, CMD.sudo)
         if args.env then -- does not work with doas as CMD.sudo !!!
             for k, v in pairs(args.env) do
+                TRACE("SETENV(Sudo)", k, v)
                 table.insert(args, 2, k .. "=" .. v)
             end
             table.insert(args, 2, "-p" .. "#   >>>\tEnter password of user %p: ")
@@ -353,17 +354,15 @@ local function run(args)
     end
     if args.log then
         if Options.dry_run or Options.show_work then
-            local args = args
+            local args_txt = {}
             for i, v in ipairs(args) do
-                if string.match(v, "%s") then
-                    args[i] = "'" .. v .. "'"
-                end
+                args_txt[i] = string.match(v, "%s") and "'" .. v .. "'" or v
             end
             if Options.dry_run then
-                Msg.show {verbatim = true, "\t" .. table.concat(args, " ") .. "\n"}
+                Msg.show {verbatim = true, "\t" .. table.concat(args_txt, " ") .. "\n"}
             else
-                args.level = args.safe and 2 or 0
-                Msg.show(args)
+                args_txt.level = args_txt.safe and 2 or 0
+                Msg.show(args_txt)
             end
         end
     end

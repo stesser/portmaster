@@ -3,7 +3,7 @@
 --[[
 SPDX-License-Identifier: BSD-2-Clause-FreeBSD
 
-Copyright (c) 2019, 2020 Stefan EÃŸer <se@freebsd.org>
+Copyright (c) 2019, 2020 Stefan Eßer <se@freebsd.org>
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions
@@ -358,31 +358,6 @@ local function init_global_cmd(...)
     error("init_global_cmd")
 end
 
--- return global ports system variable (not dependent on any specific port)
--- might possibly have to support reading more than one line???
-local function ports_var(args)
-    local result
-    table.insert(args, 1, "-f/usr/share/mk/bsd.port.mk")
-    table.insert(args, 2, "-V")
-    if not args.needbeforemk then
-        table.insert(args, 1, "-DBEFOREPORTMK")
-    end
-    if Options.make_args then
-        table.move(Options.make_args, 1, -1, #args + 1, args)
-    end
-    args.safe = true
-    table.insert(args, 1, CMD.make)
-    result = Exec.run(args)
-    -- if result and strpfx (result, "make: ") then return nil end
-    if args.table then
-        return result
-    elseif args.split then
-        return split_words(result)
-    else
-        return chomp(result)
-    end
-end
-
 -- global tables for full paths of used Unix commands and relevant directories
 CMD = {}
 PATH = {}
@@ -391,71 +366,12 @@ PARAM = {}
 -- initialize global variables after reading configuration files
 -- return first existing directory with a trailing "/" appended
 local function init_globals()
-    -- os.chdir ("/") -- NYI 	cd /
+    chdir("/")
 
     -- important commands
     CMD.chroot = init_global_cmd("/usr/sbin/chroot")
-    CMD.find = init_global_cmd("/usr/bin/find")
     CMD.ldconfig = init_global_cmd("/sbin/ldconfig")
     CMD.make = init_global_cmd("/usr/bin/make")
-
-    -- port infrastructure paths, may be modified by user
-    PATH.portsdir = init_global_path(ports_var {"PORTSDIR"}, "/usr/ports")
-    PATH.distdir = init_global_path(ports_var {"DISTDIR"}, path_concat(PATH.portsdir, "distfiles"))
-    PARAM.distdir_ro = not access(PATH.distdir, "rw") -- need sudo to fetch or purge distfiles
-
-    PATH.packages = init_global_path(Options.local_packagedir,
-                                     ports_var {"PACKAGES"},
-                                     path_concat(PATH.portsdir, "packages"),
-                                     "/usr/packages")
-    PATH.packages_backup = init_global_path(PATH.packages .. "portmaster-backup")
-    PARAM.packages_ro = not access(PATH.packages, "rw") -- need sudo to create or delete package files
-
-    PATH.localbase = init_global_path(ports_var {"LOCALBASE"}, "/usr/local")
-    PATH.local_lib = init_global_path(path_concat(PATH.localbase, "lib"))
-    PATH.local_lib_compat = init_global_path(path_concat(PATH.local_lib, "compat/pkg"))
-
-    PATH.pkg_dbdir = init_global_path(ports_var {needportmk = true, "PKG_DBDIR"}, "/var/db/pkg") -- no value returned for make -DBEFOREPORTMK
-    PARAM.pkg_dbdir_ro = not access(PATH.pkg_dbdir, "rw") -- need sudo to update the package database
-
-    PATH.port_dbdir = init_global_path(ports_var {"PORT_DBDIR"}, "/var/db/ports")
-    PARAM.port_dbdir_ro = not access(PATH.port_dbdir, "rw") -- need sudo to record port options
-
-    PATH.wrkdirprefix = init_global_path(ports_var {"WRKDIRPREFIX"}, "/")
-    PARAM.wrkdir_ro = not access(path_concat(PATH.wrkdirprefix, PATH.portsdir), "rw") -- need sudo to build ports
-
-    PATH.tmpdir = init_global_path(os.getenv("TMPDIR"), "/tmp")
-
-    -- 	cd "${PORTSDIR}" || fail "Cannot determine the base of the ports tree"
-    --   os.chdir (PORTSDIR) -- error check=?
-
-    -- Bootstrap pkg if not yet installed
-    -- 	[ -x "${LOCALBASE}sbin/pkg-static" ] || ASSUME_ALWAYS_YES=yes /usr/sbin/pkg -v > /dev/null
-    CMD.pkg = init_global_cmd(path_concat(PATH.localbase, "sbin/pkg-static"))
-
-    PARAM.uid = geteuid() -- getuid() ???
-    local pw_entry = getpwuid(PARAM.uid)
-    PARAM.user = pw_entry.pw_name
-    PARAM.home = pw_entry.pw_dir
-    TRACE("PW_ENTRY", PARAM.uid, PARAM.user, PARAM.home)
-
-    if not CMD.sudo and PARAM.uid ~= 0 then
-        local cmd = Options.su_cmd or "sudo"
-        CMD.sudo = init_global_cmd(path_concat(PATH.localbase, "sbin", cmd), path_concat(PATH.localbase, "bin", cmd))
-    end
-
-    -- locate grep command that provided required functionality
-    -- CMD.grep		= init_grep_cmd ("/usr/bin/bsdgrep", "/usr/bin/grep", "/usr/bin/gnugrep", PATH.localbase .. "/bin/grep")
-    CMD.grep = "/usr/bin/grep"
-
-    -- set package formats unless already specified by user
-    Options.package_format = PARAM.package_format or "tgz"
-    Options.backup_format = PARAM.backup_format or "tar"
-
-    -- some important global variables
-    PARAM.abi = chomp(Exec.run {safe = true, CMD.pkg, "config", "abi"})
-    PARAM.abi_noarch = string.match(PARAM.abi, "^[^:]+:[^:]+:") .. "*"
-
     CMD.sysctl = "/sbin/sysctl"
     CMD.mv = "/bin/mv"
     CMD.unlink = "/bin/unlink"
@@ -474,6 +390,70 @@ local function init_globals()
     CMD.sh = "/bin/sh"
     CMD.ktrace = "/usr/bin/ktrace" -- testing only
     CMD.mktemp = "/usr/bin/mktemp"
+    CMD.grep = "/usr/bin/grep"
+    CMD.pkg_bootstrap = "/usr/sbin/pkg"
+
+    local t = Origin.port_var(nil, {
+        table = true,
+        "LOCALBASE",
+        "PORTSDIR",
+        "DISTDIR",
+        "PACKAGES",
+        "PKG_DBDIR",
+        "PORT_DBDIR",
+        "WRKDIRPREFIX",
+        "DISABLE_LICENSES",
+    })
+
+    PATH.localbase = init_global_path(t.LOCALBASE, "/usr/local")
+    PATH.local_lib = init_global_path(path_concat(PATH.localbase, "lib"))
+    PATH.local_lib_compat = init_global_path(path_concat(PATH.local_lib, "compat/pkg"))
+
+    -- port infrastructure paths, may be modified by user
+    PATH.portsdir = init_global_path(t.PORTSDIR, "/usr/ports")
+    PATH.distdir = init_global_path(t.DISTDIR, path_concat(PATH.portsdir, "distfiles"))
+    PARAM.distdir_ro = not access(PATH.distdir, "rw") -- need sudo to fetch or purge distfiles
+
+    PATH.packages = init_global_path(Options.local_packagedir,
+                                     t.PACKAGES,
+                                     path_concat(PATH.portsdir, "packages"),
+                                     "/usr/packages")
+    PATH.packages_backup = init_global_path(PATH.packages .. "portmaster-backup")
+    PARAM.packages_ro = not access(PATH.packages, "rw") -- need sudo to create or delete package files
+
+    PATH.pkg_dbdir = init_global_path(t.PKG_DBDIR, "/var/db/pkg") -- no value returned for make -DBEFOREPORTMK
+    PARAM.pkg_dbdir_ro = not access(PATH.pkg_dbdir, "rw") -- need sudo to update the package database
+
+    PATH.port_dbdir = init_global_path(t.PORT_DBDIR, "/var/db/ports")
+    PARAM.port_dbdir_ro = not access(PATH.port_dbdir, "rw") -- need sudo to record port options
+
+    PATH.wrkdirprefix = init_global_path(t.WRKDIRPREFIX, "/")
+    PARAM.wrkdir_ro = not access(path_concat(PATH.wrkdirprefix, PATH.portsdir), "rw") -- need sudo to build ports
+
+    PATH.tmpdir = init_global_path(os.getenv("TMPDIR"), "/tmp")
+
+    CMD.pkg = init_global_cmd(path_concat(PATH.localbase, "sbin/pkg-static"))
+    CMD.sudo = init_global_cmd(path_concat(PATH.localbase, "sbin/pkg-static"))
+
+    -- Bootstrap pkg if not yet installed
+    if not access(CMD.pkg, "x") then
+        Exec.run{as_root = true, CMD.pkg_bootstrap, "bootstrap"}
+    end
+
+    --
+    PARAM.uid = geteuid() -- getuid() ???
+    local pw_entry = getpwuid(PARAM.uid)
+    PARAM.user = pw_entry.pw_name
+    PARAM.home = pw_entry.pw_dir
+    TRACE("PW_ENTRY", PARAM.uid, PARAM.user, PARAM.home)
+
+    -- set package formats unless already specified by user
+    PARAM.package_format = Options.package_format or "txz"
+    PARAM.backup_format = Options.backup_format or "txz"
+
+    -- some important global variables
+    PARAM.abi = chomp(Exec.run {safe = true, CMD.pkg, "config", "abi"})
+    PARAM.abi_noarch = string.match(PARAM.abi, "^[^:]+:[^:]+:") .. "*"
 
     -- determine number of CPUs (threads)
     PARAM.ncpu = tonumber (Exec.run {safe = true, CMD.sysctl, "-n", "hw.ncpu"})
@@ -483,7 +463,7 @@ local function init_globals()
     -- PARAM.distfiles_list = PATH.distdir .. "DISTFILES.list" -- current distfile names of all ports
 
     -- has license framework been disabled by the user
-    PARAM.disable_licenses = ports_var {"DISABLE_LICENSES"}
+    PARAM.disable_licenses = t.DISABLE_LICENSES
 end
 
 -------------------------------------------------------------------------------------
@@ -491,17 +471,11 @@ end
 -- <se> ToDo convert to sub-shell and "export -p | egrep '^(VAR1|VAR2)'" ???
 local function init_environment()
     -- reset PATH to a sane default
-    setenv("PATH", "/bin:/sbin:/usr/bin:/usr/sbin:" .. PATH.localbase .. "bin:" .. PATH.localbase .. "sbin") -- DUPLICATE ???
-    -- cache some build variables in the environment (cannot use ports_var due to its use of "-D BEFOREPORTMK")
-    local env_param = ports_var {needbeforemk = true, "PORTS_ENV_VARS"} -- || fail "$output" -- convert to port_var with extra parameter for the -f option argument XXX
-    for _, var in ipairs(split_words(env_param)) do
-        local value = ports_var {needbeforemk = true, var}
-        TRACE("SETENV", var, value)
-        setenv(var, value)
-    end
-    --
-    local env_lines = Exec.run {table = true, safe = true, CMD.env, "SCRIPTSDIR=" .. PATH.portsdir .. "Mk/Scripts", "PORTSDIR=" .. PATH.portsdir, "MAKE=make", CMD.sh, PATH.portsdir .. "Mk/Scripts/ports_env.sh"}
-    TRACE("ENVLINES", table.unpack(env_lines))
+    setenv("PATH", "/bin:/sbin:/usr/bin:/usr/sbin:" .. PATH.localbase .. "bin:" .. PATH.localbase .. "sbin")
+    local portsdir = PATH.portsdir
+    local scriptsdir = path_concat(portsdir, "Mk/Scripts")
+    local cmdenv = {SCRIPTSDIR = scriptsdir, PORTSDIR = portsdir, MAKE = "make"}
+    local env_lines = Exec.run {table = true, safe = true, env = cmdenv, CMD.sh, path_concat(scriptsdir, "ports_env.sh")}
     for _, line in ipairs(env_lines) do
         local var, value = line:match("^export ([%w_]+)=(.+)")
         if string.sub(value, 1, 1) == '"' and string.sub(value, -1) == '"' then

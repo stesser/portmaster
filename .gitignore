@@ -21,3 +21,5 @@ Coroutine-Test/vscode-debuggee.lua
 vscode-debuggee.lua
 .vscode/launch.json
 profiler.lua
+.port-copy/*
+.gitignore

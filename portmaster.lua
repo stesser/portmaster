@@ -70,7 +70,6 @@ local Options = require("portmaster.options")
 local Msg = require("portmaster.msg")
 local Progress = require("portmaster.progress")
 local Distfile = require("portmaster.distfiles")
-local Action = require("portmaster.action")
 local Exec = require("portmaster.exec")
 local PkgDb = require("portmaster.pkgdb")
 local Strategy = require("portmaster.strategy")
@@ -628,7 +627,7 @@ local function list_stale_libraries()
     local compatlibs = {}
     local ldconfig_lines = Exec.run {table = true, safe = true, CMD.ldconfig, "-r"} -- safe flag required ???
     for _, line in ipairs(ldconfig_lines) do
-        local lib = line:match(" => " .. PATH.localbase .. "lib/compat/pkg/(.*)")
+        local lib = line:match(" => " .. path_concat (PATH.local_lib_compat, "(.*)"))
         if lib and not activelibs[lib] then
             compatlibs[lib] = true
         end
@@ -637,10 +636,11 @@ local function list_stale_libraries()
 end
 
 -- delete stale compat libraries (i.e. those no longer required by any installed port)
-local function shlibs_purge()
+local function clean_stale_libraries()
     Msg.show {start = true, "Scanning for stale shared library backups ..."}
     local stale_compat_libs = list_stale_libraries()
-    if #stale_compat_libs then
+    if #stale_compat_libs > 0 then
+        chdir(PATH.local_lib_compat)
         table.sort(stale_compat_libs)
         ask_and_delete("stale shared library backup", stale_compat_libs)
     else
@@ -838,7 +838,7 @@ local function main()
     -- if Options.delete_build_only then delete_build_only () end
     -- should have become obsolete due to build dependency tracking
     if Options.clean_stale_libraries then
-        shlibs_purge()
+        clean_stale_libraries()
     end
     -- if Options.clean_compat_libs then clean_stale_compat_libraries () end -- NYI
     if Options.clean_packages then

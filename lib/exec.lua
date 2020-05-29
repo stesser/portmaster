@@ -146,9 +146,13 @@ local function task_create (args)
             end
         end
         local cmd = table.remove(args, 1)
-        local exitcode, errmsg = exec (cmd, args)
-        TRACE("FAILED-EXEC(Child)->", exitcode, errmsg)
-        assert (exitcode, errmsg)
+        if type(cmd) == "function" then
+            cmd(args)
+        else
+            local exitcode, errmsg = exec (cmd, args)
+            TRACE("FAILED-EXEC(Child)->", exitcode, errmsg)
+            assert (exitcode, errmsg)
+        end
         _exit (1) -- not reached ???
     end
     if args.to_tty then

@@ -493,82 +493,51 @@ end
 --]]
 
 -- ---------------------------------------------------------------------------
--- ask whether some file should be deleted (except when -n or -y enforce a default answer)
--- move to Msg module
--- convert to return table of files to delete?
-local function ask_and_delete(prompt, files)
-    local msg_level = 1
-    local answer
-    if Options.default_no then
-        answer = "q"
-    end
-    if Options.default_yes then
-        answer = "a"
+-- deletes files or whole sub-trees
+local function batch_delete(files, as_root)
+    local function do_unlink(file, as_root)
+        Exec.run{as_root = as_root, log = true, CMD.unlink, file}
     end
     for _, file in ipairs(files) do
-        if answer ~= "a" and answer ~= "q" then
-            answer = Msg.read_answer("Delete " .. prompt .. " '" .. file .. "'", "y", {"y", "n", "a", "q"})
-        end
-        if answer == "a" then
-            msg_level = 0
-        end
-        --
-        if answer == "a" or answer == "y" then
-            if Options.default_yes or answer == "a" then
-                Msg.show {level = msg_level, "Deleting", prompt .. ":", file}
-            end
-            Exec.spawn(Exec.run, {as_root = PARAM.distdir_ro, log = true, CMD.unlink, file})
-        elseif answer == "q" or answer == "n" then
-            if Options.default_no or answer == "q" then
-                Msg.show {level = 1, "Not deleting", prompt .. ":", file}
-            end
+        if is_dir(file) then
+            batch_delete(glob(file .. "/*", false, as_root))
+            Exec.run{as_root = true, log = true, CMD.rmdir, file}
+        else
+            Exec.spawn(do_unlink, file, as_root)
         end
     end
-    Exec.finish_spawned()
+    Exec.finish_spawned(do_unlink)
 end
 
--- ask whether some directory and its contents  should be deleted (except when -n or -y enforce a default answer)
-local function ask_and_delete_directory(prompt, dirs)
-    -- move to Msg module -- convert to return table of directories to delete?
-    local msg_level = 1
-    local answer
-    if Options.default_no then
-        answer = "q"
+--
+local function delete_empty_directories(path, as_root)
+    local dirs = scan_dirs(path)
+    if #dirs > 0 then
+        table.sort(dirs, function (a, b) return a > b end)
     end
-    if Options.default_yes then
-        answer = "a"
-    end
-    for _, directory in ipairs(dirs) do
-        if answer ~= "a" and answer ~= "q" then
-            answer = Msg.read_answer("Delete " .. prompt .. " '" .. directory .. "'", "y", {"y", "n", "a", "q"})
-        end
-        if answer == "a" then
-            msg_level = 0
-        end
-        --
-        if answer == "a" or answer == "y" then
-            if Options.default_yes or answer == "a" then
-                Msg.show {level = msg_level, "Deleting", prompt .. ":", directory}
-            end
-            if not Options.dry_run then
-                if is_dir(directory) then
-                    for _, file in ipairs(glob(directory .. "/*")) do
-                        Exec.run {as_root = true, log = true, CMD.unlink, file}
-                    end
-                    Exec.run {as_root = true, log = true, CMD.rmdir, directory}
-                end
-            end
-        elseif answer == "q" or answer == "n" then
-            if Options.default_no or answer == "q" then
-                Msg.show {level = 1, "Not deleting", prompt .. ":", directory}
-            end
-        end
+    for _, v in ipairs(dirs) do
+        Exec.run{as_root = as_root, CMD.rmdir, v}
     end
 end
 
 -- # delete package files that do not belong to any currently installed port (except portmaster backup packages)
-local function packagefiles_purge() -- move to new PackageFile module ???
-    error("NYI")
+local function clean_stale_package_files() -- move to new PackageFile module ???
+    error("NYI") -- WIP
+    Package.packages_cache_load() -- fetch if not already cached
+    chdir(PATH.packages)
+    local files = scan_files("")
+    local bak_files = {}
+    local pkg_files = {}
+    for i, f in ipairs(files) do
+        local subdir, name, ext = string.match(f, "([^/]*)/(.*)%.(t...?)")
+        print(subdir, name, ext)
+        if subdir then
+            if not Package.get(name) then
+                print ("rm", f)
+            else
+            end
+        end
+    end
 end
 
 -------------------------------------------------------------------------------------
@@ -607,14 +576,9 @@ local function clean_stale_distfiles ()
     if #unused == 0 then
         Msg.show {"No stale distfiles found"}
     else
-        ask_and_delete ("stale file", unused)
-        local distdirs = scan_dirs("")
-        if #distdirs > 0 then
-            table.sort(distdirs, function (a, b) return a > b end)
-        end
-        for _, v in ipairs(distdirs) do
-            Exec.run{as_root = PARAM.distdir_ro, CMD.rmdir, v}
-        end
+        local selected = Msg.ask_to_delete ("stale file", unused)
+        batch_delete(selected, PARAM.distdir_ro)
+        delete_empty_directories(PATH.distdir, PARAM.distdir_ro)
     end
 end
 
@@ -645,7 +609,8 @@ local function clean_stale_libraries()
     if #stale_compat_libs > 0 then
         chdir(PATH.local_lib_compat)
         table.sort(stale_compat_libs)
-        ask_and_delete("stale shared library backup", stale_compat_libs)
+        local selected = Msg.ask_to_delete("stale shared library backup", stale_compat_libs, false, true)
+        batch_delete(selected, true)
     else
         Msg.show {"No stale shared library backups found."}
     end
@@ -669,7 +634,8 @@ local function portdb_purge()
         end
     end
     if #stale_origins then
-        ask_and_delete_directory("stale port options file for", stale_origins)
+        local selected = Msg.ask_to_delete("stale port options file for", stale_origins)
+        batch_delete(selected, PARAM.port_dbdir_ro)
     else
         Msg.show {"No stale entries found in", PATH.port_dbdir}
     end
@@ -865,7 +831,7 @@ local function main()
     end
     -- if Options.clean_compat_libs then clean_stale_compat_libraries () end -- NYI
     if Options.clean_packages then
-        packagefiles_purge()
+        clean_stale_package_files()
     end
     if Options.deinstall_unused then
         packages_delete_stale()

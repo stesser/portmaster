@@ -808,7 +808,7 @@ end
 -- write all outstanding tasks to a file to allow to resume after an error
 local function save()
     local tmpf
-
+do return end
     local function w(format, ...)
         tmpf:write(string.format(format .. "\n", ...))
         -- print (string.format (format, ...))

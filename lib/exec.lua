@@ -177,10 +177,10 @@ local task_wait_func = {} -- table of check functions for blocked tasks
 
 --
 local function cond_wait(f, ...)
-    TRACE("COND_WAIT", ...)
     if f(...) then
         TRACE("COND_WAIT_NULL", ...)
     else
+        TRACE("COND_WAIT", ...)
         local co, in_main = coroutine.running()
         assert (not in_main, "cond_wait called outside of spawned function")
         task_wait_func[co] = {f = f, args = {...}}
@@ -246,6 +246,10 @@ local function tasks_poll(timeout)
     end
     --local numreads = 0
     --assert(tasks_spawned - tasks_forked - tasks_blocked <= 2, "TASKS: " .. tasks_spawned .. "/" .. tasks_forked .. "/" .. tasks_blocked)
+    --if timeout > 0 and tasks_blocked > 0 then
+    if tasks_blocked > 0 then
+        cond_check()
+    end
     local idle
     if timeout or next(pollfds) then
         timeout = timeout or pollms()
@@ -272,9 +276,6 @@ local function tasks_poll(timeout)
                 end
             end
         end
-    end
-    if tasks_blocked > 0 then
-        cond_check()
     end
     --TRACE("NUMREADS", numreads)
 end
@@ -303,6 +304,9 @@ local function spawn(f, ...)
         xpcall (f, debug.traceback, ...)
         tasks_spawned = tasks_spawned - 1
         tasks_spawned_with[f] = tasks_spawned_with[f] - 1
+        if tasks_blocked > 0 then
+            cond_check()
+        end
     end
     tasks_poll()
     TRACE ("SPAWN", f, ...)

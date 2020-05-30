@@ -178,14 +178,18 @@ local task_wait_func = {} -- table of check functions for blocked tasks
 --
 local function cond_wait(f, ...)
     TRACE("COND_WAIT", ...)
-    local co, in_main = coroutine.running()
-    assert (not in_main, "cond_wait called outside of spawned function")
-    task_wait_func[co] = {f = f, args = {...}}
-    tasks_blocked = tasks_blocked + 1
-    TRACE("NUM_TASKS<", tasks_spawned, tasks_forked, tasks_blocked)
-    coroutine.yield()
-    tasks_blocked = tasks_blocked - 1
-    TRACE("NUM_TASKS>", tasks_spawned, tasks_forked, tasks_blocked)
+    if f(...) then
+        TRACE("COND_WAIT_NULL", ...)
+    else
+        local co, in_main = coroutine.running()
+        assert (not in_main, "cond_wait called outside of spawned function")
+        task_wait_func[co] = {f = f, args = {...}}
+        tasks_blocked = tasks_blocked + 1
+        TRACE("NUM_TASKS<", tasks_spawned, tasks_forked, tasks_blocked)
+        coroutine.yield()
+        tasks_blocked = tasks_blocked - 1
+        TRACE("NUM_TASKS>", tasks_spawned, tasks_forked, tasks_blocked)
+    end
 end
 
 --

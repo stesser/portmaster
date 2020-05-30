@@ -245,6 +245,41 @@ local function read_yn(prompt, default)
     return read_answer(prompt, default, {"y", "n"}) == "y"
 end
 
+-- ask whether some file should be deleted (except when -n or -y enforce a default answer)
+-- move to Msg module
+-- convert to return table of files to delete?
+local function ask_to_delete(prompt, files)
+    local selected = {}
+    local msg_level = 1
+    local answer
+    if Options.default_no then
+        answer = "q"
+    end
+    if Options.default_yes then
+        answer = "a"
+    end
+    for _, file in ipairs(files) do
+        if answer ~= "a" and answer ~= "q" then
+            answer = read_answer("Delete " .. prompt .. " '" .. file .. "'", "y", {"y", "n", "a", "q"})
+        end
+        if answer == "a" then
+            msg_level = 0
+        end
+        --
+        if answer == "a" or answer == "y" then
+            if Options.default_yes or answer == "a" then
+                show {level = msg_level, "Deleting", prompt .. ":", file}
+            end
+            table.insert(selected, file)
+        elseif answer == "q" or answer == "n" then
+            if Options.default_no or answer == "q" then
+                show {level = 1, "Not deleting", prompt .. ":", file}
+            end
+        end
+    end
+    return selected
+end
+
 -------------------------------------------------------------------------------------
 return {
     abort = abort,
@@ -259,4 +294,5 @@ return {
     success_show = success_show,
     title_set = title_set,
     copy_options = copy_options,
+    ask_to_delete = ask_to_delete,
 }

@@ -147,7 +147,7 @@ local function task_create (args)
         end
         local cmd = table.remove(args, 1)
         if type(cmd) == "function" then
-            cmd(args)
+            cmd(table.unpack(args))
         else
             local exitcode, errmsg = exec (cmd, args)
             TRACE("FAILED-EXEC(Child)->", exitcode, errmsg)

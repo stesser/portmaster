@@ -56,7 +56,7 @@ local function filename(args)
     local pkgname = pkg.name
     local base = args.base or PATH.packages
     local subdir = args.subdir or "All"
-    local extension = args.ext or Options.package_format
+    local extension = args.ext or PARAM.package_format
     if string.sub(extension, 1, 1) ~= "." then
         extension = "." .. extension
     end
@@ -147,7 +147,7 @@ local function deinstall(package, make_backup)
     local pkgname = package.name
     if make_backup then
         Progress.show("Create backup package for", pkgname)
-        Exec.pkg {as_root = PARAM.packages_ro, "create", "-q", "-o", PATH.packages_backup, "-f", Options.backup_format, pkgname}
+        Exec.pkg {as_root = PARAM.packages_ro, "create", "-q", "-o", PATH.packages_backup, "-f", PARAM.backup_format, pkgname}
     end
     if Options.jailed and PARAM.phase ~= "install" then
         Progress.show("De-install", pkgname, "from build jail")
@@ -190,7 +190,7 @@ end
 
 -- create category links and a lastest link
 local function category_links_create(pkg_new, categories)
-    local extension = Options.package_format
+    local extension = PARAM.package_format
     local source = filename {base = "..", ext = extension, pkg_new}
     table.insert(categories, "Latest")
     for _, category in ipairs(categories) do
@@ -534,7 +534,7 @@ local function __index(pkg, k)
             return filename {subdir = "All", pkg}
         end,
         bak_filename = function(pkg, k)
-            return filename {subdir = "portmaster-backup", ext = Options.backup_format, pkg}
+            return filename {subdir = "portmaster-backup", ext = PARAM.backup_format, pkg}
         end,
         --[[
       origin = function (pkg, k)

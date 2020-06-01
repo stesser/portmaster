@@ -169,7 +169,7 @@ end
 local function package_create(action)
     local o_n = action.o_n
     local pkgname = action.pkg_new.name
-    local pkgfile = action.pkg_new.pkg_filename -- (PATH.packages .. "All", pkgname, Options.package_format)
+    local pkgfile = action.pkg_new.pkg_filename -- (PATH.packages .. "All", pkgname, PARAM.package_format)
     TRACE("PACKAGE_CREATE", o_n, pkgname, pkgfile)
     if Options.skip_recreate_pkg and access(pkgfile, "r") then
         Msg.show {"A package file for", pkgname, "does already exist and will not be overwritten"}
@@ -178,7 +178,7 @@ local function package_create(action)
         local jailed = Options.jailed
         local as_root = PARAM.packages_ro
         local base = (as_root or jailed) and PATH.tmpdir or PATH.packages -- use random tempdir !!!
-        local sufx = "." .. Options.package_format
+        local sufx = "." .. PARAM.package_format
         if o_n:port_make{jailed = jailed, to_tty = true, "_OPTIONS_OK=1", "PACKAGES=" .. base, "PKG_SUFX=" .. sufx, "package"} then
             if as_root or jailed then
                 local tmpfile = path_concat(base, "All", pkgname .. sufx)

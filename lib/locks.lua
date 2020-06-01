@@ -52,6 +52,7 @@ local function acquire(lock, item)
         table.insert(lock[item], co) -- enter current coroutine into wait table
         return coroutine.yield()
     end
+    TRACE("ACQUIRE", lock.__name, item)
 end
 
 --

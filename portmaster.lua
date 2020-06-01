@@ -338,7 +338,7 @@ local function init_global_cmd(...)
             return n
         end
     end
-    error("init_global_cmd")
+    error("Cannot find required system program " .. table.concat({...}, " "))
 end
 
 -- global tables for full paths of used Unix commands and relevant directories
@@ -416,7 +416,7 @@ local function init_globals()
     PATH.tmpdir = init_global_path(os.getenv("TMPDIR"), "/tmp")
 
     CMD.pkg = init_global_cmd(path_concat(PATH.localbase, "sbin/pkg-static"))
-    CMD.sudo = init_global_cmd(path_concat(PATH.localbase, "sbin/pkg-static"))
+    CMD.sudo = init_global_cmd(path_concat(PATH.localbase, "bin/sudo"))
 
     -- Bootstrap pkg if not yet installed
     if not access(CMD.pkg, "x") then

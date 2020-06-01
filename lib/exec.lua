@@ -392,7 +392,7 @@ local function run(args)
     tasks_forked = tasks_forked - 1
     TRACE("NUM_TASKS-", tasks_spawned, tasks_forked, tasks_blocked)
     if args.to_tty then
-        return exitcode == 0
+        return exitcode == 0, "", exitcode
     else
         if stdout == "" then
             stdout = nil

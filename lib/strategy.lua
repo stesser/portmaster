@@ -317,3 +317,78 @@ return {
     add_all_outdated = add_all_outdated,
     execute = execute,
 }
+
+--[[
+Concept for parallel port building:
+
+    Build and/or install port:
+        spawn one task per package to be generated or port to be installed:
+            check_distfiles()
+            wait until all distfiles are available or the fetch tasks has given up
+            if fetching failed for at least 1 file:
+                goto Abort
+            -- all distfiles have been fetched
+            wait for and provide build dependencies (including special dependencies, from port or package)
+            if build dependencies are marked as failed (un-buildable):
+                goto Abort
+            -- all build dependencies have been provided (in base or jail)
+            build port
+            if the port build fails then
+                goto Abort
+            -- the port has been built and installed into the staging area
+            create package (if requested)
+            install port to the base system (if immediate installation has been requested):
+                if install conflicts are to be expected (reported based on Makefile)
+                    create package (unless already done)
+                    record for delayed installation of the package and exit with success status
+                try to provide all run dependencies
+                if some run dependency is missing:
+                    mark package as available (as dependency of other ports, i.e. to prevent dependency loops)
+                    wait for all run dependencies to become available
+                    if some run dependency could not be provided
+                        goto Abort
+                create backup package
+                if the backup package cannot be created then
+                    goto Abort
+                deinstall old version
+                if deinstallation fails
+                    goto Abort
+                install new version from staging area
+                if installation fails
+                    if failure is not due to install conflict detected only at that time
+                        move new package file to .NOTOK name
+                    re-install old version of package from saved backup file
+                    goto Abort
+            mark package as available (as dependency of other ports or for later installation to the base system)
+            delete backup package (if requested not to be kept)
+
+    Final:
+        if ports have been selected for delayed installation:
+            install missing packages -> Install from package
+        remove build-only dependencies (if requested)
+
+    Install from package:
+        wait for package to become available
+        if the package could not be provided (e.g. failed to build)
+            goto Abort
+        try to provide all run dependencies
+        if some run dependency could not be provided
+            goto Abort
+        create backup package
+        if the backup package cannot be created then
+            goto Abort
+        deinstall old version
+        if deinstallation fails
+            goto Abort
+        install new version from package
+        if installation fails
+            move new package file to .NOTOK name
+            re-install old version of package from saved backup file
+            goto Abort
+        delete backup package (if requested not to be kept)
+
+    Abort:
+        mark as un-buildable (with reason provided by failed function)
+        signal task has completed (with error)
+        exit task
+--]]

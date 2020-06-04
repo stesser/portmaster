@@ -33,7 +33,7 @@ local function new(name)
 end
 
 local function tryacquire(lock, item)
-    assert(lock and lock.__name, "Attempt to acquire lock using an unitialized lock structure for " .. item)
+    assert(lock and lock.__name, "Attempt to acquire lock using an unitialized lock structure for " .. tostring(item))
     if lock[item] then
         return false
     else
@@ -57,7 +57,7 @@ end
 
 --
 local function release(lock, item)
-    assert(lock, "Attempt to release lock using an unitialized lock structure for " .. (item or "<nil>"))
+    assert(lock, "Attempt to release lock using an unitialized lock structure for " .. tostring(item))
     local l = lock[item]
     local co = table.remove(l, 1)
     TRACE("LOCK_RELEASE", lock.__name, item, co)
@@ -71,7 +71,7 @@ local function release(lock, item)
 end
 
 --[[
-local TL = new("TestLog")
+local TL = new("TestLock")
 
 local function T(n)
     TRACE("T1", n)
@@ -102,3 +102,23 @@ return {
     release = release,
     tryacquire = tryacquire,
 }
+
+--[[
+
+further required locking primitives:
+
+references:
+    -- e.g. to prevent premature deletion of some actively used resource
+    reference_acqire
+    reference_release
+    reference_wait_done
+
+semaphores:
+    -- can be initialized to
+    -- 0: blocking until first released
+    -- n > 0: can be acquired n times before next attempt leads to blocking
+    -- n < 0: must be released n times before it can be successfully acquired (useful???)
+    semaphore_acquire
+    semaphore_release
+
+--]]

@@ -27,6 +27,7 @@ SUCH DAMAGE.
 
 -------------------------------------------------------------------------------------
 local Exec = require("portmaster.exec")
+local Lock = require("portmaster.locks")
 
 -------------------------------------------------------------------------------------
 local DISTINFO_CACHE = {}
@@ -56,41 +57,20 @@ local function parse_distinfo(di_filename)
                 end
             end
         end
-        di_file:close()
+        io.close(di_file)
     end
     return result
 end
 
 -- perform "make checksum", analyse status message and write success status to file (meant to be executed in a background task)
+local fetch_lock
+
 local function dist_fetch(origin)
-      local function fetch_required(di)
-         for file, _ in pairs(di) do
-            if DISTINFO_CACHE[file].checked == nil then
-               TRACE("FETCH_REQUIRED", file)
-               return true
-            end
-         end
-      end
-      local function not_fetching(di)
-         for file, _ in pairs(di) do
-            if DISTINFO_CACHE[file].fetching then
-               TRACE("FETCHING", file)
-               return false
-            end
-         end
-         return true
-      end
-      local function setall(di, field, value)
-         for file, _ in pairs(di) do
-            rawset (DISTINFO_CACHE[file], field, value)
-         end
-      end
-    TRACE("DIST_FETCH", origin and origin.name or "<nil>")
-    local port = origin.port
-    local success
-    local distinfo = parse_distinfo(origin.distinfo_file)
-    for file, di in pairs(distinfo) do
-        local di_c = DISTINFO_CACHE[file]
+   local function update_distinfo_cache(distinfo)
+      local port = origin.port
+      for file, di in pairs(distinfo) do
+         TRACE("UPDATE_DISTINFO_CACHE", file)
+         local di_c = DISTINFO_CACHE[file]
          if di_c then
             assert(di.SIZE == di_c.SIZE and di.SHA256 == di_c.SHA256 and di.TIMESTAMP == di_c.TIMESTAMP,
                   "Distinfo mismatch for " .. file .. " between " .. port .. " and " .. di.port[1])
@@ -99,32 +79,58 @@ local function dist_fetch(origin)
             di_c = {SIZE = di.SIZE, SHA256 = di.SHA256, TIMESTAMP = di.TIMESTAMP, port = {port}}
             DISTINFO_CACHE[file] = di_c
          end
-         TRACE("DI", di_c.port[1], file, di_c.SHA256)
       end
-      if fetch_required(distinfo) then
-         Exec.cond_wait(not_fetching, distinfo)
+   end
+   local function fetch_required(distinfo)
+      local missing = {}
+      local filenames = table.keys(distinfo)
+      table.sort(filenames)
+      TRACE("FETCH_REQUIRED?", table.concat(filenames, " "))
+      for _, file in ipairs(filenames) do
+         if DISTINFO_CACHE[file].checked == nil then
+            TRACE("FETCH_REQUIRED!", file)
+            fetch_lock = fetch_lock or Lock.new("FetchLock")
+            Lock.acquire(fetch_lock, file)
+            table.insert(missing, file)
+         end
       end
-      if fetch_required(distinfo) then
-         setall(distinfo, "fetching", true)
-         local lines = origin:port_make{as_root = PARAM.distdir_ro, table = true,
-                  "FETCH_BEFORE_ARGS=-v", "NO_DEPENDS=1", "DISABLE_CONFLICTS=1",
-                  "PARAM.disable_licenses=1", "DEV_WARNING_WAIT=0", "checksum"}
-         setall(distinfo, "fetching", false)
-         success = true -- assume OK
-         setall(distinfo, "checked", true)
-         for _, l in ipairs(lines) do
-            TRACE("FETCH:", l)
-            local files = string.match(l, "Giving up on fetching files: (.*)")
-            if files then
-               success = false
-               for _, file in ipairs(split_words(files)) do
-                  DISTINFO_CACHE[file].checked = false
-               end
+      return missing
+   end
+   local function setall(di, field, value)
+      for file, _ in pairs(di) do
+         rawset (DISTINFO_CACHE[file], field, value)
+      end
+   end
+   TRACE("DIST_FETCH", origin and origin.name or "<nil>")
+   local port = origin.port
+   local success = false
+   local distinfo = parse_distinfo(origin.distinfo_file)
+   update_distinfo_cache(distinfo)
+   local missing = fetch_required(distinfo)
+   if #missing > 0 then
+      setall(distinfo, "fetching", true)
+      local lines = origin:port_make{as_root = PARAM.distdir_ro, table = true,
+               "FETCH_BEFORE_ARGS=-v", "NO_DEPENDS=1", "DISABLE_CONFLICTS=1",
+               "PARAM.disable_licenses=1", "DEV_WARNING_WAIT=0", "checksum"}
+      setall(distinfo, "fetching", false)
+      success = true -- assume OK
+      setall(distinfo, "checked", true)
+      for _, l in ipairs(lines) do
+         TRACE("FETCH:", l)
+         local files = string.match(l, "Giving up on fetching files: (.*)")
+         if files then
+            success = false
+            for _, file in ipairs(split_words(files)) do
+               DISTINFO_CACHE[file].checked = false
             end
          end
-    end
-    TRACE("FETCH->", port, success)
-    return success
+      end
+      for i = #missing, 1, -1 do
+         Lock.release(fetch_lock, missing[i])
+      end
+   end
+   TRACE("FETCH->", port, success)
+   return success
 end
 
 --

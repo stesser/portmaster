@@ -200,15 +200,27 @@ end
 -- process all outdated ports (may upgrade, install, change, or delete ports)
 -- process all ports with old ABI or linked against outdated shared libraries
 local function add_all_outdated()
-    local current_libs = {}
+    local function load_current_libs()
+        local t = {}
+        for _, lib in ipairs(PkgDb.query {table = true, "%b"}) do
+            t[lib] = true
+        end
+        return t
+    end
     -- filter return values are: match, force
     local function filter_old_abi(pkg)
         return pkg.abi ~= PARAM.abi and pkg.abi ~= PARAM.abi_noarch, false -- true XXX
     end
+    local current_libs
     local function filter_old_shared_libs(pkg)
         if pkg.shared_libs then
-            for lib, v in pairs(pkg.shared_libs) do
-                return not current_libs[lib], true
+            current_libs = current_libs or load_current_libs()
+            for i, lib in pairs(pkg.shared_libs) do
+                TRACE("CHECK_CURRENT_LIBS", lib, current_libs[lib])
+                if not current_libs[lib] then
+                    TRACE("OLD_LIB", lib)
+                    return true, true
+                end
             end
         end
     end
@@ -219,12 +231,11 @@ local function add_all_outdated()
         return true, false
     end
 
-    for _, lib in ipairs(PkgDb.query {table = true, "%b"}) do
-        current_libs[lib] = true
-    end
     ports_update {
-        filter_old_abi, -- filter_old_shared_libs,
-        filter_is_required, filter_pass_all,
+        --filter_old_abi,
+        --filter_old_shared_libs, -- currently a NOP since both sets of libraries are obtained with pkg query %b
+        filter_is_required,
+        filter_pass_all,
     }
 end
 
@@ -329,9 +340,13 @@ Concept for parallel port building:
                 goto Abort
             -- all distfiles have been fetched
             wait for and provide build dependencies (including special dependencies, from port or package)
+            -- build dependencies that have not been updated must block the provide operation!
+            -- run dependencies of build dependencies are considered build dependencies, here
             if build dependencies are marked as failed (un-buildable):
                 goto Abort
             -- all build dependencies have been provided (in base or jail)
+            -- all build dependencies have been locked to prevent de-installation before the port has been built
+            acquire lock on work directory for port and all special_depends (prevent parallel builds of the same port, e.g. of different flavors)
             build port
             if the port build fails then
                 goto Abort
@@ -359,6 +374,7 @@ Concept for parallel port building:
                         move new package file to .NOTOK name
                     re-install old version of package from saved backup file
                     goto Abort
+                release locks on work areas
             mark package as available (as dependency of other ports or for later installation to the base system)
             delete backup package (if requested not to be kept)
 
@@ -389,6 +405,8 @@ Concept for parallel port building:
 
     Abort:
         mark as un-buildable (with reason provided by failed function)
+        release locks on build dependencies (if any)
+        relaase locks on work directories (if any)
         signal task has completed (with error)
         exit task
 --]]

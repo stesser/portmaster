@@ -104,17 +104,18 @@ end
 local function rm_poll_fd(fd)
     TRACE("RM", fd)
     local pid = fdstat[fd].pid
+    fdstat[fd].pid = nil
     TRACE("RMPOLL", pid, fd, pidstat[pid].numfds)
     pollfds[fd] = nil
     local numfds = pidstat[pid].numfds - 1
+    if fd == pidstat[pid].fds[1] then
+        TRACE("RMPOLLFD", pid, fd, "STDOUT")
+    elseif fd == pidstat[pid].fds[2] then
+        TRACE("RMPOLLFD", pid, fd, "STDERR")
+    else
+        TRACE("RMPOLLFD", pid, fd, "???")
+    end
     if numfds > 0 then
-        if fd == pidstat[pid].fds[1] then
-            TRACE("RMPOLLFD", pid, fd, "STDOUT")
-        elseif fd == pidstat[pid].fds[2] then
-            TRACE("RMPOLLFD", pid, fd, "STDERR")
-        else
-            TRACE("RMPOLLFD", pid, fd, "???")
-        end
         pidstat[pid].numfds = numfds
     else
         return pid
@@ -147,7 +148,7 @@ local function task_create (args)
         end
         local cmd = table.remove(args, 1)
         if type(cmd) == "function" then
-            cmd(table.unpack(args))
+            _exit(cmd(table.unpack(args)) and 0 or 1)
         else
             local exitcode, errmsg = exec (cmd, args)
             TRACE("FAILED-EXEC(Child)->", exitcode, errmsg)
@@ -163,6 +164,7 @@ local function task_create (args)
     close(fd1w)
     close(fd2w)
     add_poll_fds(pid, {fd1r, fd2r})
+    TRACE("TASK_CREATE", pid, coroutine.running())
     return pid
 end
 
@@ -172,40 +174,22 @@ local co_table = {} -- mapping from pid to coroutine
 local tasks_spawned = 0 -- number of currently existing coroutines
 local tasks_spawned_with = {} -- mapping of function used to start coroutine to count of active coroutines
 local tasks_forked = 0 -- number of forked processes
-local tasks_blocked = 0 -- number of coroutines blocked by wait_cond
-local task_wait_func = {} -- table of check functions for blocked tasks
+local tasks_blocked = 0 -- number of coroutines blocked by wait_cond -- CURRENTLY UNUSED -> move to Locks module
+--local task_wait_func = {} -- table of check functions for blocked tasks
 
 --
-local function cond_wait(f, ...)
-    if f(...) then
-        TRACE("COND_WAIT_NULL", ...)
-    else
-        TRACE("COND_WAIT", ...)
-        local co, in_main = coroutine.running()
-        assert (not in_main, "cond_wait called outside of spawned function")
-        task_wait_func[co] = {f = f, args = {...}}
-        tasks_blocked = tasks_blocked + 1
-        TRACE("NUM_TASKS<", tasks_spawned, tasks_forked, tasks_blocked)
-        coroutine.yield()
-        tasks_blocked = tasks_blocked - 1
-        TRACE("NUM_TASKS>", tasks_spawned, tasks_forked, tasks_blocked)
-    end
+local task_results -- results of non-spawned function
+
+local function task_result()
+    TRACE("TASK_RESULT")
+    local exitcode, stdout, stderr = table.unpack(task_results)
+    task_results = nil
+    TRACE ("EXIT(return)", exitcode, stdout, stderr)
+    return exitcode, stdout, stderr
 end
 
---
-local function cond_check()
-    for co, t in pairs(task_wait_func) do
-        local cond = t.f (table.unpack (t.args))
-        TRACE("WAIT_CHECK", cond, table.unpack(t.args))
-        if cond then
-            TRACE("WAIT_DONE", table.unpack(t.args))
-            task_wait_func[co] = nil
-            coroutine.resume(co)
-        end
-    end
-end
-
---
+-- collect stdout and stderr from forked processes
+-- return stdout, stderr, and exitcode if a process terminates
 local function tasks_poll(timeout)
     local function fetch_result (pid, n)
         local fd = pidstat[pid].fds[n]
@@ -222,21 +206,20 @@ local function tasks_poll(timeout)
         --TRACE("FETCH_RESULT", pid, fd, n, text and #text or 0)
         return text
     end
-    local function return_results(pid)
+    local function store_results(pid)
         local _, _, exitcode = wait (pid)
         local stdout = fetch_result(pid, 1)
         local stderr = fetch_result(pid, 2)
         pidstat[pid] = nil
         local co = co_table[pid]
-        assert(task_wait_func[co] == nil, "attempt to resume blocked coroutine")
         co_table[pid] = nil
-        --TRACE("NUMREADS", numreads)
         if co then
             TRACE ("EXIT(resume)", co, exitcode, stdout, stderr)
             coroutine.resume(co, exitcode, stdout, stderr)
         else
-            TRACE ("EXIT(return)", co, exitcode, stdout, stderr)
-            return exitcode, stdout, stderr
+            TRACE("STORE_RESULTS", pid, exitcode)
+            task_results = {exitcode, stdout, stderr}
+            return true
         end
     end
     local function pollms()
@@ -244,46 +227,45 @@ local function tasks_poll(timeout)
         local n = tasks_forked - (max_tasks or 4)
         return n <= 0 and 0 or (10 * n)
     end
-    --local numreads = 0
-    --assert(tasks_spawned - tasks_forked - tasks_blocked <= 2, "TASKS: " .. tasks_spawned .. "/" .. tasks_forked .. "/" .. tasks_blocked)
-    --if timeout > 0 and tasks_blocked > 0 then
-    if tasks_blocked > 0 then
-        cond_check()
-    end
     local idle
     if timeout or next(pollfds) then
         timeout = timeout or pollms()
         TRACE("POLL", timeout)
+        local task_done
         while not idle and poll(pollfds, timeout) > 0 do -- XXX add test for "terminated" variable set by fail et. al.
             idle = true
             for fd in pairs(pollfds) do
                 local revents = pollfds[fd].revents
                 if revents then
+                    TRACE("REVENTS", fd, table.unpack(table.keys(revents)))
                     if revents.IN then
                         local data = read (fd, 128 * 1024) -- 4096 max on FreeBSD
                         if #data > 0 then
                             table.insert(fdstat[fd].result, data)
                             TRACE("READ", fdstat[fd].pid, fd, #data)
                             idle = false
-                            --numreads = numreads + 1
                         elseif revents.HUP then
                             local pid = rm_poll_fd(fd)
                             if pid then
-                                return return_results(pid)
+                                task_done = store_results(pid)
                             end
                         end
                     end
                 end
             end
         end
+        TRACE("TASKS_POLL->task_done", task_done)
+        return task_done or task_results
     end
-    --TRACE("NUMREADS", numreads)
 end
 
 -------------------------------------------------------------------------------------
 local function finish_spawned (f, msg) -- if f is provided then only spawns of that function will be waited for XXX
+    local _, in_main = coroutine.running()
+    assert(in_main, "calling finish_spawned from a coroutine is not supported")
     while true do
         local n = f and tasks_spawned_with[f] or tasks_spawned -- (tasks_forked + tasks_blocked)
+        TRACE("FINISH", tasks_spawned, tasks_forked, tasks_blocked, n, f)
         if n == 0 then
             break
         end
@@ -291,8 +273,10 @@ local function finish_spawned (f, msg) -- if f is provided then only spawns of t
             Msg.show{start = true, level = 2, msg}
             msg = nil
         end
-        TRACE("FINISH", tasks_spawned, tasks_forked, tasks_blocked, n, f)
-        tasks_poll(tasks_blocked > 0 and 100 or -1)
+        local pid = tasks_poll(tasks_blocked > 0 and 100 or -1)
+        if pid then
+            task_result(pid)
+        end
     end
 end
 
@@ -304,9 +288,6 @@ local function spawn(f, ...)
         xpcall (f, debug.traceback, ...)
         tasks_spawned = tasks_spawned - 1
         tasks_spawned_with[f] = tasks_spawned_with[f] - 1
-        if tasks_blocked > 0 then
-            cond_check()
-        end
     end
     tasks_poll()
     TRACE ("SPAWN", f, ...)
@@ -321,13 +302,18 @@ local function shell(args)
     end
     local co, in_main = coroutine.running()
     local pid = task_create(args)
-    if (in_main) then
+    if in_main then
         -- in main program wait for and return results
         co_table[pid] = false
         local exitcode, stdout, stderr
-        while not exitcode do
+        while exitcode == nil do
             TRACE("WAIT FOR DATA - PID=", pid)
-            exitcode, stdout, stderr = tasks_poll(-1)
+            local task_done
+            repeat
+                task_done = tasks_poll(-1)
+            until task_done
+            exitcode, stdout, stderr = task_result(pid)
+            TRACE("EXITCODE", exitcode)
         end
         TRACE("SHELL(stdout)", "<" .. (stdout or "") .. ">")
         TRACE("SHELL(stderr)", "<" .. (stderr or "").. ">")
@@ -440,6 +426,5 @@ return {
     pkg = pkg,
     run = run,
     spawn = spawn,
-    cond_wait = cond_wait,
     finish_spawned = finish_spawned,
 }

@@ -509,26 +509,22 @@ local function __index(pkg, k)
         end,
         -- bakfile_abi = file_get_abi,
         shared_libs = function(pkg, k)
-            return PkgDb.query {table = true, "%b", pkg.name}
+            return PkgDb.query {table = true, "%b", pkg.name} -- should be cached!!!
         end,
         req_shared_libs = function(pkg, k)
-            return PkgDb.query {table = true, "%B", pkg.name}
+            return PkgDb.query {table = true, "%B", pkg.name} -- should be cached!!!
         end,
         is_installed = function(pkg, k)
             return false -- always explicitly set when found or during installation
         end,
         --[[
-      files = function (pkg, k)
-	 return PkgDb.query {table = true, "%Fp", pkg.name}
-      end,
-      categories = function (pkg, k)
-	 error ("should be cached")
-	 return PkgDb.query {table = true, "%C", pkg.name}
-      end,
-      shlibs = function (pkg, k)
-	 error ("should be cached")
-	 return PkgDb.query {table = true, "%B", pkg.name}
-      end,
+        files = function (pkg, k)
+            return PkgDb.query {table = true, "%Fp", pkg.name}
+        end,
+        categories = function (pkg, k)
+            error ("should be cached")
+            return PkgDb.query {table = true, "%C", pkg.name}
+        end,
       --]]
         pkg_filename = function(pkg, k)
             return filename {subdir = "All", pkg}
@@ -537,17 +533,17 @@ local function __index(pkg, k)
             return filename {subdir = "portmaster-backup", ext = PARAM.backup_format, pkg}
         end,
         --[[
-      origin = function (pkg, k)
-	 error ("should be cached")
-	 TRACE ("Looking up origin for", pkg.name)
-	 local port = PkgDb.query {"%o", pkg.name}
-	 if port ~= "" then
-	    local flavor = pkg.flavor
-	    local n = flavor and port .. "@" .. flavor or port
-	    return Origin:new (n)
-	 end
-      end,
-      --]]
+        origin = function (pkg, k)
+            error ("should be cached")
+            TRACE ("Looking up origin for", pkg.name)
+            local port = PkgDb.query {"%o", pkg.name}
+            if port ~= "" then
+                local flavor = pkg.flavor
+                local n = flavor and port .. "@" .. flavor or port
+                return Origin:new (n)
+            end
+        end,
+        --]]
     }
 
     TRACE("INDEX(p)", pkg, k)

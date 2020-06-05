@@ -335,18 +335,18 @@ Concept for parallel port building:
     Build and/or install port:
         spawn one task per package to be generated or port to be installed:
             check_distfiles()
-            wait until all distfiles are available or the fetch tasks has given up
+            use shared lock to wait until all distfiles are available or the fetch tasks has given up
             if fetching failed for at least 1 file:
                 goto Abort
             -- all distfiles have been fetched
-            wait for and provide build dependencies (including special dependencies, from port or package)
+            use shared lock to wait for and provide build dependencies (including special dependencies, from port or package)
             -- build dependencies that have not been updated must block the provide operation!
             -- run dependencies of build dependencies are considered build dependencies, here
             if build dependencies are marked as failed (un-buildable):
                 goto Abort
             -- all build dependencies have been provided (in base or jail)
             -- all build dependencies have been locked to prevent de-installation before the port has been built
-            acquire lock on work directory for port and all special_depends (prevent parallel builds of the same port, e.g. of different flavors)
+            acquire exclusive lock on work directory for port and all special_depends (prevent parallel builds of the same port, e.g. of different flavors)
             build port
             if the port build fails then
                 goto Abort
@@ -359,7 +359,7 @@ Concept for parallel port building:
                 try to provide all run dependencies
                 if some run dependency is missing:
                     mark package as available (as dependency of other ports, i.e. to prevent dependency loops)
-                    wait for all run dependencies to become available
+                    use shared lock to wait for all run dependencies to become available
                     if some run dependency could not be provided
                         goto Abort
                 create backup package
@@ -384,7 +384,7 @@ Concept for parallel port building:
         remove build-only dependencies (if requested)
 
     Install from package:
-        wait for package to become available
+        use shared lock to wait for package to become available
         if the package could not be provided (e.g. failed to build)
             goto Abort
         try to provide all run dependencies

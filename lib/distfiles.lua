@@ -81,16 +81,13 @@ local function dist_fetch(origin)
          end
       end
    end
-   local function fetch_required(distinfo)
+   local function fetch_required(filenames)
       local missing = {}
-      local filenames = table.keys(distinfo)
       table.sort(filenames)
-      TRACE("FETCH_REQUIRED?", table.concat(filenames, " "))
+      TRACE("FETCH_REQUIRED?", table.unpack(filenames))
       for _, file in ipairs(filenames) do
          if DISTINFO_CACHE[file].checked == nil then
             TRACE("FETCH_REQUIRED!", file)
-            fetch_lock = fetch_lock or Lock.new("FetchLock")
-            Lock.acquire(fetch_lock, file)
             table.insert(missing, file)
          end
       end
@@ -106,9 +103,14 @@ local function dist_fetch(origin)
    local success = false
    local distinfo = parse_distinfo(origin.distinfo_file)
    update_distinfo_cache(distinfo)
-   local missing = fetch_required(distinfo)
+   local distfiles = table.keys(distinfo) -- or {} ???
+   local missing = fetch_required(distfiles)
    if #missing > 0 then
+      fetch_lock = fetch_lock or Lock.new("FetchLock")
+      Lock.acquire(fetch_lock, missing)
+      missing = fetch_required(missing) -- fetch again since we may have been blocked and sleeping
       setall(distinfo, "fetching", true)
+      TRACE("FETCH_MISSING", #missing, table.unpack(missing))
       local lines = origin:port_make{as_root = PARAM.distdir_ro, table = true,
                "FETCH_BEFORE_ARGS=-v", "NO_DEPENDS=1", "DISABLE_CONFLICTS=1",
                "PARAM.disable_licenses=1", "DEV_WARNING_WAIT=0", "checksum"}
@@ -125,9 +127,7 @@ local function dist_fetch(origin)
             end
          end
       end
-      for i = #missing, 1, -1 do
-         Lock.release(fetch_lock, missing[i])
-      end
+      Lock.release(fetch_lock, missing)
    end
    TRACE("FETCH->", port, success)
    return success
@@ -142,6 +142,10 @@ end
 local function fetch_finish()
    TRACE("FETCH_FINISH")
    Exec.finish_spawned(fetch, "Finish background fetching and checking of distribution files")
+   if fetch_lock then
+      Lock.destroy(fetch_lock)
+      fetch_lock = false -- prevent further use as a table
+   end
 end
 
 return {

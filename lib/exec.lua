@@ -55,6 +55,7 @@ Concept for background execution of functions:
 -------------------------------------------------------------------------------------
 local Options = require("portmaster.options")
 local Msg = require("portmaster.msg")
+local Lock = require("portmaster.locks")
 
 -------------------------------------------------------------------------------------
 local P = require("posix")
@@ -174,7 +175,6 @@ local co_table = {} -- mapping from pid to coroutine
 local tasks_spawned = 0 -- number of currently existing coroutines
 local tasks_spawned_with = {} -- mapping of function used to start coroutine to count of active coroutines
 local tasks_forked = 0 -- number of forked processes
-local tasks_blocked = 0 -- number of coroutines blocked by wait_cond -- CURRENTLY UNUSED -> move to Locks module
 --local task_wait_func = {} -- table of check functions for blocked tasks
 
 --
@@ -264,8 +264,8 @@ local function finish_spawned (f, msg) -- if f is provided then only spawns of t
     local _, in_main = coroutine.running()
     assert(in_main, "calling finish_spawned from a coroutine is not supported")
     while true do
-        local n = f and tasks_spawned_with[f] or tasks_spawned -- (tasks_forked + tasks_blocked)
-        TRACE("FINISH", tasks_spawned, tasks_forked, tasks_blocked, n, f)
+        local n = f and tasks_spawned_with[f] or tasks_spawned -- (tasks_forked + Lock.blocked_tasks())
+        TRACE("FINISH", tasks_spawned, tasks_forked, Lock.blocked_tasks(), n, f)
         if n == 0 then
             break
         end
@@ -273,7 +273,7 @@ local function finish_spawned (f, msg) -- if f is provided then only spawns of t
             Msg.show{start = true, level = 2, msg}
             msg = nil
         end
-        local pid = tasks_poll(tasks_blocked > 0 and 100 or -1)
+        local pid = tasks_poll(Lock.blocked_tasks() > 0 and 100 or -1)
         if pid then
             task_result(pid)
         end
@@ -373,10 +373,10 @@ local function run(args)
         end
     end
     tasks_forked = tasks_forked + 1
-    TRACE("NUM_TASKS+", tasks_spawned, tasks_forked, tasks_blocked)
+    TRACE("NUM_TASKS+", tasks_spawned, tasks_forked, Lock.blocked_tasks())
     local exitcode, stdout, stderr = shell(args)
     tasks_forked = tasks_forked - 1
-    TRACE("NUM_TASKS-", tasks_spawned, tasks_forked, tasks_blocked)
+    TRACE("NUM_TASKS-", tasks_spawned, tasks_forked, Lock.blocked_tasks())
     if args.to_tty then
         return exitcode == 0, "", exitcode
     else

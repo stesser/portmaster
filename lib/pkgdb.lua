@@ -91,9 +91,9 @@ end
 
 -- register new origin in package registry (must be performed before package rename, if any)
 local function update_origin(old, new, pkgname)
-    local dir_old = old:port()
-    local dir_new = new:port()
-    local flavor = new:flavor()
+    local dir_old = old.port
+    local dir_new = new.port
+    local flavor = new.flavor
 
     if dir_old ~= dir_new then
         if not set("--change-origin", dir_old .. ":" .. dir_new, pkgname) then
@@ -108,6 +108,11 @@ local function update_origin(old, new, pkgname)
     return true
 end
 
+local function update_pkgname()
+    print("NYI: update_pkgname")
+    return true
+end
+
 return {
     query = query,
     info = info,
@@ -116,4 +121,5 @@ return {
     flavor_set = flavor_set,
     flavor_check = flavor_check,
     update_origin = update_origin,
+    update_pkgname = update_pkgname,
 }

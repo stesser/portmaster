@@ -422,6 +422,8 @@ local __port_vars_table = {
     "FORBIDDEN",
     "IGNORE",
     "IS_INTERACTIVE",
+    "NO_BUILD",
+    "MAKE_JOBS_UNSAFE",
     "LICENSE",
     "ALL_OPTIONS",
     "NEW_OPTIONS",
@@ -494,6 +496,8 @@ local function __port_vars(origin, k, recursive)
         check_origin_alias(origin) ---- SEARCH FOR AND MERGE WITH POTENTIAL ALIAS
         origin.distinfo_file = t.DISTINFO_FILE
         set_bool(origin, "is_interactive", t.IS_INTERACTIVE)
+        set_bool(origin, "no_build", t.NO_BUILD)
+        set_bool(origin, "make_jobs_unsafe", t.MAKE_JOBS_UNSAFE)
         set_table(origin, "license", t.LICENSE)
         set_table(origin, "all_options", t.ALL_OPTIONS)
         set_table(origin, "new_options", t.NEW_OPTIONS)

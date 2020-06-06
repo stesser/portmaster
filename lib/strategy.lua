@@ -332,6 +332,11 @@ return {
 --[[
 Concept for parallel port building:
 
+    No parallel build of a port if either of the following is defined:
+        DISABLE_MAKE_JOBS -- User variable?
+        MAKE_JOBS_UNSAFE -- Makefile variable?
+        NO_BUILD -- No build phase
+
     Fetch and check distfiles: -- implements check_distfiles()
 EL+     acquire exclusive lock(s) on distfile name(s) to protect fetching of distfile(s) to collide
         if distfiles have not been previously fetched and verified

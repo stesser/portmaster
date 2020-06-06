@@ -583,7 +583,7 @@ local function perform_upgrades(action_list)
             result = perform_delete(action)
         elseif action_is(action, "upgrade") then
             result = perform_install_or_upgrade(action)
-        elseif action_is(action, verb == "change") then
+        elseif action_is(action, "change") then
             if action.pkg_old.name ~= action.pkg_new.name then
                 result = perform_pkg_rename(action)
             elseif action.o_o.name ~= action.o_n.name then

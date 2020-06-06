@@ -122,6 +122,13 @@ function TRACE(...)
         local tracemsg = ""
         local t = {...}
         for i = 1, #t do
+            if type(t[i]) == table then
+                local unpacked = "{"
+                for k, v in pairs(t[i]) do
+                    unpacked = unpacked .. k .. "=" .. v .. ","
+                end
+                t[i] = unpacked .. "}"
+            end
             local v = t[i] or ("<" .. tostring(t[i]) .. ">")
             v = tostring(v)
             if v == "" or string.find(v, " ") then

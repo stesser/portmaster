@@ -40,21 +40,19 @@ SIZE (bash/bash-5.0.tar.gz) = 10135110
 
 -- return table indexed by filename
 local function parse_distinfo(di_filename)
+    TRACE("PARSE_DISTINFO", di_filename)
     local result = {}
-    local timestamp
     local di_file = io.open(di_filename, "r")
     if di_file then --  meta-ports do not have a distinfo file
+        local timestamp
         for line in di_file:lines() do
-            if not timestamp then -- timestamp is always on first line
-                timestamp = string.match(line, "^TIMESTAMP = (%d+)")
-            else
-                local key, file, value = string.match(line, "(%S+) %((%S+)%) = (%S+)")
-                if key then
-                    local t = result[file] or {TIMESTAMP = timestamp}
-                    t[key] = value
-                    TRACE("DISTINFO", key, file, value)
-                    result[file] = t
-                end
+            timestamp = timestamp or string.match(line, "^TIMESTAMP = (%d+)")
+            local key, file, value = string.match(line, "(%S+) %((%S+)%) = (%S+)")
+            if key then
+               local t = result[file] or {TIMESTAMP = timestamp}
+               t[key] = value
+               TRACE("DISTINFO", key, file, value)
+               result[file] = t
             end
         end
         io.close(di_file)
@@ -84,8 +82,8 @@ local function dist_fetch(origin)
    local function fetch_required(filenames)
       local missing = {}
       table.sort(filenames)
-      TRACE("FETCH_REQUIRED?", table.unpack(filenames))
       for _, file in ipairs(filenames) do
+         TRACE("FETCH_REQUIRED?", file)
          if DISTINFO_CACHE[file].checked == nil then
             TRACE("FETCH_REQUIRED!", file)
             table.insert(missing, file)
@@ -98,7 +96,7 @@ local function dist_fetch(origin)
          rawset (DISTINFO_CACHE[file], field, value)
       end
    end
-   TRACE("DIST_FETCH", origin and origin.name or "<nil>")
+   TRACE("DIST_FETCH", origin and origin.name or "<nil>", origin and origin.distinfo_file or "<nil>")
    local port = origin.port
    local success = false
    local distinfo = parse_distinfo(origin.distinfo_file)

@@ -103,12 +103,12 @@ local function add_poll_fds(pid, fds)
 end
 
 local function rm_poll_fd(fd)
-    TRACE("RM", fd)
     local pid = fdstat[fd].pid
     fdstat[fd].pid = nil
-    TRACE("RMPOLL", pid, fd, pidstat[pid].numfds)
     pollfds[fd] = nil
     local numfds = pidstat[pid].numfds - 1
+    TRACE("RMPOLL", pid, fd, numfds)
+    --[[
     if fd == pidstat[pid].fds[1] then
         TRACE("RMPOLLFD", pid, fd, "STDOUT")
     elseif fd == pidstat[pid].fds[2] then
@@ -116,6 +116,7 @@ local function rm_poll_fd(fd)
     else
         TRACE("RMPOLLFD", pid, fd, "???")
     end
+    --]]
     if numfds > 0 then
         pidstat[pid].numfds = numfds
     else
@@ -151,6 +152,7 @@ local function task_create (args)
         if type(cmd) == "function" then
             _exit(cmd(table.unpack(args)) and 0 or 1)
         else
+            TRACE("EXEC(Child)")
             local exitcode, errmsg = exec (cmd, args)
             TRACE("FAILED-EXEC(Child)->", exitcode, errmsg)
             assert (exitcode, errmsg)

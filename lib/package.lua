@@ -628,6 +628,7 @@ return {
     automatic_set = automatic_set,
     packages_cache_load = packages_cache_load,
     dump_cache = dump_cache,
+    filename = filename,
 }
 
 --[[

@@ -43,7 +43,7 @@ end
 -- @param items.weight: weight factor for this lock
 -- recursive locking or upgrading from a shared to a exclusive lock is not supported (yet?)
 local function tryacquire(lock, items)
-    TRACE("TRYACQUIRE", lock.name, items.shared, items.weight, table.unpack(items))
+    TRACE("TRYACQUIRE", lock.name, tostring(items.shared), tostring(items.weight), table.unpack(items or {}))
     --assert(type(items) == "table", "tryacquire expects table as the 2nd argument but got " .. type(items))
     --assert(lock and lock.name, "Attempt to acquire lock using an unitialized lock structure for " .. tostring(item))
     local shared = items.shared or false
@@ -141,7 +141,7 @@ local function release (lock, items)
         TRACE("RELEASE: #items<1")
         return
     end
-    assert(type(items) == "table", "release() expects table of items but got ", type (items))
+    assert(type(items) == "table", "release() expects table of items but got " .. type (items))
     assert(lock and lock.name, "Attempt to release lock using an unitialized lock structure for " .. tostring(items[1]))
     for i = #items, 1, -1 do
         release_one(lock, items[i])

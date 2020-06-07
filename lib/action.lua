@@ -122,11 +122,15 @@ end
 -------------------------------------------------------------------------------------
 -- rename all matching package files (excluding package backups)
 local function pkgfiles_rename(action) -- UNTESTED !!!
-    local pkgname_new = action.pkg_new.name
-    local pkgfiles = glob(action.pkg_old:filename{subdir = "*", ext = "t??"})
+    TRACE("PKGFILES_RENAME", action, action.pkg_new, action.pkg_old)
+    local p_n = action.pkg_new
+    local p_o = action.pkg_old
+    local file_pattern = p_o:filename{subdir = "*", ext = "t??"}
+    TRACE("PKGFILES_RENAME-Pattern", file_pattern)
+    local pkgfiles = glob(file_pattern)
     for _, pkgfile_old in ipairs(pkgfiles) do
         if access(pkgfile_old, "r") and not strpfx(pkgfile_old, PATH.packages_backup) then
-            local pkgfile_new = path_concat(dirname(pkgfile_old), pkgname_new .. pkgfile_old:gsub(".*(%.%w+)", "%1"))
+            local pkgfile_new = path_concat(dirname(pkgfile_old), p_n.name .. pkgfile_old:gsub(".*(%.%w+)", "%1"))
             return Exec.run {CMD.mv, as_root = true, to_tty = true, pkgfile_old, pkgfile_new}
         end
     end
@@ -290,6 +294,7 @@ local function perform_portbuild(action)
             return false
         end
     end
+    o_n:fetch_wait()
     if not o_n:port_make{
         to_tty = true,
         jailed = true,
@@ -1273,7 +1278,7 @@ local function new(Action, args)
                 Progress.show_task(describe(action))
             end
             if action_is(action, "upgrade") then
-                action.o_n:checksum()
+                action.o_n:fetch()
             end
         end
         return cache_add(action)

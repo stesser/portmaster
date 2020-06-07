@@ -149,11 +149,7 @@ local function configure(origin, force)
     return origin:port_make{to_tty = true, as_root = PARAM.port_dbdir_ro, "-D", "NO_DEPENDS", "-D", "DISABLE_CONFLICTS", target}
 end
 
---
-local function checksum(origin)
-    Distfile.fetch(origin)
-end
-
+--[[
 -- # wait for a line stating success or failure fetching all distfiles for some port origin and return status
 local function wait_checksum(origin)
     if Options.dry_run then
@@ -181,6 +177,7 @@ local function wait_checksum(origin)
     end
     return false, "Download of distfiles for " .. origin.name .. " failed: " .. errmsg
 end
+--]]
 
 -- check wether port is on the excludes list
 local function check_excluded(origin)
@@ -673,13 +670,14 @@ return {
     get = get,
     check_excluded = check_excluded,
     check_config_allow = check_config_allow,
-    checksum = checksum,
+    fetch = Distfile.fetch,
+    fetch_wait = Distfile.fetch_wait,
     delete = delete,
     install = install,
     port_make = port_make,
     port_var = port_var,
     portdb_path = portdb_path,
-    wait_checksum = wait_checksum,
+    --wait_checksum = wait_checksum,
     moved_cache_load = moved_cache_load,
     lookup_moved_origin = lookup_moved_origin,
     dump_cache = dump_cache,

@@ -117,22 +117,36 @@ local STARTTIMESECS = os.time()
 local tracefd
 
 function TRACE(...)
+    local function as_string(v)
+        v = tostring(v)
+        if v == "" or string.find(v, " ") then
+            return "'" .. v .. "'"
+        end
+        return v
+    end
+    local function table_to_string(t, level)
+        if level <= 0 then
+            return tostring(t)
+        end
+        local sep = "{ "
+        local unpacked = ""
+        for k, v in pairs(t) do
+            v = type(v) == "table" and table_to_string(v, level - 1) or as_string(v)
+            unpacked = unpacked .. sep .. k .. "=" .. v
+            sep = ", "
+        end
+        return unpacked .. " }"
+    end
     if tracefd then
+        local t = {...}
         local sep = ""
         local tracemsg = ""
-        local t = {...}
         for i = 1, #t do
-            if type(t[i]) == table then
-                local unpacked = "{"
-                for k, v in pairs(t[i]) do
-                    unpacked = unpacked .. k .. "=" .. v .. ","
-                end
-                t[i] = unpacked .. "}"
-            end
-            local v = t[i] or ("<" .. tostring(t[i]) .. ">")
-            v = tostring(v)
-            if v == "" or string.find(v, " ") then
-                v = "'" .. v .. "'"
+            local v
+            if type(t[i]) == "table" then
+                v = table_to_string(t[i], 2)
+            else
+                v = as_string(t[i])
             end
             tracemsg = tracemsg .. sep .. v
             sep = " "

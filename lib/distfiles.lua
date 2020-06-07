@@ -102,6 +102,7 @@ local function dist_fetch(origin)
    local distinfo = parse_distinfo(origin.distinfo_file)
    update_distinfo_cache(distinfo)
    local distfiles = table.keys(distinfo) -- or {} ???
+   origin.distfiles = distfiles
    local missing = fetch_required(distfiles)
    if #missing > 0 then
       fetch_lock = fetch_lock or Lock.new("FetchLock")
@@ -137,8 +138,17 @@ local function fetch(origin)
 end
 
 --
+local function fetch_wait(origin)
+    local distfiles = origin.distfiles
+    TRACE("FETCH_WAIT", distfiles)
+    distfiles.shared = true
+    Lock.acquire(fetch_lock, distfiles)
+end
+
+--
 local function fetch_finish()
    TRACE("FETCH_FINISH")
+do return true end -- TESTING
    Exec.finish_spawned(fetch, "Finish background fetching and checking of distribution files")
    if fetch_lock then
       Lock.destroy(fetch_lock)
@@ -149,5 +159,6 @@ end
 return {
     fetch = fetch,
     fetch_finish = fetch_finish,
+    fetch_wait = fetch_wait,
     parse_distinfo = parse_distinfo,
 }

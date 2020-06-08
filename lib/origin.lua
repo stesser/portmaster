@@ -377,12 +377,11 @@ local ORIGIN_ALIAS = {}
 --
 local function get(name)
     if name then
-        TRACE("GET(o)", name)
         local result = rawget(ORIGINS_CACHE, name)
         if result == false then
             return get(ORIGIN_ALIAS[name])
         end
-        TRACE("GET(o)->", name, tostring(result))
+        TRACE("GET(o)->", name, result)
         return result
     end
 end
@@ -397,7 +396,7 @@ local function dump_cache()
     local t = ORIGINS_CACHE
     for i, v in ipairs(table.keys(t)) do
         if t[v] then
-            TRACE("ORIGINS_CACHE", i, v, table.unpack(table.keys(t[v])))
+            TRACE("ORIGINS_CACHE", i, v, t[v])
         else
             TRACE("ORIGINS_CACHE", i, v, "ALIAS", ORIGIN_ALIAS[v])
         end

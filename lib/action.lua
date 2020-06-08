@@ -62,7 +62,7 @@ end
 -- check whether the action denoted by "verb" has been registered
 local function action_is (action, verb)
     local a = action_get(action)
-    TRACE ("ACTION_IS", action.pkg_new or action.pkg_old, a, verb)
+    --TRACE ("ACTION_IS", action.pkg_new or action.pkg_old, a, verb)
     return verb and a == verb
 end
 
@@ -84,7 +84,7 @@ local function describe(action)
             return string.format("Change origin of port %s to %s for package %s", o_o.name, o_n.name, p_n.name)
         end
     elseif action_is(action, "exclude") then
-        return string.format("Skip excluded package %s installed from %s", tostring(p_o), tostring(o_o))
+        return string.format("Skip excluded package %s installed from %s", p_o.name, o_o.name)
     elseif action_is(action, "upgrade") then
         local from
         if p_n and p_n.pkgfile then
@@ -1155,8 +1155,7 @@ end
 local function dump_cache()
     local t = ACTION_CACHE
     for _, v in ipairs(table.keys(t)) do
-        local name = tostring(v)
-        TRACE("ACTION_CACHE", name, table.unpack(table.keys(t[v])))
+        TRACE("ACTION_CACHE", v, t[v])
     end
 end
 

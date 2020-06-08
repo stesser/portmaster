@@ -43,7 +43,7 @@ end
 -- @param items.weight: weight factor for this lock
 -- recursive locking or upgrading from a shared to a exclusive lock is not supported (yet?)
 local function tryacquire(lock, items)
-    TRACE("TRYACQUIRE", lock.name, tostring(items.shared), tostring(items.weight), table.unpack(items or {}))
+    TRACE("TRYACQUIRE", lock.name, items.shared, items.weight, items)
     --assert(type(items) == "table", "tryacquire expects table as the 2nd argument but got " .. type(items))
     --assert(lock and lock.name, "Attempt to acquire lock using an unitialized lock structure for " .. tostring(item))
     local shared = items.shared or false
@@ -152,7 +152,7 @@ local function release (lock, items)
             local item = items[i]
             -- prefer queued shared lock requests over exclusive ones and look for them first
             local queue = lock.shared_queue[item]
-            TRACE("RELEASE_SHARED_QUEUE", item, tostring(queue))
+            TRACE("RELEASE_SHARED_QUEUE", item, queue)
             if queue then
                 for j, items in pairs(queue) do
                     local co = blocked[items]
@@ -178,7 +178,7 @@ local function release (lock, items)
             queue = lock.shared_queue[item]
             if not queue then
                 local exclusive_queue = lock.exclusive_queue[item]
-                TRACE("RELEASE_EXCLUSIVE_QUEUE", item, tostring(exclusive_queue))
+                TRACE("RELEASE_EXCLUSIVE_QUEUE", item, exclusive_queue)
                 if exclusive_queue then
                     for j, items in pairs(exclusive_queue) do -- , 1, -1 do -- always release in reverse order to prevent dead-locks!
                         local co = blocked[items]

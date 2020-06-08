@@ -115,8 +115,10 @@ end
 --
 local STARTTIMESECS = os.time()
 local tracefd
+local table_expand_level = 3
 
 function TRACE(...)
+    local tbl_seen = {}
     local function as_string(v)
         v = tostring(v)
         if v == "" or string.find(v, " ") then
@@ -125,17 +127,20 @@ function TRACE(...)
         return v
     end
     local function table_to_string(t, level)
-        if level <= 0 then
+        if level <= 0 or tbl_seen[t] then
             return tostring(t)
         end
+        tbl_seen[t] = true
         local sep = "{ "
+        local endsep = ""
         local unpacked = ""
         for k, v in pairs(t) do
             v = type(v) == "table" and table_to_string(v, level - 1) or as_string(v)
             unpacked = unpacked .. sep .. k .. "=" .. v
             sep = ", "
+            endsep = " }"
         end
-        return unpacked .. " }"
+        return unpacked .. endsep
     end
     if tracefd then
         local t = {...}
@@ -144,7 +149,7 @@ function TRACE(...)
         for i = 1, #t do
             local v
             if type(t[i]) == "table" then
-                v = table_to_string(t[i], 2)
+                v = table_to_string(t[i], table_expand_level)
             else
                 v = as_string(t[i])
             end

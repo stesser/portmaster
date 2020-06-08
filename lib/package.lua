@@ -572,8 +572,7 @@ end
 local function dump_cache()
     local t = PACKAGES_CACHE
     for _, v in ipairs(table.keys(t)) do
-        local name = tostring(v)
-        TRACE("PACKAGES_CACHE", name, table.unpack(table.keys(t[v])))
+        TRACE("PACKAGES_CACHE", v, t[v])
     end
 end
 

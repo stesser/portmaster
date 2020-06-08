@@ -177,7 +177,7 @@ local OLD_RC_COMPAT = {
 --
 local function rcfile_tryload(filename)
     local inp = io.open(filename, "r")
-    TRACE("RCFILE_TRYLOAD", filename, inp or tostring(inp))
+    TRACE("RCFILE_TRYLOAD", filename, inp)
     if not inp then
         return
     end
@@ -217,7 +217,7 @@ end
 
 -- set option (or clear, if value is nil)
 local function opt_set(opt, value)
-    TRACE("OPT_SET", opt, value or tostring(value))
+    TRACE("OPT_SET", opt, value)
     Options[opt] = value
 end
 

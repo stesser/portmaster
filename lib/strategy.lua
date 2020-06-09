@@ -233,7 +233,7 @@ local function add_all_outdated()
     end
 
     ports_update {
-        --filter_old_abi,
+        filter_old_abi,
         --filter_old_shared_libs, -- currently a NOP since both sets of libraries are obtained with pkg query %b
         filter_is_required,
         filter_pass_all,
@@ -409,7 +409,7 @@ EL3-        release locks on work directories
             install missing packages -> Install from package
         remove build-only dependencies (if requested)
 
-    Install from package:
+    Install to base from package:
 SL2+    acquire shared lock to wait for package to become available
 SL2-    release shared lock (no longer required, since the package will not go away ...)
         if the package could not be provided (e.g. failed to build)
@@ -430,6 +430,18 @@ SL2-    release shared lock (no longer required, since the package will not go a
             re-install old version of package from saved backup file
             goto Abort
         delete backup package (if requested not to be kept)
+
+    Provide package in build jail:
+SL2+    acquire shared lock to wait for package to become available
+SL2-    release shared lock (no longer required, since the package will not go away ...)
+        if the package could not be provided (e.g. failed to build)
+            goto Abort
+        -- the following lines are common with the build from port case
+        recursively try to provide all run dependencies
+        if some run dependency could not be provided
+            goto Abort
+        install new version from package
+            goto Abort
 
     Delete package:
         -- started as a background task hwen in jailed or repo-mode

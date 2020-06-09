@@ -39,7 +39,8 @@ SIZE (bash/bash-5.0.tar.gz) = 10135110
 --]]
 
 -- return table indexed by filename
-local function parse_distinfo(di_filename)
+local function parse_distinfo(origin)
+    local di_filename = origin.distinfo_file
     TRACE("PARSE_DISTINFO", di_filename)
     local result = {}
     local di_file = io.open(di_filename, "r")
@@ -58,6 +59,14 @@ local function parse_distinfo(di_filename)
         io.close(di_file)
     end
     return result
+end
+
+--
+local function generate_distinfo(origin)
+   local result = {}
+   for _, v in ipairs(origin.distfiles or {}) do
+      result[v] = {}
+   end
 end
 
 -- perform "make checksum", analyse status message and write success status to file (meant to be executed in a background task)
@@ -99,7 +108,8 @@ local function dist_fetch(origin)
    TRACE("DIST_FETCH", origin and origin.name or "<nil>", origin and origin.distinfo_file or "<nil>")
    local port = origin.port
    local success = false
-   local distinfo = parse_distinfo(origin.distinfo_file)
+   --local distinfo = parse_distinfo(origin)
+   local distinfo = generate_distinfo(origin)
    update_distinfo_cache(distinfo)
    local distfiles = table.keys(distinfo) -- or {} ???
    origin.distfiles = distfiles
@@ -160,5 +170,4 @@ return {
     fetch = fetch,
     fetch_finish = fetch_finish,
     fetch_wait = fetch_wait,
-    parse_distinfo = parse_distinfo,
 }

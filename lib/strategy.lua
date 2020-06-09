@@ -49,8 +49,6 @@ local function add_action (args)
 end
 
 --
-local action_list
---
 local function add_missing_deps(action_list)
     local start_elem = 1
     while start_elem <= #action_list do
@@ -308,7 +306,7 @@ local function execute()
     Exec.finish_spawned(Action.new)
 
     -- cache local reference to ACTION_LIST
-    action_list = Action.list()
+    local action_list = Action.list()
 
     -- add missing dependencies
     add_missing_deps(action_list)

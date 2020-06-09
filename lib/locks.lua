@@ -33,19 +33,26 @@ SUCH DAMAGE.
 local tasks_blocked = 0 -- number of coroutines blocked by wait_cond -- CURRENTLY UNUSED -> move to Locks module
 local blocked = {}
 
+--!
+-- allocate and initialize lock state structure
+--
+-- @param name name of the lock for identification in trace and debug messages
+-- @param avail optional limit on the number of exclusive locks to grant for different items using this lock structure
+-- @retval lock the initialized lock structure
 local function new(name, avail)
     return {name = name, avail = avail, blocked = 0, is_shared = {}, shared = {}, exclusive = {}, shared_queue = {}, exclusive_queue = {}}
 end
 
---! generell locking functionality
--- recursive locking or upgrading from a shared to a exclusive lock is not supported (yet?)
+--!
+-- general resource locking function
 --
+-- @param lock state structure allocated with new()
 -- @param items table of items to be locked
 -- @param items.shared true if a shared lock is requested
 -- @param items.weight weight factor for this lock
---
 -- @retval false the lock could not be acquired without waiting
 -- @retval true the locks requested in the items table have been acquired
+-- @todo recursive locking or upgrading from a shared to a exclusive lock is not supported (yet?)
 local function tryacquire(lock, items)
     TRACE("TRYACQUIRE", lock.name, items.shared, items.weight, items)
     --assert(type(items) == "table", "tryacquire expects table as the 2nd argument but got " .. type(items))

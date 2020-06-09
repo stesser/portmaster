@@ -685,8 +685,8 @@ VALID_OPTS = {
     developer_mode = {
         descr = "create log and trace files",
         func = function(o, v)
-            tracefd = io.open(TRACEFILE, "w")
-        end,
+            opt_set(o,v)
+        end
     },
 }
 

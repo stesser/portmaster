@@ -131,16 +131,16 @@ function TRACE(...)
             return tostring(t)
         end
         tbl_seen[t] = true
-        local sep = "{ "
-        local endsep = ""
-        local unpacked = ""
+        local result = {}
         for k, v in pairs(t) do
             v = type(v) == "table" and table_to_string(v, level - 1) or as_string(v)
-            unpacked = unpacked .. sep .. k .. "=" .. v
-            sep = ", "
-            endsep = " }"
+            result[#result + 1] = k .. "=" .. v
         end
-        return unpacked .. endsep
+        if #result == 0 then
+            return "{}"
+        else
+            return "{ " .. table.concat(result, ", ") .. " }"
+        end
     end
     if tracefd then
         local t = {...}
@@ -792,6 +792,9 @@ local function main()
 
     -- load option definitions from table
     local args = Options.init()
+    if Options.developer_mode then
+        tracefd = io.open("/tmp/pm.log", "w")
+    end
 
     -- initialise global variables based on default values and rc file settings
     init_globals()
@@ -874,8 +877,6 @@ local function main()
     exit_cleanup(0)
     -- not reached
 end
-
-tracefd = io.open("/tmp/pm.log", "w")
 
 local success, errmsg = xpcall(main, debug.traceback)
 if not success then

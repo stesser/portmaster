@@ -49,48 +49,51 @@ local function add_action (args)
 end
 
 --
+local action_list
+--
 local function add_missing_deps(action_list)
-    for i, a in ipairs(action_list) do
-        if a.pkg_new and rawget(a.pkg_new, "is_installed") then
-            -- print (a, "is already installed")
-        else
-            local add_dep_hdr = "Add build dependencies of " .. a.short_name
-            local deps = a.build_depends or {} -- rename build_depends --> depends.build
-            for _, dep in ipairs(deps) do
-                local o = Origin:new(dep)
-                local p = o.pkg_new
-                if not Action.get(p.name) then
-                    if add_dep_hdr then
-                        Msg.show {level = 2, start = true, add_dep_hdr}
-                        add_dep_hdr = nil
+    local start_elem = 1
+    while start_elem <= #action_list do
+        local last_elem = #action_list
+        for i = start_elem, last_elem do
+            local a = action_list[i]
+            TRACE("ADD_MISSING_DEPS", i, #action_list)
+            if a.pkg_new and rawget(a.pkg_new, "is_installed") then
+                -- print (a, "is already installed")
+            else
+                local add_dep_hdr = "Add build dependencies of " .. a.short_name
+                local deps = a.build_depends or {} -- rename build_depends --> depends.build
+                for _, dep in ipairs(deps) do
+                    local o = Origin:new(dep)
+                    local p = o.pkg_new
+                    if not Action.get(p.name) then
+                        if add_dep_hdr then
+                            Msg.show {level = 2, start = true, add_dep_hdr}
+                            add_dep_hdr = nil
+                        end
+                        add_action{build_type = "auto", dep_type = "build", pkg_new = p, o_n = o}
+                        p.is_build_dep = true
                     end
-                    -- local action = Action:new {build_type = "auto", dep_type = "build", o_n = o}
-                    local action = Action:new{build_type = "auto", dep_type = "build", pkg_new = p, o_n = o}
-                    p.is_build_dep = true
-                    -- assert (not o.action)
-                    -- o.action = action -- NOT UNIQUE!!!
                 end
-            end
-            add_dep_hdr = "Add run dependencies of " .. a.short_name
-            deps = a.run_depends or {}
-            for _, dep in ipairs(deps) do
-                local o = Origin:new(dep)
-                local p = o.pkg_new
-                if not Action.get(p.name) then
-                    if add_dep_hdr then
-                        Msg.show {level = 2, start = true, add_dep_hdr}
-                        add_dep_hdr = nil
+                add_dep_hdr = "Add run dependencies of " .. a.short_name
+                deps = a.run_depends or {}
+                for _, dep in ipairs(deps) do
+                    local o = Origin:new(dep)
+                    local p = o.pkg_new
+                    if not Action.get(p.name) then
+                        if add_dep_hdr then
+                            Msg.show {level = 2, start = true, add_dep_hdr}
+                            add_dep_hdr = nil
+                        end
+                        add_action{build_type = "auto", dep_type = "run", pkg_new = p, o_n = o}
+                        p.is_run_dep = true
                     end
-                    -- local action = Action:new {build_type = "auto", dep_type = "run", o_n = o}
-                    local action = Action:new{build_type = "auto", dep_type = "run", pkg_new = p, o_n = o}
-                    p.is_run_dep = true
-                    -- assert (not o.action)
-                    -- o.action = action -- NOT UNIQUE!!!
                 end
             end
         end
+        Exec.finish_spawned(Action.new)
+        start_elem = last_elem + 1
     end
-    return action_list
 end
 
 --
@@ -98,7 +101,7 @@ local function sort_list(action_list) -- remove ACTION_CACHE from function argum
     local max_str = tostring(#action_list)
     local sorted_list = {}
     local function add_deps(action)
-        local function add_dep_type(type)
+        local function add_deps_of_type(type)
             local deps = rawget(action, type .. "_depends")
             if deps then
                 for _, o in ipairs(deps) do
@@ -115,13 +118,13 @@ local function sort_list(action_list) -- remove ACTION_CACHE from function argum
             end
         end
         if not rawget(action, "planned") then
-            add_dep_type("build")
+            add_deps_of_type("build")
             assert(not rawget(action, "planned"), "Dependency loop for: " .. action:describe())
             table.insert(sorted_list, action)
             action.listpos = #sorted_list
             action.planned = true
             Msg.show {"[" .. tostring(#sorted_list) .. "/" .. max_str .. "]", tostring(action)}
-            add_dep_type("run")
+            add_deps_of_type("run")
         end
     end
 
@@ -304,18 +307,20 @@ local function execute()
     -- wait for all spawned tasks to complete
     Exec.finish_spawned(Action.new)
 
+    -- cache local reference to ACTION_LIST
+    action_list = Action.list()
+
     -- add missing dependencies
-    local action_list = add_missing_deps(Action.list())
+    add_missing_deps(action_list)
 
     -- sort actions according to registered dependencies
     action_list = sort_list(action_list)
 
-    --[[
-   -- DEBUGGING!!!
-   Origin.dump_cache ()
-   Package.dump_cache ()
-   Action.dump_cache ()
-   --]]
+    --[[ DEBUGGING ONLY!!!
+    Origin.dump_cache ()
+    Package.dump_cache ()
+    Action.dump_cache ()
+    --]]
 
     -- end of scan phase, all required actions are known at this point, builds may start
     PARAM.phase = "build"

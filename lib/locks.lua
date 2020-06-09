@@ -37,11 +37,15 @@ local function new(name, avail)
     return {name = name, avail = avail, blocked = 0, is_shared = {}, shared = {}, exclusive = {}, shared_queue = {}, exclusive_queue = {}}
 end
 
--- generell locking functionality
--- @param items: table of items to be locked
--- @param items.shared: true if a shared lock is requested
--- @param items.weight: weight factor for this lock
+--! generell locking functionality
 -- recursive locking or upgrading from a shared to a exclusive lock is not supported (yet?)
+--
+-- @param items table of items to be locked
+-- @param items.shared true if a shared lock is requested
+-- @param items.weight weight factor for this lock
+--
+-- @retval false the lock could not be acquired without waiting
+-- @retval true the locks requested in the items table have been acquired
 local function tryacquire(lock, items)
     TRACE("TRYACQUIRE", lock.name, items.shared, items.weight, items)
     --assert(type(items) == "table", "tryacquire expects table as the 2nd argument but got " .. type(items))

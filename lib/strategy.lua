@@ -246,19 +246,14 @@ end
 --
 local function perform_actions(action_list)
     if tasks_count() == 0 then
-        -- ToDo: suppress if updates had been requested on the command line
+        -- ToDo: suppress if no updates had been requested on the command line
         Msg.show {start = true, "No installations or upgrades required"}
     else
-        -- all fetch distfiles tasks should have been requested by now
-        Distfile.fetch_finish()
-        -- display list of actions planned
-        -- NYI register_delete_build_only ()
-
         Action.show_statistics(action_list)
         if Options.fetch_only then
             if Msg.read_yn("Fetch and check distfiles required for these upgrades now?", "y") then
-                -- wait for completion of fetch operations
-                -- perform_fetch_only () -- NYI wait for completion of fetch operations
+                Distfile.fetch_finish()
+                --check_fetch_success() -- display list of missing or wrong distfiles, if any
             end
         else
             Progress.clear()
@@ -461,7 +456,7 @@ SL2-    release shared lock (no longer required, since the package will not go a
         delete backup package (if it has been created and it is not to be kept)
 
 --> Delete package:
-        -- started as a background task hwen in jailed or repo-mode
+        -- started as a background task when in jailed or repo-mode
 EL2     acquire exclusively locks on this package and all run dependencies (waits until all shared locks are released for this package and the dependent packages)
         when the exclusive locks have been obtained all covered packages are deinstalled and their dependencies are added to the delete list
         -- the deinstallation is skipped, if there are no further build tasks, since then the whole jail is about to be destroyed
@@ -469,7 +464,7 @@ EL2     acquire exclusively locks on this package and all run dependencies (wait
 --> Abort:
         mark as un-buildable (with reason provided by failed function) - this will be picked up by dependent tasks when trying to use this package
 SL2-    release shared locks on build dependencies (if any)
-EL3-    relaase exclusive locks on work directories (if any)
+EL3-    release exclusive locks on work directories (if any)
         signal task has completed (with error)
         exit task
 --]]

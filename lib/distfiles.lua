@@ -65,8 +65,11 @@ end
 local function generate_distinfo(origin)
    local result = {}
    for _, v in ipairs(origin.distfiles or {}) do
+      v = string.match(v, "^(.*):") or v
       result[v] = {}
    end
+   TRACE("GENERATE_DISTINFO", origin.name, result)
+   return result
 end
 
 -- perform "make checksum", analyse status message and write success status to file (meant to be executed in a background task)
@@ -149,16 +152,17 @@ end
 
 --
 local function fetch_wait(origin)
-    local distfiles = origin.distfiles
-    TRACE("FETCH_WAIT", distfiles)
-    distfiles.shared = true
-    Lock.acquire(fetch_lock, distfiles)
+   if fetch_lock then
+      local distfiles = origin.distfiles
+      TRACE("FETCH_WAIT", distfiles)
+      distfiles.shared = true
+      Lock.acquire(fetch_lock, distfiles)
+   end
 end
 
 --
 local function fetch_finish()
    TRACE("FETCH_FINISH")
-do return true end -- TESTING
    Exec.finish_spawned(fetch, "Finish background fetching and checking of distribution files")
    if fetch_lock then
       Lock.destroy(fetch_lock)

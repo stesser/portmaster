@@ -225,9 +225,9 @@ local function tasks_poll(timeout)
         end
     end
     local function pollms()
-        max_tasks = max_tasks or PARAM.ncpu and (PARAM.ncpu + 4)
-        local n = tasks_forked - (max_tasks or 4)
-        return n <= 0 and 0 or (10 * n)
+        max_tasks = max_tasks or PARAM.ncpu
+        local n = tasks_spawned - (max_tasks or 4)
+        return n <= 0 and 0 or (20 * n)
     end
     local idle
     if timeout or next(pollfds) then

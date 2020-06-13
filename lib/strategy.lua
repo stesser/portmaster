@@ -52,6 +52,7 @@ end
 local function add_missing_deps(action_list)
     local start_elem = 1
     while start_elem <= #action_list do
+        local dep_ports = {}
         local last_elem = #action_list
         for i = start_elem, last_elem do
             local a = action_list[i]
@@ -64,11 +65,12 @@ local function add_missing_deps(action_list)
                 for _, dep in ipairs(deps) do
                     local o = Origin:new(dep)
                     local p = o.pkg_new
-                    if not Action.get(p.name) then
+                    if not Action.get(p.name) and not dep_ports[dep] then
                         if add_dep_hdr then
                             Msg.show {level = 2, start = true, add_dep_hdr}
                             add_dep_hdr = nil
                         end
+                        dep_ports[dep] = true
                         add_action{build_type = "auto", dep_type = "build", pkg_new = p, o_n = o}
                         p.is_build_dep = true
                     end
@@ -78,11 +80,12 @@ local function add_missing_deps(action_list)
                 for _, dep in ipairs(deps) do
                     local o = Origin:new(dep)
                     local p = o.pkg_new
-                    if not Action.get(p.name) then
+                    if not Action.get(p.name) and not dep_ports[dep] then
                         if add_dep_hdr then
                             Msg.show {level = 2, start = true, add_dep_hdr}
                             add_dep_hdr = nil
                         end
+                        dep_ports[dep] = true
                         add_action{build_type = "auto", dep_type = "run", pkg_new = p, o_n = o}
                         p.is_run_dep = true
                     end

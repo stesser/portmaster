@@ -32,6 +32,7 @@ local PkgDb = require("portmaster.pkgdb")
 local Msg = require("portmaster.msg")
 local Progress = require("portmaster.progress")
 local Exec = require("portmaster.exec")
+local Lock = require("portmaster.locks")
 
 -------------------------------------------------------------------------------------
 local P = require("posix")
@@ -429,9 +430,36 @@ local function perform_installation(action)
     return true
 end
 
+--[[
+(1) wait for fetch+checksum to complete for all distfiles (fetch_lock)
+(2) wait for build dependencies to become available (from port or package)
+(3) lock work directory for port (independently of flavor or DEFAULT_VERSIONS)
+    extract and patch into work directory
+    build port and install into staging area
+    if all run dependencies are available (try_acquire) then
+        create package (if requested)
+(2)     signal package available
+        if old version is installed
+            create backup package
+            deinstall old version
+        install from stage directory (in jail only if dependency of later port)
+        if installation succeeded
+(2)         signal new version is installed and available
+            delete backup package if not to be kept
+        else
+            reinstall from backup package
+            delete backup package
+    else
+        create package for later installation
+(2)     signal package available
+    clean work directory
+(3) release lock on work directory
+--]]
+
+local WorkDirLock
+
 -- install or upgrade a port
 local function perform_install_or_upgrade(action)
-    -- local o_n = action.o_n
     local p_n = action.pkg_new
     TRACE("P", p_n.name, p_n.pkgfile, table.unpack(table.keys(p_n)))
     -- has a package been identified to be used instead of building the port?
@@ -450,8 +478,13 @@ local function perform_install_or_upgrade(action)
     if not pkgfile then
         -- assert (NYI: o_n:wait_checksum ())
         if not Options.fetch_only then
+            WorkDirLock = WorkDirLock or Lock.new("WorkDirLock")
+            local o_n = action.o_n
+            Lock.acquire(WorkDirLock, {o_n.port})
             seconds = os.time()
-            if not perform_portbuild(action) then
+            local success = perform_portbuild(action)
+            Lock.release(WorkDirLock, {o_n.port})
+            if not success then
                 return false
             end
             -- create package file from staging area
@@ -580,10 +613,11 @@ local function perform_upgrades(action_list)
         local o_n = rawget(action, "o_n")
         local is_interactive = o_n and o_n.is_interactive
         if Options.hide_build and not is_interactive then
-            BUILDLOG = tempfile_create("BUILD_LOG")
+            -- set to_tty = false for shell commands
+            --BUILDLOG = tempfile_create("BUILD_LOG")
         end
         local result
-        -- print ("DO", verb, action.pkg_new.name)
+        -- print ("DO", action.verb, action.pkg_new.name)
         if action_is(action, "delete") then
             result = perform_delete(action)
         elseif action_is(action, "upgrade") then
@@ -604,17 +638,19 @@ local function perform_upgrades(action_list)
             else
                 result = true -- nothing to be done
             end
-        elseif verb == "exclude" then
+        elseif action_is(action, "exclude") then
             result = true -- do nothing
         else
-            error("unknown verb in action: " .. (verb or "<nil>"))
+            error("unknown verb in action: " .. (action.verb or "<nil>"))
         end
         if result then
+            --[[
             if BUILDLOG then
                 tempfile_delete("BUILD_LOG")
                 BUILDLOG = nil
             end
             -- NYI: o_n:perform_post_build_deletes ()
+            --]]
         else
             return false
         end

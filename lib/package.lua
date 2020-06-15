@@ -441,6 +441,70 @@ local function dep_pkgs_cache_load(pkg, k)
 end
 
 --
+local special_revs = {pl = true, alpha = true, beta = true, pre = true, rc = true}
+local special_vals = {["*"] = -2, pl = -1, [""] = 0}
+
+local function split_version_string(pkgname)
+    local function alpha_tonumber(s)
+        s = string.lower(s)
+        return special_vals[s] or string.byte(s, 1, 1) - 96 -- subtract one less than ASCII "a" == 0x61 == 97
+    end
+    local result = {}
+    local function store_results(n1, a1, n2)
+        local rn = #result
+        result[rn+1] = n1 ~= "" and tonumber(n1) or -1
+        result[rn+2] = alpha_tonumber(a1)
+        result[rn+3] = n2 ~= "" and tonumber(n2) or 0
+    end
+    local version = string.match(pkgname, ".*[%a%d%*]")
+    local s, revision, epoch = string.match (version, "([^_,]*)_?([^,]*),?(.*)")
+    version = s or version
+    for n1, a1, n2 in string.gmatch(version, "(%d*)([%a%*]*)(%d*)") do
+        if special_revs[a1] then
+            store_results(n1, "", "")
+            n1 = ""
+        end
+        store_results(n1, a1, n2)
+    end
+    result.epoch = tonumber(epoch) or 0
+    result.revision = tonumber(revision) or 0
+    return result
+end
+
+--
+local function compare_versions(p1, p2)
+    local function compare_lists(t1, t2)
+        local n1 = #t1
+        local n2 = #t2
+        local n = n1 > n2 and n1 or n2
+        for i = 1, n do
+            local delta = (t1[i] or 0) - (t2[i] or 0)
+            if delta ~= 0 then
+                return delta
+            end
+        end
+        return 0
+    end
+    TRACE("COMPARE_VERSIONS", p1.name, p2.name)
+    local result
+    if p1 and p2 then
+        local vs1 = p1.version
+        local vs2 = p2.version
+        if vs1 ~= vs2 then
+            local v1 = split_version_string(vs1)
+            local v2 = split_version_string(vs2)
+            result = v1.epoch - v2.epoch
+            result = result ~= 0 and result or compare_lists(v1, v2)
+            result = result ~= 0 and result or v1.revision - v2.revision
+        else
+            result = 0
+        end
+    end
+    TRACE("COMPARE_VERSIONS->", result, p1.name, p2.name)
+    return result
+end
+
+--
 local function get(pkgname)
     return PACKAGES_CACHE[pkgname]
 end
@@ -628,6 +692,7 @@ return {
     packages_cache_load = packages_cache_load,
     dump_cache = dump_cache,
     filename = filename,
+    compare_versions = compare_versions,
 }
 
 --[[

@@ -103,9 +103,9 @@ local function describe(action)
                 verb = "Re-install"
             else
                 if action.pkg_old.name_base == action.pkg_new.name_base then
-                    if vers_cmp == "<" then
+                    if vers_cmp < 0 then
                         verb = "Upgrade"
-                    elseif vers_cmp == ">" then
+                    elseif vers_cmp > 0 then
                         verb = "Downgrade"
                     end
                     prev_pkg = p_o.name .. " to "
@@ -825,14 +825,11 @@ local function determine_o_n(action, k)
 end
 
 --
-local function compare_versions(action, k)
+local function compare_versions_old_new(action, k)
     local p_o = action.pkg_old
     local p_n = action.pkg_new
     if p_o and p_n then
-        if p_o == p_n then
-            return "="
-        end
-        return Exec.pkg {safe = true, "version", "-t", p_o.name, p_n.name} -- could always return "<" for speed ...
+        return Package.compare_versions(p_o, p_n)
     end
 end
 
@@ -1221,7 +1218,7 @@ local function __index(action, k)
     local dispatch = {
         pkg_old = determine_pkg_old,
         pkg_new = determine_pkg_new,
-        vers_cmp = compare_versions,
+        vers_cmp = compare_versions_old_new,
         o_o = determine_o_o,
         o_n = determine_o_n,
         build_depends = __depends,

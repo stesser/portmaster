@@ -40,7 +40,7 @@ local blocked = {} --! table for all currently blocked coroutines waiting for a 
 -- @param avail optional limit on the number of exclusive locks to grant for different items using this lock structure
 -- @retval lock the initialized lock structure
 local function new(name, avail)
-    return {name = name, avail = avail, blocked = 0, is_shared = {}, shared = {}, exclusive = {}, shared_queue = {}, exclusive_queue = {}}
+    return {name = name, avail = avail, blocked = 0, shared = {}, exclusive = {}, shared_queue = {}, exclusive_queue = {}}
 end
 
 --!
@@ -71,7 +71,6 @@ local function tryacquire(lock, items)
             local n = lock.shared[item] or 0
             TRACE("TRYACQUIRE(shared)+", lock.name, shared, n+1, item)
             lock.shared[item] = n + 1
-            lock.is_shared[item] = shared
         end
     else
         local weight = items.weight or 1
@@ -94,7 +93,6 @@ local function tryacquire(lock, items)
         for i = 1, #items do
             local item = items[i]
             lock.exclusive[item] = weight
-            lock.is_shared[item] = shared
             TRACE("TRYACQUIRE+", lock.name, shared, weight, lock.exclusive[item], item)
         end
     end

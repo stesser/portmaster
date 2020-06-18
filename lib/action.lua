@@ -242,7 +242,23 @@ local function conflicting_pkgs(action, mode)
 end
 
 -------------------------------------------------------------------------------------
+-- wait for dependencies to become available
+local function pkgs_from_origin_tables(...)
+    local pkgs = {}
+    for _, t in ipairs({...}) do
+        for _, origin in ipairs(t) do
+            local o = Origin.get(origin)
+            local p = o.pkg_new.name
+            pkgs[#pkgs + 1] = p
+        end
+    end
+    TRACE("PKGS_FROM_ORIGIN_TABLES", pkgs, ...)
+    return pkgs
+end
+
+-------------------------------------------------------------------------------------
 -- extract and patch files, but do not try to fetch any missing dist files
+-- have dependencies of special_depends to be checked before proceeding???
 local function provide_special_depends(special_depends)
     TRACE("SPECIAL_DEPENDS", table.unpack(special_depends or {}))
     -- local special_depends = action.o_n.special_depends
@@ -272,11 +288,17 @@ end
 
 -------------------------------------------------------------------------------------
 -- perform all steps required to build a port (extract, patch, build, stage, opt. package)
+local PackageLock
+
 local function perform_portbuild(action)
     local o_n = action.o_n
     local pkgname_new = action.pkg_new.name
     local special_depends = o_n.special_depends
+    local build_depends = o_n.build_depends
     TRACE("perform_portbuild", o_n.name, pkgname_new, table.unpack(special_depends or {}))
+    local build_dep_pkgs = pkgs_from_origin_tables(build_depends, special_depends)
+    build_dep_pkgs.shared = true
+    Lock.acquire(PackageLock, build_dep_pkgs)
     if not Options.no_pre_clean then
         port_clean(action)
     end
@@ -323,9 +345,19 @@ local function perform_portbuild(action)
     end
     --]]
     -- build and stage port
-    if not o_n:port_make{to_tty = true, jailed = true, "NO_DEPENDS=1", "DISABLE_CONFLICTS=1", "_OPTIONS_OK=1", "build", "stage"} then
+    if not o_n:port_make{
+        to_tty = true,
+        jailed = true,
+        "NO_DEPENDS=1",
+        "DISABLE_CONFLICTS=1",
+        "_OPTIONS_OK=1",
+--        "MAKE_JOBS=" .. <X>, -- prepare to pass limit on the number of sub-processes to spawn
+        "build",
+        "stage"
+    } then
         return false
     end
+    Lock.release(PackageLock, build_dep_pkgs)
     return true
 end
 
@@ -456,8 +488,8 @@ end
 (3) release lock on work directory
 --]]
 
+--
 local WorkDirLock
-local PackageLock
 
 -- install or upgrade a port
 local function perform_install_or_upgrade(action)

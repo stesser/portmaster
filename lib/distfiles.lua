@@ -157,6 +157,7 @@ local function fetch_wait(origin)
       TRACE("FETCH_WAIT", distfiles)
       distfiles.shared = true
       Lock.acquire(fetch_lock, distfiles)
+      Lock.release(fetch_lock, distfiles) -- release immediately
    end
 end
 

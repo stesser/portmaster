@@ -98,7 +98,7 @@ local function add_missing_deps(action_list)
 end
 
 --
-local function sort_list(action_list) -- remove ACTION_CACHE from function arguments !!!
+local function sort_list(action_list)
     local max_str = tostring(#action_list)
     local sorted_list = {}
     local function add_deps(action)

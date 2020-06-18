@@ -31,7 +31,7 @@ SUCH DAMAGE.
 --local TRACE = print
 
 local tasks_blocked = 0 -- number of coroutines blocked by wait_cond -- CURRENTLY UNUSED -> move to Locks module
-local blocked = {}
+local blocked = {} --! table for all currently blocked coroutines waiting for a lock to be acquired
 
 --!
 -- allocate and initialize lock state structure
@@ -80,14 +80,14 @@ local function tryacquire(lock, items)
             avail = avail - (weight or 1) * #items
             if avail < 0 then
                 TRACE("TRYACQUIRE-", lock.name, "avail=", avail)
-                return false
+                return false, avail
             end
         end
         for i = 1, #items do
             local item = items[i]
             if lock.exclusive[item] or lock.shared[item] then
                 TRACE("TRYACQUIRE-", lock.name, "item=", item)
-                return false
+                return false, avail, item
             end
         end
         lock.avail = avail --  may be nil
@@ -123,7 +123,8 @@ local function acquire(lock, items)
         end
         tasks_blocked = tasks_blocked + 1
         lock.blocked = lock.blocked + 1
-        return coroutine.yield()
+        coroutine.yield()
+        --return coroutine.yield()
     end
     TRACE("ACQUIRE->", lock.name, table.unpack(items))
 end

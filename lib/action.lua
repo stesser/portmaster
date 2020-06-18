@@ -461,6 +461,7 @@ local WorkDirLock
 -- install or upgrade a port
 local function perform_install_or_upgrade(action)
     local p_n = action.pkg_new
+    local o_n = action.o_n
     TRACE("P", p_n.name, p_n.pkgfile, table.unpack(table.keys(p_n)))
     -- has a package been identified to be used instead of building the port?
     local pkgfile
@@ -474,16 +475,15 @@ local function perform_install_or_upgrade(action)
     local taskmsg = describe(action)
     Progress.show_task(taskmsg)
     -- if not installing from a package file ...
-    local seconds
+    local seconds, workdirlocked
     if not pkgfile then
         -- assert (NYI: o_n:wait_checksum ())
         if not Options.fetch_only then
             WorkDirLock = WorkDirLock or Lock.new("WorkDirLock")
-            local o_n = action.o_n
             Lock.acquire(WorkDirLock, {o_n.port})
+            workdirlocked = true
             seconds = os.time()
             local success = perform_portbuild(action)
-            Lock.release(WorkDirLock, {o_n.port})
             if not success then
                 return false
             end
@@ -521,6 +521,9 @@ local function perform_install_or_upgrade(action)
                 seconds = os.time() - seconds
             end
         end
+    end
+    if workdirlocked then
+        Lock.release(WorkDirLock, {o_n.port})
     end
     -- report success
     if not Options.dry_run then

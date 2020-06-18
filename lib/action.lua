@@ -457,6 +457,7 @@ end
 --]]
 
 local WorkDirLock
+local PackageLock
 
 -- install or upgrade a port
 local function perform_install_or_upgrade(action)
@@ -464,6 +465,8 @@ local function perform_install_or_upgrade(action)
     local o_n = action.o_n
     TRACE("P", p_n.name, p_n.pkgfile, table.unpack(table.keys(p_n)))
     -- has a package been identified to be used instead of building the port?
+    PackageLock = PackageLock or Lock.new("PackageLock")
+    Lock.acquire(PackageLock, {p_n.name})
     local pkgfile
     -- CHECK CONDITION for use of pkgfile: if build_type ~= "force" and not Options.packages and (not Options.packages_build or dep_type ~= "build") then
     if not rawget (action, "force") and (Options.packages or Options.packages_build and not p_n.is_run_dep) then
@@ -499,7 +502,9 @@ local function perform_install_or_upgrade(action)
     -- install build depends immediately but optionally delay installation of other ports
     if not skip_install then
         TRACE("PKGFILE2", pkgfile)
-        if not perform_installation(action) then
+        local success = perform_installation(action)
+        Lock.release(PackageLock, {p_n.name})
+        if not success then
             return false
         end
         --[[

@@ -184,7 +184,7 @@ local function package_create(action)
         local as_root = PARAM.packages_ro
         local base = (as_root or jailed) and PATH.tmpdir or PATH.packages -- use random tempdir !!!
         local sufx = "." .. PARAM.package_format
-        if o_n:port_make{jailed = jailed, to_tty = true, "_OPTIONS_OK=1", "PACKAGES=" .. base, "PKG_SUFX=" .. sufx, "package"} then
+        if o_n:port_make{log = true, jailed = jailed, to_tty = true, "_OPTIONS_OK=1", "PACKAGES=" .. base, "PKG_SUFX=" .. sufx, "package"} then
             if as_root or jailed then
                 local tmpfile = path_concat(base, "All", pkgname .. sufx)
                 if jailed then
@@ -203,7 +203,7 @@ end
 
 -- clean work directory and special build depends (might also be delayed to just before program exit)
 local function port_clean(action)
-    local args = {to_tty = true, jailed = true, "NO_CLEAN_DEPENDS=1", "clean"}
+    local args = {log = true, to_tty = true, jailed = true, "NO_CLEAN_DEPENDS=1", "clean"}
     local o_n = action.o_n
     if not o_n:port_make(args) then
         return false
@@ -270,6 +270,7 @@ local function provide_special_depends(special_depends)
         if target ~= "fetch" and target ~= "checksum" then
             -- extract from package if $target=stage and _packages is set? <se>
             local args = {
+                log = true,
                 to_tty = true,
                 jailed = true,
                 "NO_DEPENDS=1",
@@ -319,6 +320,7 @@ local function perform_portbuild(action)
     end
     o_n:fetch_wait()
     if not o_n:port_make{
+        log = true,
         to_tty = true,
         jailed = true,
         "NO_DEPENDS=1",
@@ -346,6 +348,7 @@ local function perform_portbuild(action)
     --]]
     -- build and stage port
     if not o_n:port_make{
+        log = true,
         to_tty = true,
         jailed = true,
         "NO_DEPENDS=1",
@@ -364,7 +367,7 @@ end
 -- de-install (possibly partially installed) port after installation failure
 local function deinstall_failed(action)
     Msg.show {"Installation of", action.pkg_new.name, "failed, deleting partially installed package"}
-    return action.o_n:port_make{to_tty = true, jailed = true, as_root = true, "deinstall"}
+    return action.o_n:port_make{log = true, to_tty = true, jailed = true, as_root = true, "deinstall"}
 end
 
 --
@@ -508,26 +511,27 @@ local function perform_install_or_upgrade(action)
     end
     local skip_install = (Options.skip_install or Options.jailed) and not p_n.is_build_dep -- NYI: and BUILDDEP[o_n]
     local taskmsg = describe(action)
-    Progress.show_task(taskmsg)
     -- if not installing from a package file ...
     local seconds, workdirlocked
-    if not pkgfile then
+    local buildrequired = not pkgfile and not Options.fetch_only
+    if buildrequired then
         -- assert (NYI: o_n:wait_checksum ())
-        if not Options.fetch_only then
-            WorkDirLock = WorkDirLock or Lock.new("WorkDirLock")
-            Lock.acquire(WorkDirLock, {o_n.port})
-            workdirlocked = true
-            seconds = os.time()
-            local success = perform_portbuild(action)
-            if not success then
+        WorkDirLock = WorkDirLock or Lock.new("WorkDirLock")
+        Lock.acquire(WorkDirLock, {o_n.port})
+        workdirlocked = true
+    end
+    Progress.show_task(taskmsg)
+    if buildrequired then
+        seconds = os.time()
+        local success = perform_portbuild(action)
+        if not success then
+            return false
+        end
+        -- create package file from staging area
+        if Options.create_package then
+            if not package_create(action) then
+                Msg.show {"Could not write package file for", p_n.name}
                 return false
-            end
-            -- create package file from staging area
-            if Options.create_package then
-                if not package_create(action) then
-                    Msg.show {"Could not write package file for", p_n.name}
-                    return false
-                end
             end
         end
     end
@@ -661,7 +665,11 @@ local function perform_upgrades(action_list)
         if action_is(action, "delete") then
             result = perform_delete(action)
         elseif action_is(action, "upgrade") then
-            result = perform_install_or_upgrade(action)
+            TRACE("BEFORE SPAWN perform_install_or_upgrade")
+            Exec.spawn(perform_install_or_upgrade, action)
+            TRACE("AFTER SPAWN perform_install_or_upgrade")
+            result = true
+            --result = perform_install_or_upgrade(action)
         elseif action_is(action, "change") then
             if action.pkg_old.name ~= action.pkg_new.name then
                 result = perform_pkg_rename(action)
@@ -673,7 +681,11 @@ local function perform_upgrades(action_list)
                 if action.pkg_new.pkgfile then
                     result = perform_provide(action)
                 else
-                    result = perform_install_or_upgrade(action)
+                    TRACE("BEFORE SPAWN perform_install_or_upgrade")
+                    Exec.spawn(perform_install_or_upgrade, action)
+                    TRACE("AFTER SPAWN perform_install_or_upgrade")
+                    result = true
+                    -- result = perform_install_or_upgrade(action)
                 end
             else
                 result = true -- nothing to be done

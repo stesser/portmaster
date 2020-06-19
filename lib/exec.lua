@@ -72,6 +72,7 @@ local setenv = P_SL.setenv
 
 local P_SW = require("posix.sys.wait")
 local wait = P_SW.wait
+local WNOHANG = P_SW.WNOHANG
 
 local P_US = require("posix.unistd")
 local close = P_US.close
@@ -92,10 +93,9 @@ local pidstat = {} -- fds, numfds
 --local numpidfds = {} -- number of open file descriptors for given pid
 --local pidfd = {} -- file descriptors (stdout, stderr) for this pid
 
-local function add_poll_fds(pid, fds)
-    TRACE("ADDPOLL", pid, fds[1], fds[2])
-    pidstat[pid] = {fds = fds, numfds = 2}
-    local fd1, fd2 = fds[1], fds[2]
+local function add_poll_fds(pid, fd1, fd2, to_tty)
+    TRACE("ADDPOLL", pid, fd1, fd2)
+    pidstat[pid] = {fds = {fd1, fd2}, numfds = 2}
     fdstat[fd1] = {pid = pid, result = {}}
     fdstat[fd2] = {pid = pid, result = {}}
     pollfds[fd1] = {events = {IN = true}}
@@ -122,53 +122,6 @@ local function rm_poll_fd(fd)
     else
         return pid
     end
-end
-
--------------------------------------------------------------------------------------
-local function task_create (args)
-    --TRACE("TASK_CREATE", table.unpack(args))
-    local fd1r, fd1w
-    local fd2r, fd2w
-    if not args.to_tty then
-        fd1r, fd1w = pipe()
-        fd2r, fd2w = pipe()
-    end
-    local pid, errmsg = fork()
-    assert(pid, errmsg)
-    if pid == 0 then
-        -- child process
-        if not args.to_tty then
-            close(fd1r)
-            dup2(fd1w, fileno(io.stdout)) -- stdout
-            close(fd2r)
-            dup2(fd2w, fileno(io.stderr)) -- stderr
-        end
-        if args.env then
-            for k, v in pairs(args.env) do
-                setenv(k, v)
-            end
-        end
-        local cmd = table.remove(args, 1)
-        if type(cmd) == "function" then
-            _exit(cmd(table.unpack(args)) and 0 or 1)
-        else
-            TRACE("EXEC(Child)")
-            local exitcode, errmsg = exec (cmd, args)
-            TRACE("FAILED-EXEC(Child)->", exitcode, errmsg)
-            assert (exitcode, errmsg)
-        end
-        _exit (1) -- not reached ???
-    end
-    if args.to_tty then
-        local _, status, exitcode = wait(pid)
-        TRACE("EXEC(Parent)->", exitcode, status)
-        return exitcode
-    end
-    close(fd1w)
-    close(fd2w)
-    add_poll_fds(pid, {fd1r, fd2r})
-    TRACE("TASK_CREATE", pid, coroutine.running())
-    return pid
 end
 
 --
@@ -282,6 +235,59 @@ local function finish_spawned (f, msg) -- if f is provided then only spawns of t
     end
 end
 
+-------------------------------------------------------------------------------------
+local function task_create (args)
+    --TRACE("TASK_CREATE", table.unpack(args))
+    local fd1r, fd1w
+    local fd2r, fd2w
+    if not args.to_tty then
+        fd1r, fd1w = pipe()
+        fd2r, fd2w = pipe()
+    end
+    local pid, errmsg = fork()
+    assert(pid, errmsg)
+    if pid == 0 then
+        -- child process
+        if not args.to_tty then
+            close(fd1r)
+            dup2(fd1w, fileno(io.stdout)) -- stdout
+            close(fd2r)
+            dup2(fd2w, fileno(io.stderr)) -- stderr
+        end
+        if args.env then
+            for k, v in pairs(args.env) do
+                setenv(k, v)
+            end
+        end
+        local cmd = table.remove(args, 1)
+        if type(cmd) == "function" then
+            _exit(cmd(table.unpack(args)) and 0 or 1)
+        else
+            TRACE("EXEC(Child)")
+            local exitcode, errmsg = exec (cmd, args)
+            TRACE("FAILED-EXEC(Child)->", exitcode, errmsg)
+            assert (exitcode, errmsg)
+        end
+        _exit (1) -- not reached ???
+    end
+    if args.to_tty then
+        while true do
+            tasks_poll(1000)
+            local _, status, exitcode = wait(pid, WNOHANG)
+            if exitcode then
+                TRACE("EXEC(Parent)->", exitcode, status)
+                return exitcode
+            end
+        end
+    else
+        close(fd1w)
+        close(fd2w)
+    end
+    add_poll_fds(pid, fd1r, fd2r)
+    TRACE("TASK_CREATE", pid, coroutine.running())
+    return pid
+end
+
 -- create coroutine that will allow processes to be executed in the background
 local function spawn(f, ...)
     local function wrapper(f, ...)
@@ -367,13 +373,23 @@ local function run(args)
         end
     end
     if Options.dry_run and not args.safe then
-         -- dummy return values for --dry-run
+        while (args[1]) do
+            table.remove(args)
+        end
+        table.insert(args, "/bin/sleep")
+        table.insert(args, "1")
+--        args.safe = true
+        args.to_tty = nil
+        --[[
+        -- dummy return values for --dry-run
         if args.table then
             return {}, "", 0
         else
             return "", "", 0
         end
+        --]]
     end
+    tasks_poll(0)
     tasks_forked = tasks_forked + 1
     TRACE("NUM_TASKS+", tasks_spawned, tasks_forked, Lock.blocked_tasks())
     local exitcode, stdout, stderr = shell(args)

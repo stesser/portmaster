@@ -423,8 +423,10 @@ local function perform_installation(action)
                     p_o:recover()
                 end
             end
+            --[[ rename only if failure was not due to a conflict with an installed package!!!
             Progress.show("Rename", pkgfile, "to", pkgfile .. ".NOTOK after failed installation")
             os.rename(pkgfile, pkgfile .. ".NOTOK")
+            --]]
             return false
         end
     else

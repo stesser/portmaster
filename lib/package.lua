@@ -151,10 +151,10 @@ local function deinstall(package, make_backup)
     end
     if Options.jailed and PARAM.phase ~= "install" then
         Progress.show("De-install", pkgname, "from build jail")
-        return Exec.pkg {jailed = true, "delete", "-y", "-q", "-f", pkgname}
+        return Exec.pkg {log = true, jailed = true, "delete", "-y", "-q", "-f", pkgname}
     else
         Progress.show("De-install", pkgname)
-        return Exec.pkg {as_root = true, "delete", "-y", "-q", "-f", pkgname}
+        return Exec.pkg {log = true, as_root = true, "delete", "-y", "-q", "-f", pkgname}
     end
 end
 
@@ -185,7 +185,7 @@ local function install(pkg, abi)
     elseif abi then
         env.ABI = abi
     end
-    return Exec.pkg {as_root = true, jailed = jailed, to_tty = true, env = env, "add", "-M", pkgfile}
+    return Exec.pkg {log = true, as_root = true, jailed = jailed, to_tty = true, env = env, "add", "-M", pkgfile}
 end
 
 -- create category links and a lastest link

@@ -204,6 +204,7 @@ local function tasks_poll(timeout)
                             if pid then
                                 task_done = store_results(pid)
                             end
+                            break -- cannot safely continue with for loop after deleting entry from pollfds table
                         end
                     end
                 end
@@ -323,8 +324,8 @@ local function shell(args)
             exitcode, stdout, stderr = task_result(pid)
             TRACE("EXITCODE", exitcode)
         end
-        TRACE("SHELL(stdout)", "<" .. (stdout or "") .. ">")
-        TRACE("SHELL(stderr)", "<" .. (stderr or "").. ">")
+        TRACE("SHELL(stdout)", stdout)
+        TRACE("SHELL(stderr)", stderr)
         TRACE("SHELL(exitcode)", exitcode)
         co_table[pid] = nil
         return exitcode, stdout, stderr
@@ -432,7 +433,7 @@ local function pkg(args)
         args.jailed = nil
     end
     if Options.developer_mode then
-        table.insert(args, 1, "--debug")
+        --table.insert(args, 1, "--debug")
     end
     table.insert(args, 1, CMD.pkg)
     return run(args)

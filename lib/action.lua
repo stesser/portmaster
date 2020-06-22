@@ -390,9 +390,10 @@ local function perform_portbuild(action)
     end
     local function none_failed(pkgs)
         for _, p in pairs(pkgs) do
+            TRACE("FAILED?", p)
             local a = get(p)
-            if not a or failed(a) then
-                return fail(a, "Skipped because of failed dependency", p.name)
+            if a and failed(a) then -- what should be done if a == nil here???
+                return fail(action, "Skipped because of failed dependency", p.name)
             end
         end
         return true

@@ -479,7 +479,7 @@ local function __port_vars(origin, k, recursive)
         end
     end
     local t = origin:port_var(__port_vars_table)
-    TRACE("PORT_VAR(" .. origin.name .. ", " .. k .. ")", table.unpack(t))
+    TRACE("PORT_VAR(" .. origin.name .. ", " .. k .. ")", t)
     if t then
         -- first check for and update port options since they might affect the package name
         set_table(origin, "new_options", t.NEW_OPTONS)

@@ -269,7 +269,6 @@ local function perform_actions(action_list)
                     if Options.hide_build then
                         -- shell_pipe ("cat > /dev/tty", BUILDLOG) -- use read and write to copy the file to STDOUT XXX
                     end
-                    fail("Port upgrade failed.")
                 end
                 if Options.jailed then
                     Jail.destroy()

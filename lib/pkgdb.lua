@@ -55,7 +55,7 @@ end
 
 -- set package attribute for specified ports and/or packages
 local function set(...)
-    return Exec.pkg {as_root = true, "set", "-y", ...}
+    return Exec.pkg {as_root = true, log = true, "set", "-y", ...}
 end
 
 -- get the annotation value (e.g. flavor), if any
@@ -67,7 +67,7 @@ end
 -- set the annotation value, or delete it if "$value" is empty
 local function annotate_set(var, name, value)
     local opt = value and #value > 0 and "-M" or "-D"
-    return Exec.pkg {as_root = true, "annotate", "-qy", opt, name, var, value}
+    return Exec.pkg {as_root = true, log = true, "annotate", "-qy", opt, name, var, value}
 end
 
 -- ---------------------------------------------------------------------------
@@ -108,8 +108,10 @@ local function update_origin(old, new, pkgname)
     return true
 end
 
-local function update_pkgname()
-    print("NYI: update_pkgname")
+local function update_pkgname(p_o, p_n)
+    if not set("--change-name", p_o.name_base .. ":" .. p_n.name_base, p_o.name) then
+        return false, "Could not change package name of " .. p_o.name ..  " to " .. p_n.name
+    end
     return true
 end
 

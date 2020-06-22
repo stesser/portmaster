@@ -276,6 +276,9 @@ local function opt_adjust()
     --   opt_set_if	("clean_packages_all, default_yes", "no_confirm")
     opt_set_if("dry_run", "show_work")
     opt_clear_if("interactive", "no_confirm")
+    if Msg.level() > 2 then
+        opt_set("show_work", true)
+    end
 end
 
 -------------------------------------------------------------------------------------

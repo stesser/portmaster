@@ -61,7 +61,7 @@ local function filename(args)
         extension = "." .. extension
     end
     local result = path_concat(base, subdir, pkgname .. extension)
-    TRACE("FILENAME", base, subdir, pkgname, extension, result)
+    TRACE("FILENAME->", result, base, subdir, pkgname, extension)
     return result
 end
 
@@ -162,9 +162,9 @@ end
 -- get package message in case of an installation to the base system
 local function message(pkg)
     if not Options.dry_run and (not Options.jailed or PARAM.phase == "install") then
-        local lines = PkgDb.query {table = true, "%M", pkg.name}
-        if lines then
-            return table.concat(lines, "\n")
+        local msg = PkgDb.query {"%M", pkg.name}
+        if type(msg) == "string" then
+            return msg
         end
     end
 end
@@ -198,7 +198,7 @@ local function category_links_create(pkg_new, categories)
         if not is_dir(destination) then
             Exec.run {as_root = true, log = true, CMD.mkdir, "-p", destination}
         end
-        if category == "Latest" then
+        if category == "Latest" then -- skip if/since automatically created???
             destination = destination .. "/" .. pkg_new.name_base .. "." .. extension
         end
         Exec.run {as_root = true, log = true, CMD.ln, "-sf", source, destination}
@@ -406,11 +406,12 @@ local function packages_cache_load()
         p.is_locked = locked == "1"
         p.is_installed = not Options.jailed
         p.num_depending = 0
-        p.dep_pkgs = {}
+        --p.dep_pkgs = {}
         p.fbsd_version = pkg_fbsd_version[pkgname]
         pkg_count = pkg_count + 1
     end
     Msg.show {level = 2, "The list of installed packages has been loaded (" .. pkg_count .. " packages)"}
+    --[[
     Msg.show {level = 2, start = true, "Load package dependencies"}
     local p = {}
     lines = PkgDb.query {table = true, "%n-%v %rn-%rv"}
@@ -424,20 +425,11 @@ local function packages_cache_load()
         table.insert(p.dep_pkgs, dep_pkg)
     end
     Msg.show {level = 2, "Package dependencies have been loaded"}
+    --]]
     Msg.show {level = 2, start = true}
     shared_libs_cache_load()
     req_shared_libs_cache_load()
     PACKAGES_CACHE_LOADED = true
-end
-
--- add reverse dependency information (who depends on me?)
-DEP_PKGS_CACHE_LOADED = false
-
-local function dep_pkgs_cache_load(pkg, k)
-    if not DEP_PKGS_CACHE_LOADED then
-        DEP_PKGS_CACHE_LOADED = true
-    end
-    return rawget(pkg, k)
 end
 
 --
@@ -565,7 +557,6 @@ local function __index(pkg, k)
         name_base = pkg_basename,
         name_base_major = pkg_strip_minor,
         version = pkg_version,
-        dep_pkgs = dep_pkgs_cache_load,
         pkgfile = pkg_lookup,
         bakfile = pkg_lookup,
         pkgfile_abi = function(pkg, v)

@@ -294,7 +294,11 @@ local function spawn(f, ...)
     local function wrapper(f, ...)
         tasks_spawned = tasks_spawned + 1
         tasks_spawned_with[f] = (tasks_spawned_with[f] or 0) + 1
-        xpcall (f, debug.traceback, ...)
+        local success, traceback = xpcall (f, debug.traceback, ...)
+        if not success then
+            print (traceback)
+            os.exit(1)
+        end
         tasks_spawned = tasks_spawned - 1
         tasks_spawned_with[f] = tasks_spawned_with[f] - 1
     end
@@ -436,7 +440,12 @@ local function pkg(args)
         --table.insert(args, 1, "--debug")
     end
     table.insert(args, 1, CMD.pkg)
-    return run(args)
+    local stdout, stderr, exitcode = run(args)
+    if exitcode == 0 then
+        return stdout or true
+    else
+        return false, stderr
+    end
 end
 
 --

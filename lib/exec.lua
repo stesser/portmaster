@@ -424,7 +424,12 @@ local function make(args)
         table.insert(args, 1, CMD.ktrace)
         table.insert(args, 2, "-dia")
     end
-    return run(args)
+    local stdout, stderr, exitcode = run(args)
+    if exitcode == 0 then
+        return stdout or true
+    else
+        return false, stderr
+    end
 end
 
 -- execute and log a package command that does not modify any state (JAILED)

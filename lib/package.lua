@@ -111,7 +111,7 @@ local function shlibs_backup(pkg)
                         if l == lib then
                             local backup_lib = PATH.local_lib_compat .. lib
                             if access(backup_lib, "r") then
-                                Exec.run {as_root = true, log = true, to_tty = true, CMD.unlink, backup_lib}
+                                Exec.run {as_root = true, log = true, CMD.unlink, backup_lib}
                             end
                             Exec.run {as_root = true, log = true, CMD.cp, libpath, backup_lib}
                         end
@@ -143,19 +143,20 @@ end
 
 -------------------------------------------------------------------------------------
 -- deinstall named package (JAILED)
-local function deinstall(package, make_backup)
+local function backup_old_package(package)
     local pkgname = package.name
-    if make_backup then
-        Progress.show("Create backup package for", pkgname)
-        Exec.pkg {as_root = PARAM.packages_ro, "create", "-q", "-o", PATH.packages_backup, "-f", PARAM.backup_format, pkgname}
-    end
-    if Options.jailed and PARAM.phase ~= "install" then
-        Progress.show("De-install", pkgname, "from build jail")
-        return Exec.pkg {log = true, jailed = true, "delete", "-y", "-q", "-f", pkgname}
-    else
-        Progress.show("De-install", pkgname)
-        return Exec.pkg {log = true, as_root = true, "delete", "-y", "-q", "-f", pkgname}
-    end
+    return Exec.pkg {as_root = PARAM.packages_ro, "create", "-q", "-o", PATH.packages_backup, "-f", PARAM.backup_format, pkgname}
+end
+
+--
+local function deinstall(package)
+    local pkgname = package.name
+    local from_jail = Options.jailed and PARAM.phase ~= "install"
+    return Exec.pkg {
+        log = true,
+        jailed = from_jail,
+        as_root = not from_jail and PARAM.workdir_ro,
+        "delete", "-y", "-q", "-f", pkgname}
 end
 
 -------------------------------------------------------------------------------------
@@ -172,20 +173,23 @@ end
 -------------------------------------------------------------------------------------
 -- install package from passed pkg
 local function install(pkg, abi)
-    local pkgfile = pkg.pkgfile
+    local pkgfile = pkg.pkg_filename
     local jailed = Options.jailed and PARAM.phase == "build"
     local env = {IGNORE_OSVERSION = "yes"}
     TRACE("INSTALL", abi, pkgfile)
     if string.match(pkgfile, ".*/pkg-[^/]+$") then -- pkg command itself
         if not access(CMD.pkg, "x") then
             env.ASSUME_ALWAYS_YES = "yes"
-            Exec.run {as_root = true, jailed = jailed, log = true, to_tty = true, env = env, CMD.pkg_b, "-v"}
+            local flag, errmsg = Exec.run {as_root = true, jailed = jailed, log = true, env = env, CMD.pkg_b, "-v"}
+            if not flag then
+                return flag, errmsg
+            end
         end
         env.SIGNATURE_TYPE = "none"
     elseif abi then
         env.ABI = abi
     end
-    return Exec.pkg {log = true, as_root = true, jailed = jailed, to_tty = true, env = env, "add", "-M", pkgfile}
+    return Exec.pkg {log = true, as_root = true, jailed = jailed, env = env, "add", "-M", pkgfile}
 end
 
 -- create category links and a lastest link
@@ -675,6 +679,7 @@ return {
     -- check_use_package = check_use_package,
     check_excluded = check_excluded,
     message = message,
+    backup_old_package = backup_old_package,
     deinstall = deinstall,
     install = install,
     shlibs_backup = shlibs_backup,

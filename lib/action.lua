@@ -43,6 +43,19 @@ local access = P_US.access
 local chown = P_US.chown
 
 -------------------------------------------------------------------------------------
+local ACTION_CACHE = {}
+local ACTION_LIST = {}
+
+--
+local function list()
+    return ACTION_LIST
+end
+
+-- return the sum of the numbers of required operations
+function tasks_count()
+    return #ACTION_LIST
+end
+
 --
 local function origin_changed(o_o, o_n)
     return o_o and o_o.name ~= "" and o_o ~= o_n and o_o.name ~= string.match(o_n.name, "^([^%%]+)%%")
@@ -120,6 +133,24 @@ local function describe(action)
     return "No action for " .. action.short_name
 end
 
+--
+local previous_action_no
+
+local function log(action, args)
+    TRACE("LOG", args, action)
+    local action_no = action.listpos
+    local task_no_string
+    local num_tasks = #ACTION_LIST
+    if num_tasks > 0 and PARAM.phase ~= "scan" then
+        task_no_string = "[" .. tostring(action_no) .. "/" .. tonumber(#ACTION_LIST) .. "]"
+        args.start = args.start or action_no ~= previous_action_no
+        table.insert(args, 1, task_no_string)
+    end
+    TRACE("LOG", args)
+    Msg.show(args)
+    previous_action_no = action_no
+end
+
 -------------------------------------------------------------------------------------
 -- record failure of an action and return false
 local function fail(action, ...)
@@ -152,7 +183,7 @@ local function pkgfiles_rename(action) -- UNTESTED !!!
         for _, pkgfile_old in ipairs(pkgfiles) do
             if access(pkgfile_old, "r") and not strpfx(pkgfile_old, PATH.packages_backup) then
                 local pkgfile_new = path_concat(dirname(pkgfile_old), p_n.name .. pkgfile_old:gsub(".*(%.%w+)", "%1"))
-                if not Exec.run {CMD.mv, as_root = true, log = true, to_tty = true, pkgfile_old, pkgfile_new} then
+                if not Exec.run {as_root = true, log = true, CMD.mv, pkgfile_old, pkgfile_new} then
                     fail(action, "Failed to rename package file from", pkgfile_old, "to", pkgfile_new)
                 end
             end
@@ -170,8 +201,8 @@ local function portdb_update_origin(action)
         local portdb_dir_new = action.o_n:portdb_path()
         if is_dir(portdb_dir_new) then
             return fail(action, "Target directory does already exist")
-        elseif not Exec.run {CMD.mv, as_root = true, to_tty = true, portdb_dir_old, portdb_dir_new} then
-            return fail(action, "Failed to rename", portdb_dir_old, "to",  portdb_dir_new, "in the package database")
+        elseif not Exec.run {as_root = true, log = true, CMD.mv, portdb_dir_old, portdb_dir_new} then
+            return fail(action, "Failed to rename", portdb_dir_old, "to", portdb_dir_new, "in the package database")
         end
     end
     return true
@@ -204,15 +235,23 @@ local function package_create(action)
     local pkgfile = action.pkg_new.pkg_filename -- (PATH.packages .. "All", pkgname, PARAM.package_format)
     TRACE("PACKAGE_CREATE", o_n, pkgname, pkgfile)
     if Options.skip_recreate_pkg and access(pkgfile, "r") then
-        Msg.show {"A package file for", pkgname, "does already exist and will not be overwritten"}
+        log(action, {"A package file for", pkgname, "does already exist and will not be overwritten"})
     else
-        Msg.show {"Create a package for new version", pkgname}
+        log(action, {"Create a package for new version", pkgname})
         local jailed = Options.jailed
         local as_root = PARAM.packages_ro
         local base = (as_root or jailed) and PATH.tmpdir or PATH.packages -- use random tempdir !!!
         local sufx = "." .. PARAM.package_format
-        if not o_n:port_make{log = true, jailed = jailed, to_tty = true, "_OPTIONS_OK=1", "PACKAGES=" .. base, "PKG_SUFX=" .. sufx, "package"} then
-            return fail(action, "Package file " .. pkgfile .. " could not be created")
+        local out, err = o_n:port_make{
+            log = true,
+            jailed = jailed,
+            "_OPTIONS_OK=1",
+            "PACKAGES=" .. base,
+            "PKG_SUFX=" .. sufx,
+            "package"
+        }
+        if not out then
+            return fail(action, "Package file " .. pkgfile .. " could not be created:", err)
         end
         if as_root or jailed then
             local tmpfile = path_concat(base, "All", pkgname .. sufx)
@@ -226,14 +265,14 @@ local function package_create(action)
             return fail(action, "Package file " .. pkgfile .. " could not be created")
         end
         action.pkg_new:category_links_create(o_n.categories)
-        Msg.show {"Package saved to", pkgfile}
+        log(action, {"Package saved to", pkgfile})
     end
     return true
 end
 
 -- clean work directory and special build depends (might also be delayed to just before program exit)
 local function port_clean(action)
-    local args = {log = true, to_tty = true, jailed = true, "NO_CLEAN_DEPENDS=1", "clean"}
+    local args = {log = true, jailed = true, "NO_CLEAN_DEPENDS=1", "clean"} -- as_root required???
     local o_n = action.o_n
     if not o_n:port_make(args) then
         return false
@@ -244,6 +283,7 @@ local function port_clean(action)
         local target = target_part(origin_target)
         local origin = Origin:new(origin_target:gsub(":.*", ""))
         if target ~= "fetch" and target ~= "checksum" then
+            log(action, {"Clean work directory of", origin.name})
             if not origin:port_make(args) then
                 return fail(action, "Failed to clean the work directory of", origin.port)
             end
@@ -304,7 +344,6 @@ local function provide_special_depends(special_depends)
             -- extract from package if $target=stage and _packages is set? <se>
             local args = {
                 log = true,
-                to_tty = true,
                 jailed = true,
                 "NO_DEPENDS=1",
                 "DEFER_CONFLICTS_CHECK=1",
@@ -312,8 +351,9 @@ local function provide_special_depends(special_depends)
                 "FETCH_CMD=true",
                 target,
             }
-            if not origin:port_make(args) then
-                return fail(action, "Failed to provide special dependency", origin_target)
+            local out, err = origin:port_make(args)
+            if not out then
+                return fail(action, "Failed to provide special dependency", origin_target .. ":", err)
             end
         end
     end
@@ -332,6 +372,7 @@ local PackageLock
 local function perform_portbuild(action)
     local o_n = action.o_n
     local special_depends = o_n.special_depends        -- check for special license and ask user to accept it (may require make extract/patch)
+    local pkgname_new = action.pkg_new.name
     local function do_build()
         if not Options.no_pre_clean then
             port_clean(action)
@@ -345,17 +386,18 @@ local function perform_portbuild(action)
         TRACE("SPECIAL:", #special_depends, special_depends[1])
         if #special_depends == 0 or provide_special_depends(special_depends) then
             o_n:fetch_wait()
-            if not o_n:port_make{
+            log(action, {"Provide special build dependencies"})
+            local out, err = o_n:port_make{
                 log = true,
-                to_tty = true,
                 jailed = true,
                 "NO_DEPENDS=1",
                 "DEFER_CONFLICTS_CHECK=1",
                 "DISABLE_CONFLICTS=1",
                 "FETCH=true",
                 "patch",
-            } then
-                return fail(action, "Build failed in patch phase")
+            }
+            if not out then
+                return fail(action, "Build failed in patch phase:", err)
             end
             --[[
             -- check whether build of new port is in conflict with currently installed version
@@ -364,7 +406,7 @@ local function perform_portbuild(action)
             for i, pkg in ipairs (conflicts) do
                 if pkg == pkgname_old then
                     -- ??? pkgname_old is NOT DEFINED
-                    Msg.show {"Build of", o_n.name, "conflicts with installed package", pkg .. ", deleting old package"}
+                    log(action, {"Build of", o_n.name, "conflicts with installed package", pkg .. ", deleting old package"}
                     automatic = PkgDb.automatic_get (pkg)
                     table.insert (deleted, pkg)
                     perform_pkg_deinstall (pkg)
@@ -372,34 +414,48 @@ local function perform_portbuild(action)
                 end
             end
             --]]
-            -- build and stage port
-            if not o_n:port_make{
+            -- build port
+            log(action, {"Build the port"})
+            out, err = o_n:port_make{
                 log = true,
-                to_tty = true,
+                --to_tty = true,
                 jailed = true,
                 "NO_DEPENDS=1",
                 "DISABLE_CONFLICTS=1",
                 "_OPTIONS_OK=1",
         --        "MAKE_JOBS=" .. <X>, -- prepare to pass limit on the number of sub-processes to spawn
-                "build",
+                "build"
+            }
+            if not out then
+                return fail(action, "Build failed in build or stage phase:", err)
+            end
+            --stage port
+            log(action, {"Install port to staging area"})
+            out, err = o_n:port_make{
+                log = true,
+                --to_tty = true,
+                jailed = true,
+                "NO_DEPENDS=1",
+                "DISABLE_CONFLICTS=1",
+                "_OPTIONS_OK=1",
                 "stage"
-            } then
-                return fail(action, "Build failed in build or stage phase")
+            }
+            if not out then
+                return fail(action, "Build failed in build or stage phase:", err)
             end
         end
     end
     local function none_failed(pkgs)
-        for _, p in pairs(pkgs) do
+        for _, p in ipairs(pkgs) do
             TRACE("FAILED?", p)
             local a = get(p)
             if a and failed(a) then -- what should be done if a == nil here???
-                return fail(action, "Skipped because of failed dependency", p.name)
+                return fail(action, "Build of", pkgname_new, "skipped because of failed dependency:", p)
             end
         end
         return true
     end
 
-    local pkgname_new = action.pkg_new.name
     local build_depends = o_n.build_depends
     TRACE("perform_portbuild", o_n.name, pkgname_new, special_depends)
     local build_dep_pkgs = pkgs_from_origin_tables(build_depends, special_depends)
@@ -414,8 +470,8 @@ end
 
 -- de-install (possibly partially installed) port after installation failure
 local function deinstall_failed(action)
-    Msg.show {"Installation of", action.pkg_new.name, "failed, deleting partially installed package"}
-    return action.o_n:port_make{log = true, to_tty = true, jailed = true, as_root = true, "deinstall"}
+    log(action, {"Installation of", action.pkg_new.name, "failed, deleting partially installed package"})
+    return action.o_n:port_make{log = true, jailed = true, as_root = true, "deinstall"}
 end
 
 --
@@ -452,8 +508,12 @@ local function perform_installation(action)
                 Exec.run {as_root = true, CMD.unlink, CMD.pkg .. "~"}
                 Exec.run {as_root = true, CMD.ln, CMD.pkg, CMD.pkg .. "~"}
             end
+            --
+            if create_backup and not p_o:backup_old_package() then
+                return fail(action, "Create backup package for", pkgname_old)
+            end
             -- delete old package version
-            if not p_o:deinstall(create_backup) then
+            if not p_o:deinstall() then
                 return fail(action, "Failed to deinstall old version")
             end
             -- restore pkg-static if it has been preserved
@@ -466,9 +526,10 @@ local function perform_installation(action)
     if pkgfile then
         -- try to install from package
         TRACE("PERFORM_INSTALLATION/PKGFILE", pkgfile)
-        Progress.show("Install", pkgname_new, "from a package")
+        log(action, {"Install", pkgname_new, "from a package"})
         -- <se> DEAL WITH CONFLICTS ONLY DETECTED BY PLIST CHECK DURING PKG REGISTRATION!!!
-        if not p_n:install() then
+        local out, err = p_n:install()
+        if not out then
             -- OUTPUT
             if not Options.jailed then
                 p_n:deinstall() -- OUTPUT
@@ -477,7 +538,7 @@ local function perform_installation(action)
                 end
             end
             --[[ rename only if failure was not due to a conflict with an installed package!!!
-            Progress.show("Rename", pkgfile, "to", pkgfile .. ".NOTOK after failed installation")
+            {"Rename", pkgfile, "to", pkgfile .. ".NOTOK after failed installation")
             os.rename(pkgfile, pkgfile .. ".NOTOK")
             --]]
             return fail(action, "Failed to install from package file " .. pkgfile)
@@ -485,7 +546,7 @@ local function perform_installation(action)
     else
         -- try to install new port
         TRACE("PERFORM_INSTALLATION/PORT", o_n.name)
-        Progress.show("Install", pkgname_new, "built from", portname)
+        log(action, {"Install", pkgname_new, "built from", portname})
         -- <se> DEAL WITH CONFLICTS ONLY DETECTED BY PLIST CHECK DURING PKG REGISTRATION!!!
         if not o_n:install() then
             -- OUTPUT
@@ -576,7 +637,7 @@ local function perform_install_or_upgrade(action)
         Lock.acquire(WorkDirLock, {o_n.port})
         workdirlocked = true
     end
-    Progress.show_task(taskmsg)
+    log(action, {taskmsg})
     if buildrequired then
         seconds = os.time()
         if perform_portbuild(action) and Options.create_package then
@@ -612,7 +673,12 @@ local function perform_install_or_upgrade(action)
     end
     -- report success
     if not Options.dry_run then
-        Msg.success_add(taskmsg, seconds)
+        local failed_msg = failed(action)
+        if failed_msg then
+            log(action, {failed_msg})
+        else
+            log(action, {taskmsg, seconds})
+        end
     end
     return not failed(action)
 end
@@ -634,7 +700,15 @@ end
 
 -- deinstall package files after optionally creating a backup package
 local function perform_deinstall(action)
-    return action.pkg_old:deinstall(Options.backup)
+    local p_o = action.pkg_old
+    if Options.backup and not p_o:backup_old_package() then
+        return false, "Failed to create backup package of " .. p_o.name
+    end
+    if not p_o:deinstall() then
+        return false, "Failed to deinstall package " .. p_o.name
+    end
+    action.done = true
+    return true
 end
 
 --[[
@@ -643,7 +717,7 @@ local function perform_delayed_installation(action)
     local p_n = action.pkg_new
     action.pkg_new.pkgfile = Package.filename {p_n}
     local taskmsg = describe(action)
-    Progress.show_task(taskmsg)
+    log(action, {taskmsg})
     assert(perform_installation(action),
            "Installation of " .. p_n.name .. " from " .. pkgfile .. " failed")
     Msg.success_add(taskmsg)
@@ -653,17 +727,9 @@ end
 -------------------------------------------------------------------------------------
 local BUILDLOG = nil
 
--- delete obsolete packages
-local function perform_delete(action)
-    if perform_deinstall(action) then
-        action.done = true
-        return true
-    end
-end
-
 -- update changed port origin in the package db and move options file
 local function perform_origin_change(action)
-    Progress.show("Change origin of", action.pkg_old.name, "from", action.o_o.name, "to", action.o_n.name)
+    log(action, {"Change origin of", action.pkg_old.name, "from", action.o_o.name, "to", action.o_n.name})
     if PkgDb.update_origin(action.o_o, action.o_n, action.pkg_old.name) then
         portdb_update_origin(action.o_o, action.o_n)
         action.done = true
@@ -675,10 +741,10 @@ end
 local function perform_pkg_rename(action)
     local p_o = action.pkg_old
     local p_n = action.pkg_new
-    Progress.show("Rename", p_o.name, "to", p_n.name)
+    log(action, {"Rename", p_o.name, "to", p_n.name})
     local success, errmsg = PkgDb.update_pkgname(p_o, p_n)
     if not success then
-        return fail(action, errmsg)
+        return fail(action, "Rename package", p_o.name, "to", p_n.name, "failed:", errmsg)
     end
     pkgfiles_rename(action)
     action.done = true
@@ -686,21 +752,9 @@ local function perform_pkg_rename(action)
 end
 
 -------------------------------------------------------------------------------------
-local ACTION_LIST = {}
-
-local function list()
-    return ACTION_LIST
-end
-
--- return the sum of the numbers of required operations
-function tasks_count()
-    return #ACTION_LIST
-end
-
 local function perform_upgrades(action_list)
     -- install or upgrade required packages
     for _, action in ipairs(action_list) do
-        Msg.show {start = true}
         -- if Options.hide_build is set the buildlog will only be shown on errors
         local o_n = rawget(action, "o_n")
         local is_interactive = o_n and o_n.is_interactive
@@ -711,13 +765,10 @@ local function perform_upgrades(action_list)
         local result
         -- print ("DO", action.verb, action.pkg_new.name)
         if action_is(action, "delete") then
-            result = perform_delete(action)
+            result = perform_deinstall(action)
         elseif action_is(action, "upgrade") then
-            TRACE("BEFORE SPAWN perform_install_or_upgrade")
             Exec.spawn(perform_install_or_upgrade, action)
-            --TRACE("AFTER SPAWN perform_install_or_upgrade")
             result = true
-            --result = perform_install_or_upgrade(action)
         elseif action_is(action, "change") then
             if action.pkg_old.name ~= action.pkg_new.name then
                 result = perform_pkg_rename(action)
@@ -729,11 +780,8 @@ local function perform_upgrades(action_list)
                 if action.pkg_new.pkgfile then
                     result = perform_provide(action)
                 else
-                    TRACE("BEFORE SPAWN perform_install_or_upgrade")
                     Exec.spawn(perform_install_or_upgrade, action)
-                    TRACE("AFTER SPAWN perform_install_or_upgrade")
                     result = true
-                    -- result = perform_install_or_upgrade(action)
                 end
             else
                 result = true -- nothing to be done
@@ -780,7 +828,7 @@ local function packages_delete_stale()
             for _, pkgname in ipairs(l) do
                 if Msg.read_yn("y", "Package " .. pkgname ..
                                    " was installed as a dependency and does not seem to used anymore, delete") then
-                    Package.perform_deinstall(pkgname)
+                    Package.deinstall(pkgname)
                 else
                     if Msg.read_yn("y", "Mark " .. pkgname .. " as 'user installed' to protect it against automatic deletion") then
                         PkgDb.automatic_set(pkgname, false)
@@ -983,8 +1031,6 @@ local function determine_action(action, k)
 end
 
 --
-ACTION_CACHE = {}
-
 local function clear_cached_action(action)
     local pkg_old = action.pkg_old
     local pkg_new = action.pkg_new
@@ -1235,12 +1281,11 @@ local function check_licenses()
     local function set_accepted(licenses)
         -- LICENSES_ACCEPTED="L1 L2 L3"
     end
-    Msg.show {start = true}
     for _, a in ipairs(ACTION_LIST) do
         local o = rawget(a, "o_n")
         if o and rawget(o, "license") then
             if not check_accepted(o.license) then
-                Msg.show {"Check license for", o.name, table.unpack(o.license)}
+                log(action, {"Check license for", o.name, table.unpack(o.license)})
                 -- o:port_make {"-DDEFER_CONFLICTS_CHECK", "-DDISABLE_CONFLICTS", "extract", "ask-license", accepted_opt}
                 -- o:port_make {"clean"}
                 set_accepted(o.license)
@@ -1256,7 +1301,7 @@ local function port_options()
         local o = rawget(a, "o_n")
         -- if o then print ("O", o, o.new_options) end
         if o and rawget(o, "new_options") then
-            Msg.show {"Set port options for", rawget(o, "name"), table.unpack(rawget(o, "new_options"))}
+            log(a, {"Set port options for", rawget(o, "name"), table.unpack(rawget(o, "new_options"))})
         end
     end
     Msg.show {level = 2, start = true, "Check for new port options has completed"}
@@ -1274,7 +1319,7 @@ local function check_conflicts(mode)
                 for _, pkg in ipairs(conflicts_table) do
                     text = text .. " " .. pkg.name
                 end
-                Msg.show {"Conflicting packages for", o_n.name, text}
+                log(action, {"Conflicting packages for", o_n.name, text})
             end
         end
     end
@@ -1404,7 +1449,7 @@ local function new(Action, args)
             if not rawget(action, "listpos") then
                 table.insert(ACTION_LIST, action)
                 action.listpos = #ACTION_LIST
-                Progress.show_task(describe(action))
+                log(action, {describe(action)})
             end
             if action_is(action, "upgrade") then
                 action.o_n:fetch()
@@ -1434,6 +1479,7 @@ return {
     tasks_count = tasks_count,
     show_statistics = show_statistics,
     perform_upgrades = perform_upgrades,
+    num_actions = 0,
 }
 
 --[[

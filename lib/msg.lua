@@ -131,6 +131,7 @@ end
 -------------------------------------------------------------------------------------
 -- add line to success message to display at the end
 local SUCCESS_MSGS = {}
+local FAILED_MSGS = {}
 local PKGMSG = {}
 
 --
@@ -141,6 +142,15 @@ local function success_add(text, seconds)
             seconds = "in " .. seconds .. " seconds"
         end
         show {text, "successfully completed", seconds}
+        show {start = true}
+    end
+end
+
+--
+local function failed_add(text)
+    if not strpfx(text, "Provide ") then -- XXX adapt test
+        table.insert(FAILED_MSGS, text)
+        show {text}
         show {start = true}
     end
 end
@@ -291,6 +301,7 @@ return {
     read_yn = read_yn,
     show = show,
     success_add = success_add,
+    failed_add = failed_add,
     success_show = success_show,
     title_set = title_set,
     copy_options = copy_options,

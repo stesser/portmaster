@@ -146,7 +146,13 @@ end
 -- optionally or forcefully configure port
 local function configure(origin, force)
     local target = force and "config" or "config-conditional"
-    return origin:port_make{to_tty = true, as_root = PARAM.port_dbdir_ro, "-D", "NO_DEPENDS", "-D", "DISABLE_CONFLICTS", target}
+    return origin:port_make{
+        to_tty = true,
+        as_root = PARAM.port_dbdir_ro,
+        "-DNO_DEPENDS",
+        "-DDISABLE_CONFLICTS",
+        target
+    }
 end
 
 --[[
@@ -186,7 +192,12 @@ end
 
 -- install newly built port
 local function install(origin)
-    return origin:port_make{to_tty = true, jailed = true, as_root = true, "install"}
+    return origin:port_make{
+        log = true,
+        jailed = true,
+        as_root = true,
+        "install"
+    }
 end
 
 --

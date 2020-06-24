@@ -81,7 +81,8 @@ local function dist_fetch(origin)
       for file, di in pairs(distinfo) do
          TRACE("UPDATE_DISTINFO_CACHE", file)
          local di_c = DISTINFO_CACHE[file]
-         if di_c then
+         if di_c and next(di) then
+            TRACE("DI", di, di_c)
             assert(di.SIZE == di_c.SIZE and di.SHA256 == di_c.SHA256 and di.TIMESTAMP == di_c.TIMESTAMP,
                   "Distinfo mismatch for " .. file .. " between " .. port .. " and " .. di.port[1])
             table.insert(di_c.port, port)

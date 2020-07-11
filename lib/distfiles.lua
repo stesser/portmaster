@@ -93,16 +93,16 @@ local function dist_fetch(origin)
       end
    end
    local function fetch_required(filenames)
-      local missing = {}
+      local unchecked = {}
       table.sort(filenames)
       for _, file in ipairs(filenames) do
          TRACE("FETCH_REQUIRED?", file)
          if DISTINFO_CACHE[file].checked == nil then
             TRACE("FETCH_REQUIRED!", file)
-            table.insert(missing, file)
+            table.insert(unchecked, file)
          end
       end
-      return missing
+      return unchecked
    end
    local function setall(di, field, value)
       for file, _ in pairs(di) do
@@ -117,16 +117,23 @@ local function dist_fetch(origin)
    update_distinfo_cache(distinfo)
    local distfiles = table.keys(distinfo) -- or {} ???
    origin.distfiles = distfiles
-   local missing = fetch_required(distfiles)
-   if #missing > 0 then
+   local unchecked = fetch_required(distfiles)
+   if #unchecked > 0 then
       fetch_lock = fetch_lock or Lock.new("FetchLock")
-      Lock.acquire(fetch_lock, missing)
-      missing = fetch_required(missing) -- fetch again since we may have been blocked and sleeping
+      Lock.acquire(fetch_lock, unchecked)
+      unchecked = fetch_required(unchecked) -- fetch again since we may have been blocked and sleeping
       setall(distinfo, "fetching", true)
-      TRACE("FETCH_MISSING", #missing, table.unpack(missing))
-      local lines = origin:port_make{as_root = PARAM.distdir_ro, table = true,
-               "FETCH_BEFORE_ARGS=-v", "NO_DEPENDS=1", "DISABLE_CONFLICTS=1",
-               "PARAM.disable_licenses=1", "DEV_WARNING_WAIT=0", "checksum"}
+      TRACE("FETCH_MISSING", unchecked)
+      local lines = origin:port_make{
+         as_root = PARAM.distdir_ro,
+         table = true,
+         "FETCH_BEFORE_ARGS=-v",
+         "NO_DEPENDS=1",
+         "DISABLE_CONFLICTS=1",
+         "DISABLE_LICENSES=1",
+         "DEV_WARNING_WAIT=0",
+         "checksum"
+      }
       setall(distinfo, "fetching", false)
       success = true -- assume OK
       setall(distinfo, "checked", true)
@@ -140,7 +147,7 @@ local function dist_fetch(origin)
             end
          end
       end
-      Lock.release(fetch_lock, missing)
+      Lock.release(fetch_lock, unchecked)
    end
    TRACE("FETCH->", port, success)
    return success

@@ -50,24 +50,37 @@ end
 
 -- get package information from pkgdb
 local function info(...)
-    return Exec.pkg {safe = true, table = true, "info", "-q", ...}
+    return Exec.pkg{
+        safe = true,
+        table = true,
+        "info", "-q", ...
+    }
 end
 
 -- set package attribute for specified ports and/or packages
 local function set(...)
-    return Exec.pkg {as_root = true, log = true, "set", "-y", ...}
+    return Exec.pkg{
+        as_root = true,
+        log = true, "set", "-y", ...
+    }
 end
 
 -- get the annotation value (e.g. flavor), if any
 local function annotate_get(var, name)
     assert(var, "no var passed")
-    return Exec.pkg {safe = true, "annotate", "-Sq", name, var}
+    return Exec.pkg{
+        safe = true,
+        "annotate", "-Sq", name, var
+    }
 end
 
 -- set the annotation value, or delete it if "$value" is empty
 local function annotate_set(var, name, value)
     local opt = value and #value > 0 and "-M" or "-D"
-    return Exec.pkg {as_root = true, log = true, "annotate", "-qy", opt, name, var, value}
+    return Exec.pkg{
+        as_root = true,
+        log = true, "annotate", "-qy", opt, name, var, value
+    }
 end
 
 -- ---------------------------------------------------------------------------

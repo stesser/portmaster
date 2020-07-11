@@ -102,7 +102,11 @@ end
 local function shlibs_backup(pkg)
     local pkg_libs = pkg.shared_libs
     if pkg_libs then
-        local ldconfig_lines = Exec.run {table = true, safe = true, CMD.ldconfig, "-r"} -- "RT?" ??? CACHE LDCONFIG OUTPUT???
+        local ldconfig_lines = Exec.run{ -- "RT?" ??? CACHE LDCONFIG OUTPUT???
+            table = true,
+            safe = true,
+            CMD.ldconfig, "-r"
+        }
         for _, line in ipairs(ldconfig_lines) do
             local libpath, lib = string.match(line, " => (" .. PATH.local_lib .. "*(lib.*%.so%..*))")
             if lib then
@@ -111,9 +115,17 @@ local function shlibs_backup(pkg)
                         if l == lib then
                             local backup_lib = PATH.local_lib_compat .. lib
                             if access(backup_lib, "r") then
-                                Exec.run {as_root = true, log = true, CMD.unlink, backup_lib}
+                                Exec.run{
+                                    as_root = true,
+                                    log = true,
+                                    CMD.unlink, backup_lib
+                                }
                             end
-                            Exec.run {as_root = true, log = true, CMD.cp, libpath, backup_lib}
+                            Exec.run{
+                                as_root = true,
+                                log = true,
+                                CMD.cp, libpath, backup_lib
+                            }
                         end
                     end
                 end
@@ -134,8 +146,16 @@ local function shlibs_backup_remove_stale(pkg)
             end
         end
         if #deletes > 0 then
-            Exec.run {as_root = true, log = true, CMD.rm, "-f", table.unpack(deletes)}
-            Exec.run {as_root = true, log = true, CMD.ldconfig, "-R"}
+            Exec.run{
+                as_root = true,
+                log = true,
+                CMD.rm, "-f", table.unpack(deletes)
+            }
+            Exec.run{
+                as_root = true,
+                log = true,
+                CMD.ldconfig, "-R"
+            }
         end
         return true
     end
@@ -145,18 +165,22 @@ end
 -- deinstall named package (JAILED)
 local function backup_old_package(package)
     local pkgname = package.name
-    return Exec.pkg {as_root = PARAM.packages_ro, "create", "-q", "-o", PATH.packages_backup, "-f", PARAM.backup_format, pkgname}
+    return Exec.pkg{
+        as_root = PARAM.packages_ro,
+        "create", "-q", "-o", PATH.packages_backup, "-f", PARAM.backup_format, pkgname
+    }
 end
 
 --
 local function deinstall(package)
     local pkgname = package.name
     local from_jail = Options.jailed and PARAM.phase ~= "install"
-    return Exec.pkg {
+    return Exec.pkg{
         log = true,
         jailed = from_jail,
-        as_root = not from_jail and PARAM.workdir_ro,
-        "delete", "-y", "-q", "-f", pkgname}
+        as_root = not from_jail,
+        "delete", "-y", "-q", "-f", pkgname
+    }
 end
 
 -------------------------------------------------------------------------------------
@@ -180,7 +204,13 @@ local function install(pkg, abi)
     if string.match(pkgfile, ".*/pkg-[^/]+$") then -- pkg command itself
         if not access(CMD.pkg, "x") then
             env.ASSUME_ALWAYS_YES = "yes"
-            local flag, errmsg = Exec.run {as_root = true, jailed = jailed, log = true, env = env, CMD.pkg_b, "-v"}
+            local flag, errmsg = Exec.run{
+                as_root = true,
+                jailed = jailed, -- ???
+                log = true,
+                env = env,
+                CMD.pkg_b, "-v"
+            }
             if not flag then
                 return flag, errmsg
             end
@@ -189,7 +219,13 @@ local function install(pkg, abi)
     elseif abi then
         env.ABI = abi
     end
-    return Exec.pkg {log = true, as_root = true, jailed = jailed, env = env, "add", "-M", pkgfile}
+    return Exec.pkg{
+        log = true,
+        as_root = true,
+        jailed = jailed,
+        env = env,
+        "add", "-M", pkgfile
+    }
 end
 
 -- create category links and a lastest link
@@ -198,14 +234,22 @@ local function category_links_create(pkg_new, categories)
     local source = filename {base = "..", ext = extension, pkg_new}
     table.insert(categories, "Latest")
     for _, category in ipairs(categories) do
-        local destination = PATH.packages .. category
+        local destination = path_concat (PATH.packages, category)
         if not is_dir(destination) then
-            Exec.run {as_root = true, log = true, CMD.mkdir, "-p", destination}
+            Exec.run{
+                as_root = PARAM.packages_ro,
+                log = true,
+                CMD.mkdir, "-p", destination
+            }
         end
         if category == "Latest" then -- skip if/since automatically created???
-            destination = destination .. "/" .. pkg_new.name_base .. "." .. extension
+            destination = path_concat (destination, pkg_new.name_base .. "." .. extension)
         end
-        Exec.run {as_root = true, log = true, CMD.ln, "-sf", source, destination}
+        Exec.run{
+            as_root = PARAM.packages_ro,
+            log = true,
+            CMD.ln, "-sf", source, destination
+        }
     end
 end
 
@@ -216,7 +260,10 @@ local function recover(pkg)
     local pkgname = pkg.name
     local pkgfile = pkg.pkgfile
     if not pkgfile then
-        pkgfile = Exec.run{table = true, safe = true, CMD.ls, "-1t", filename{base = PATH.packages_backup, subdir = "", ext = ".*", pkg}}[1] -- XXX replace with glob and sort by modification time ==> pkg.bakfile
+        pkgfile = Exec.run{
+            table = true,
+            safe = true,
+            CMD.ls, "-1t", filename{base = PATH.packages_backup, subdir = "", ext = ".*", pkg}}[1] -- XXX replace with glob and sort by modification time ==> pkg.bakfile
     end
     if pkgfile and access(pkgfile, "r") then
         Msg.show {"Re-installing previous version", pkgname}
@@ -225,11 +272,15 @@ local function recover(pkg)
                 pkg:automatic_set(true)
             end
             shlibs_backup_remove_stale(pkg)
-            -- Exec.run {as_root = true, log = true, CMD.unlink, PATH.packages_backup .. pkgname .. ".t??"} -- required ???
+            --[[ Exec.run{ -- required ???
+                as_root = true,
+                log = true,
+                CMD.unlink, PATH.packages_backup .. pkgname .. ".t??"
+            }--]]
             return true
         end
     end
-    Msg.show {"Recovery from backup package failed"}
+    Msg.show {"Recovery from backup package file", pkgfile, "failed"}
 end
 
 -- search package file
@@ -268,7 +319,11 @@ local function backup_delete(pkg)
     local g = filename {subdir = "portmaster-backup", ext = ".t??", pkg}
     for _, backupfile in pairs(glob(g) or {}) do
         TRACE("BACKUP_DELETE", backupfile, PATH.packages .. "portmaster-backup/")
-        Exec.run {as_root = true, log = true, CMD.unlink, backupfile}
+        Exec.run{
+            as_root = true,
+            log = true,
+            CMD.unlink, backupfile
+        }
     end
 end
 
@@ -280,7 +335,11 @@ local function delete_old(pkg)
     for _, pkgfile in pairs(glob(g) or {}) do
         TRACE("CHECK_BACKUP", pkgfile, bakfile)
         if pkgfile ~= bakfile then
-            Exec.run {as_root = true, log = true, CMD.unlink, pkgfile}
+            Exec.run{
+                as_root = true,
+                log = true,
+                CMD.unlink, pkgfile
+            }
         end
     end
 end

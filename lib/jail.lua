@@ -88,15 +88,26 @@ local function unmount_all(jaildir)
     TRACE("UNMOUNT_ALL", jaildir)
     assert(jaildir and jaildir == PARAM.jailbase, "invalid jail directory " .. jaildir .. " passed")
     local mnt_dev, mnt_point, md_unit
-    local df_lines = Exec.run {table = true, safe = true, CMD.df}
+    local df_lines = Exec.run{
+        table = true,
+        safe = true,
+        CMD.df
+    }
     for i = #df_lines, 2, -1 do
         mnt_dev, mnt_point = string.match(df_lines[i], "^(%S*)%s.*%s(/%S*)$")
         if string.match(mnt_point, "^" .. jaildir) then
             md_unit = string.match(mnt_dev, "^/dev/md(.+)")
             TRACE("UNMOUNT", mnt_point, md_unit)
-            Exec.run {as_root = true, log = true, CMD.umount, mnt_point}
+            Exec.run{
+                as_root = true,
+                log = true,
+                CMD.umount, mnt_point
+            }
             if md_unit then
-                Exec.run {as_root = true, log = true, CMD.mdconfig, "-d", "-u", md_unit}
+                Exec.run{
+                    as_root = true,log = true,
+                    CMD.mdconfig, "-d", "-u", md_unit
+                }
             end
             rmdir(mnt_point)
         end
@@ -164,17 +175,27 @@ local MOUNT_PROCS = {
 local function mount_all(jaildir)
     local dirs = table.keys(JAIL_FS)
     table.sort(dirs)
-    local df_lines = Exec.run {table = true, safe = true, CMD.df, table.unpack(dirs)}
+    local df_lines = Exec.run{
+        table = true,
+        safe = true,
+        CMD.df, table.unpack(dirs)
+    }
     for i, dir in ipairs(dirs) do
         local mnt_point = string.match(df_lines[i + 1], ".*%s(/%S*)$")
         local spec = JAIL_FS[dir]
         local fs_type = spec.fs_type
         local mount_opt = spec.fs_opt
-        local real_fs = Exec.run {safe = true, CMD.realpath, dir}
+        local real_fs = Exec.run{
+            safe = true,
+            CMD.realpath, dir
+        }
         local where = path_concat(jaildir, real_fs)
         TRACE("MOUNT", fs_type, jaildir, dir, mnt_point, real_fs, where, mount_opt or "<nil>")
         if not is_dir(where) then
-            Exec.run {as_root = true, CMD.mkdir, "-p", where}
+            Exec.run{
+                as_root = true,
+                CMD.mkdir, "-p", where
+            }
             assert(is_dir(where)) -- assert that mount point directory has been created
         end
         local mount_proc = MOUNT_PROCS[fs_type]
@@ -196,8 +217,12 @@ local function provide_file(jaildir, ...)
     local files = {...}
     for _, file in ipairs(files) do
         dir = path_concat(jaildir, dirname(file))
-        Exec.run {CMD.mkdir, "-p", dir} -- use direct LUA function
-        Exec.run {CMD.cp, "-pR", file, dir} -- copy with LUA
+        Exec.run{
+            CMD.mkdir, "-p", dir
+        } -- use direct LUA function
+        Exec.run{
+            CMD.cp, "-pR", file, dir
+        } -- copy with LUA
     end
 end
 
@@ -228,7 +253,9 @@ local function setup_etc(jaildir)
     inpf:close()
     outf1:close()
     outf2:close()
-    Exec.run {CMD.pwd_mkdb, "-d", path_concat(jaildir, "/etc"), path_concat(jaildir, "/etc/master.passwd")}
+    Exec.run{
+        CMD.pwd_mkdb, "-d", path_concat(jaildir, "/etc"), path_concat(jaildir, "/etc/master.passwd")
+    }
 
     -- create /etc/group
     local inpf = io.open("/etc/group", "r")
@@ -252,8 +279,18 @@ local function setup_etc(jaildir)
 end
 
 local function setup_var_run(jaildir)
-    Exec.run {as_root = true, jailed = true, log = true, CMD.ldconfig, "/lib", "/usr/lib", PATH.localbase .. "/lib"}
-    Exec.run {as_root = true, jailed = true, log = true, CMD.ldconfig, "-32", "/usr/lib32", PATH.localbase .. "/lib32"}
+    Exec.run{
+        as_root = true,
+        jailed = true,
+        log = true,
+        CMD.ldconfig, "/lib", "/usr/lib", PATH.localbase .. "/lib"
+    }
+    Exec.run{
+        as_root = true,
+        jailed = true,
+        log = true,
+        CMD.ldconfig, "-32", "/usr/lib32", PATH.localbase .. "/lib32"
+    }
 end
 
 local function setup_usr_local(jaildir)

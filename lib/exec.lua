@@ -219,6 +219,7 @@ end
 local function finish_spawned (f, msg) -- if f is provided then only spawns of that function will be waited for XXX
     local _, in_main = coroutine.running()
     assert(in_main, "calling finish_spawned from a coroutine is not supported")
+    local counter = 0
     while true do
         local n = f and tasks_spawned_with[f] or tasks_spawned -- (tasks_forked + Lock.blocked_tasks())
         TRACE("FINISH", tasks_spawned, tasks_forked, Lock.blocked_tasks(), n, f)
@@ -231,7 +232,12 @@ local function finish_spawned (f, msg) -- if f is provided then only spawns of t
         end
         local pid = tasks_poll(Lock.blocked_tasks() > 0 and 100 or -1)
         if pid then
+            TRACE("FINISH_SPAWNED->", pid)
             task_result(pid)
+        end
+        counter = counter + 1
+        if counter % 100 == 0 then
+            Lock.trace_locked()
         end
     end
 end
@@ -426,7 +432,7 @@ local function make(args)
     end
     local stdout, stderr, exitcode = run(args)
     if exitcode == 0 then
-        return stdout or true
+        return stdout or args.table and {} or true
     else
         return false, stderr
     end

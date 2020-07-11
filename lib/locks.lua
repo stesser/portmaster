@@ -29,6 +29,7 @@ SUCH DAMAGE.
 --
 
 --local TRACE = print
+local LOCKS = {}
 
 local tasks_blocked = 0 -- number of coroutines blocked by wait_cond -- CURRENTLY UNUSED -> move to Locks module
 local blocked = {} --! table for all currently blocked coroutines waiting for a lock to be acquired
@@ -40,7 +41,9 @@ local blocked = {} --! table for all currently blocked coroutines waiting for a 
 -- @param avail optional limit on the number of exclusive locks to grant for different items using this lock structure
 -- @retval lock the initialized lock structure
 local function new(name, avail)
-    return {name = name, avail = avail, blocked = 0, shared = {}, exclusive = {}, shared_queue = {}, exclusive_queue = {}}
+    local lock = {name = name, avail = avail, blocked = 0, shared = {}, exclusive = {}, shared_queue = {}, exclusive_queue = {}}
+    LOCKS[name] = lock
+    return lock
 end
 
 --!
@@ -249,7 +252,15 @@ local function destroy (lock)
         TRACE("DESTROY_EXCLUSIVE_QUEUE!", lock.name, table.unpack(table.keys(lock.exclusive_queue)))
         lock.exclusive_queue = nil
     end
+    LOCKS[lock.name] = nil
     lock.name = nil
+end
+
+--
+local function trace_locked()
+    for k, v in pairs(LOCKS) do
+        TRACE("TRACE_LOCKED", k, v)
+    end
 end
 
 --[[
@@ -307,6 +318,7 @@ return {
     release = release,
     tryacquire = tryacquire,
     blocked_tasks = blocked_tasks,
+    trace_locked = trace_locked,
 }
 
 --[[

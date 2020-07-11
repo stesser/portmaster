@@ -546,6 +546,13 @@ VALID_OPTS = {
             print_version()
         end,
     },
+    developer_mode = {
+        letter = "Z",
+        descr = "create log and trace files",
+        func = function(o, v)
+            opt_set(o,v)
+        end
+    },
     all = {
         letter = "a",
         descr = "operate on all installed ports",
@@ -684,12 +691,6 @@ VALID_OPTS = {
             opt_set(o, v)
             opt_clear("default_no", o)
         end,
-    },
-    developer_mode = {
-        descr = "create log and trace files",
-        func = function(o, v)
-            opt_set(o,v)
-        end
     },
 }
 

@@ -334,8 +334,9 @@ Concept for parallel port building:
 
 Locks:
     1) FetchLock
-    2) PackageLock
-    3) WorkLock
+    2) WorkLock
+    3) PackageLock
+    4) RunnableLock
 
     No parallel build within a port if either of the following is defined:
         DISABLE_MAKE_JOBS -- User variable?
@@ -350,40 +351,44 @@ EL1+    acquire exclusive lock(s) on distfile name(s) to protect fetching of dis
 EL1-    release exclusive lock(s) on distfile name(s)
 
 --> Build port:
-EL2+    acquire exclusive lock (on the package name that is to be generated) -- possibly with limit on number of locks
+EL3+    acquire exclusive lock (on the package name that is to be generated) -- possibly with limit on number of locks
+EL4+    acquire exclusive lock (on the package name that is to be generated) -- possibly with limit on number of locks
 SL1+    use shared lock to wait until all distfiles are available or the fetch task has given up
-SL1-    release lock since distfiles are not expected to vanish once they are there
+SL1-    immediately release lock since distfiles are not expected to vanish once they are there
         if fetching failed for at least 1 file:
             goto Abort
         -- all distfiles have been fetched
-        -- wait for build dependencies to become available
-SL2+    use shared lock on package names of build dependencies to wait for and provide build dependencies (including special dependencies, from port or package)
-        -- build dependencies that have not been updated must block the provide operation!
+        -- wait for build dependencies to become available (including all of their recursive run dependencies)
+SL4+    use shared lock on package names of build dependencies to wait for and be able to provide build dependencies (including special dependencies, from port or package)
+        -- build dependencies that have not been updated (yet) must block the provide operation!
         -- run dependencies of build dependencies are considered build dependencies, here!
         if build dependencies are marked as failed (unbuildable):
             goto Abort
         -- all build dependencies have been provided (in base or jail)
         -- all build dependencies have been (share) locked to prevent de-installation before the port has been built
-EL3+    acquire exclusive lock on work directory for port and all special_depends
+EL2+    acquire exclusive lock on work directory for port and all special_depends
         -- prevent parallel builds of the same port, e.g. of different flavors
         -- pass weight for the expected number of parallel processes (half the number of cores/threads by default?)
         build port
         -- port has been built and can be packaged or installed
-SL2-    release shared locks on build dependencies (only required to allow freeing of memory for locks)
+SL4-    release shared locks on build dependencies (only required to allow freeing of memory for locks)
         if the port build failed then
             goto Abort
         -- the port has been built and temporarily installed into the staging area
         create package (if requested)
+        if the package could not b ecreated
+            goto Abort
+EL3-    release PackageLock now that a package has been created and could be provided (not necessarily including run dependencies of that package!)
 
---> Install port to the base system (from build directory):
+--> Install port to the base system (from build directory) after creating a package file:
         if install conflicts are to be expected (reported based on Makefile)
             create package (unless already done)
             record for delayed installation of the package
             exit with success status
-(SL2+)  try to provide all run dependencies (wait for them to become available by acquiring shared locks on them)
-        if some run dependency is missing:
-(EL2-)      mark the just created package as available (as dependency of other ports, to prevent dependency loops)
-SL2+        use shared lock to wait for all run dependencies to become available
+(SL3+)  try to provide all run dependencies (test for them to be available by trying to acquire shared locks on them)
+        if some run dependency is missing and a package file has been created:
+(EL3-)      mark the just created package as available (as dependency of other ports, to prevent dependency loops)
+SL3+        use shared lock to wait for all run dependencies to become available (or failed)
             if some run dependency could not be provided (failed to build)
                 goto Abort
         if jailed or repo-mode then
@@ -402,12 +407,14 @@ SL2+        use shared lock to wait for all run dependencies to become available
                 move new package file to .NOTOK name
             re-install old version of package from saved backup file
             goto Abort
+        -- this package has been installed to the base system and all its run dependencies are available, too
+EL4-    release RunnableLock to signal availability of this potential run dependency
         -- release work directory
-EL3-    release locks on work directories
+EL2-    release locks on work directories
 
 --> Provide package in build jail:
-SL2+    acquire shared lock to wait for package to become available
-SL2-    release shared lock (no longer required, since the package will not go away ...)
+SL3+    acquire shared lock to wait for package to become available
+SL3-    release shared lock (no longer required, since the package will not go away ...)
         if the package could not be provided (e.g. failed to build)
             goto Abort
         -- the following lines are common with the build from port case (***)
@@ -418,15 +425,17 @@ SL2-    release shared lock (no longer required, since the package will not go a
         install new version from package
         if installation fails
             goto Abort
+        -- the package and all its run dependencies have been installed in the jail
+EL4-    release RunnableLock to signal availability of this potential run dependency
 
 --> Install to base from package:
-SL2+    acquire shared lock to wait for package to become available
-SL2-    release shared lock (no longer required, since the package will not go away ...)
+SL3+    acquire shared lock to wait for package to become available
+SL3-    release shared lock (no longer required, since the package will not go away ...)
         if the package could not be provided (e.g. failed to build)
             goto Abort
         -- the following lines are common with the build from port case (***)
         recursively try to provide all run dependencies
-        if some run dependency could not be provided
+        if some run dependency could not be provided (failed to build or could not be installed from a package)
             goto Abort
         -- create backup package and deinstall old version
         create backup package
@@ -441,6 +450,8 @@ SL2-    release shared lock (no longer required, since the package will not go a
             move new package file to .NOTOK name
             re-install old version of package from saved backup file
             goto Abort
+        -- the package and all its run dependencies have been installed to the base system
+EL4-    release RunnableLock to signal availability of this potential run dependency
         -- cleanup after successful installation of newly built package
         delete backup package (if requested not to be kept)
 
@@ -449,21 +460,23 @@ SL2-    release shared lock (no longer required, since the package will not go a
             install missing packages -> Install from package
         remove build-only dependencies (if requested)
 
---> After installation from port or package:
-        mark package as available (as dependency of other ports or for later installation to the base system)
-(EL2-)  release exclusive lock on package name to let dependent ports proceed (if not already done in the missing run dependency case above)
+--> After installation from port or package: -- already covered in the individual install flows???
+        mark installed port/package as available
+(EL4-)  release exclusive lock on package name to let dependent ports proceed (if not already done in the missing run dependency case above)
         delete backup package (if it has been created and it is not to be kept)
 
 --> Delete package:
         -- started as a background task when in jailed or repo-mode
-EL2     acquire exclusively locks on this package and all run dependencies (waits until all shared locks are released for this package and the dependent packages)
+EL3     acquire exclusively locks on this package and all run dependencies (waits until all shared locks have been released for this package and the dependent packages)
         when the exclusive locks have been obtained all covered packages are deinstalled and their dependencies are added to the delete list
         -- the deinstallation is skipped, if there are no further build tasks, since then the whole jail is about to be destroyed
 
 --> Abort:
         mark as un-buildable (with reason provided by failed function) - this will be picked up by dependent tasks when trying to use this package
-SL2-    release shared locks on build dependencies (if any)
-EL3-    release exclusive locks on work directories (if any)
+SL3-    release shared locks on build dependencies (if any)
+EL2-    release exclusive locks on work directories (if any)
         signal task has completed (with error)
+EL3-    release PackageLock (if held - dependencies will notice the failure)
+EL4-    release RunnableLock (if held - dependencies will notice the failure)
         exit task
 --]]

@@ -446,7 +446,10 @@ local function init_globals()
 
     -- Bootstrap pkg if not yet installed
     if not access(CMD.pkg, "x") then
-        Exec.run{as_root = true, CMD.pkg_bootstrap, "bootstrap"}
+        Exec.run{
+            as_root = true,
+            CMD.pkg_bootstrap, "bootstrap"
+        }
     end
 
     --
@@ -461,11 +464,17 @@ local function init_globals()
     PARAM.backup_format = Options.backup_format or "txz"
 
     -- some important global variables
-    PARAM.abi = chomp(Exec.run {safe = true, CMD.pkg, "config", "abi"})
+    PARAM.abi = chomp(Exec.run{
+        safe = true,
+        CMD.pkg, "config", "abi"
+    })
     PARAM.abi_noarch = string.match(PARAM.abi, "^[^:]+:[^:]+:") .. "*"
 
     -- determine number of CPUs (threads)
-    PARAM.ncpu = tonumber (Exec.run {safe = true, CMD.sysctl, "-n", "hw.ncpu"})
+    PARAM.ncpu = tonumber (Exec.run{
+        safe = true,
+        CMD.sysctl, "-n", "hw.ncpu"
+    })
 
     -- global variables for use by the distinfo cache and distfile names file (for ports to be built)
     -- PARAM.distfiles_perport = PATH.distdir .. "DISTFILES.perport" -- port names and names of distfiles required by the latest port version
@@ -484,7 +493,12 @@ local function init_environment()
     local portsdir = PATH.portsdir
     local scriptsdir = path_concat(portsdir, "Mk/Scripts")
     local cmdenv = {SCRIPTSDIR = scriptsdir, PORTSDIR = portsdir, MAKE = "make"}
-    local env_lines = Exec.run {table = true, safe = true, env = cmdenv, CMD.sh, path_concat(scriptsdir, "ports_env.sh")}
+    local env_lines = Exec.run{
+        table = true,
+        safe = true,
+        env = cmdenv,
+        CMD.sh, path_concat(scriptsdir, "ports_env.sh")
+    }
     for _, line in ipairs(env_lines) do
         local var, value = line:match("^export ([%w_]+)=(.+)")
         if string.sub(value, 1, 1) == '"' and string.sub(value, -1) == '"' then
@@ -522,12 +536,20 @@ end
 -- deletes files or whole sub-trees
 local function batch_delete(files, as_root)
     local function do_unlink(file, as_root)
-        Exec.run{as_root = as_root, log = true, CMD.unlink, file}
+        Exec.run{
+            as_root = as_root,
+            log = true,
+            CMD.unlink, file
+        }
     end
     for _, file in ipairs(files) do
         if is_dir(file) then
             batch_delete(glob(file .. "/*", false, as_root))
-            Exec.run{as_root = true, log = true, CMD.rmdir, file}
+            Exec.run{
+                as_root = true,
+                log = true,
+                CMD.rmdir, file
+            }
         else
             Exec.spawn(do_unlink, file, as_root)
         end
@@ -542,7 +564,10 @@ local function delete_empty_directories(path, as_root)
         table.sort(dirs, function (a, b) return a > b end)
     end
     for _, v in ipairs(dirs) do
-        Exec.run{as_root = as_root, CMD.rmdir, v}
+        Exec.run{
+            as_root = as_root,
+            CMD.rmdir, v
+        }
     end
 end
 
@@ -618,7 +643,11 @@ local function list_stale_libraries()
     end
     -- list all active shared libraries in some compat directory
     local compatlibs = {}
-    local ldconfig_lines = Exec.run {table = true, safe = true, CMD.ldconfig, "-r"} -- safe flag required ???
+    local ldconfig_lines = Exec.run{
+        table = true,
+        safe = true, -- safe flag required ???
+        CMD.ldconfig, "-r"
+    }
     for _, line in ipairs(ldconfig_lines) do
         local lib = line:match(" => " .. path_concat (PATH.local_lib_compat, "(.*)"))
         if lib and not activelibs[lib] then
@@ -783,9 +812,6 @@ local function list_ports(mode)
 end
 
 -------------------------------------------------------------------------------------
--- TRACEFILE = "/tmp/pm.cmd-log" -- DEBUGGING EARLY START-UP ONLY -- GLOBAL
-
--------------------------------------------------------------------------------------
 local function main()
     -- print (umask ("755")) -- ERROR: results in 7755, check the details of this function
     -- shell ({to_tty = true}, "umask")
@@ -813,9 +839,6 @@ local function main()
     end
     -- initialize environment variables based on globals set in prior functions
     init_environment()
-
-    --
-    --Exec.spawn(Package.installed_pkgs, "")
 
     -------------------------------------------------------------------------------------
     -- plan tasks based on parameters passed on the command line
@@ -845,7 +868,10 @@ local function main()
     -------------------------------------------------------------------------------------
     -- non-upgrade operations supported by portmaster - executed after upgrades if requested
     if Options.check_depends then
-        Exec.run {to_tty = true, CMD.pkg, "check", "-dn"}
+        Exec.run{
+            to_tty = true,
+            CMD.pkg, "check", "-dn"
+        }
     end
     if Options.list then
         list_ports(Options.list)

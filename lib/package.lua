@@ -267,7 +267,7 @@ local function recover(pkg)
     end
     if pkgfile and access(pkgfile, "r") then
         Msg.show {"Re-installing previous version", pkgname}
-        if install(pkgfile, pkg.pkgfile_abi) then
+        if install(pkg, pkg.pkgfile_abi) then
             if pkg.is_automatic == 1 then
                 pkg:automatic_set(true)
             end

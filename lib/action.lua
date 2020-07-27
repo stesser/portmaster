@@ -668,7 +668,7 @@ local function perform_install_or_upgrade(action)
     local skip_install = (Options.skip_install or Options.jailed) and not p_n.is_build_dep -- NYI: and BUILDDEP[o_n]
     local taskmsg = describe(action)
     -- if not installing from a package file ...
-    local seconds, workdirlocked
+    local workdirlocked
     local buildrequired = not pkgfile and not Options.fetch_only
     if buildrequired then
         -- assert (NYI: o_n:wait_checksum ())
@@ -678,7 +678,6 @@ local function perform_install_or_upgrade(action)
     end
     action:log{taskmsg}
     if buildrequired then
-        seconds = os.time()
         if perform_portbuild(action) and Options.create_package then
             -- create package file from staging area
             package_create(action)
@@ -704,9 +703,6 @@ local function perform_install_or_upgrade(action)
             -- NYI distfiles_delete_old (o_n, pkgname_old) -- OUTPUT
         end
     end
-    if seconds then
-        seconds = os.time() - seconds
-    end
     if workdirlocked then
         Lock.release(WorkDirLock, {o_n.port})
     end
@@ -716,7 +712,7 @@ local function perform_install_or_upgrade(action)
         if failed_msg then
             action:log{failed_msg}
         else
-            action:log{taskmsg, "successfully completed after", seconds, "seconds"}
+            action:log{taskmsg, "successfully completed."}
         end
     end
     return not failed(action)

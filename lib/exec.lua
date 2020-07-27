@@ -431,8 +431,9 @@ local function make(args)
         table.insert(args, 2, "-dia")
     end
     local stdout, stderr, exitcode = run(args)
+    TRACE ("MAKE->", args, exitcode, stdout, stderr)
     if exitcode == 0 then
-        return stdout or args.table and {} or true
+        return stdout or args.table and {} or ""
     else
         return false, stderr
     end
@@ -452,8 +453,9 @@ local function pkg(args)
     end
     table.insert(args, 1, CMD.pkg)
     local stdout, stderr, exitcode = run(args)
+    TRACE ("PKG->", args, exitcode, stdout, stderr)
     if exitcode == 0 then
-        return stdout or true
+        return stdout or args.table and {} or ""
     else
         return false, stderr
     end

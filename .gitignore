@@ -23,3 +23,4 @@ vscode-debuggee.lua
 profiler.lua
 .port-copy/*
 .gitignore
+work

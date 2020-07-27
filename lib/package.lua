@@ -137,6 +137,7 @@ end
 -- remove from shlib backup directory all shared libraries replaced by new versions
 local function shlibs_backup_remove_stale(pkg)
     local pkg_libs = pkg.shared_libs
+    TRACE("BACKUP_REMOVE_SHARED", pkg_libs, pkg)
     if pkg_libs then
         local deletes = {}
         for _, lib in ipairs(pkg_libs) do

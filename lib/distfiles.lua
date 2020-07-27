@@ -106,12 +106,13 @@ local function dist_fetch(origin)
    end
    local function setall(di, field, value)
       for file, _ in pairs(di) do
+         TRACE("DISTINFO_CACHE", field, value, file)
          rawset (DISTINFO_CACHE[file], field, value)
       end
    end
    TRACE("DIST_FETCH", origin and origin.name or "<nil>", origin and origin.distinfo_file or "<nil>")
    local port = origin.port
-   local success = false
+   local success = true
    --local distinfo = parse_distinfo(origin)
    local distinfo = generate_distinfo(origin)
    update_distinfo_cache(distinfo)
@@ -121,31 +122,32 @@ local function dist_fetch(origin)
    if #unchecked > 0 then
       fetch_lock = fetch_lock or Lock.new("FetchLock")
       Lock.acquire(fetch_lock, unchecked)
-      unchecked = fetch_required(unchecked) -- fetch again since we may have been blocked and sleeping
-      setall(distinfo, "fetching", true)
-      TRACE("FETCH_MISSING", unchecked)
-      local lines = origin:port_make{
-         as_root = PARAM.distdir_ro,
-         table = true,
-         "FETCH_BEFORE_ARGS=-v",
-         "NO_DEPENDS=1",
-         "DISABLE_CONFLICTS=1",
-         "DISABLE_LICENSES=1",
-         "DEV_WARNING_WAIT=0",
-         "checksum"
-      }
-      setall(distinfo, "fetching", false)
-      success = true -- assume OK
-      setall(distinfo, "checked", true)
-      for _, l in ipairs(lines) do
-         TRACE("FETCH:", l)
-         local files = string.match(l, "Giving up on fetching files: (.*)")
-         if files then
-            success = false
-            for _, file in ipairs(split_words(files)) do
-               DISTINFO_CACHE[file].checked = false
+      local really_unchecked = fetch_required(unchecked) -- fetch again since we may have been blocked and sleeping
+      if #really_unchecked > 0 then
+         setall(distinfo, "fetching", true)
+         TRACE("FETCH_MISSING", really_unchecked)
+         local lines = origin:port_make{
+            as_root = PARAM.distdir_ro,
+            table = true,
+            "FETCH_BEFORE_ARGS=-v",
+            "NO_DEPENDS=1",
+            "DISABLE_CONFLICTS=1",
+            "DISABLE_LICENSES=1",
+            "DEV_WARNING_WAIT=0",
+            "checksum"
+         }
+         setall(distinfo, "checked", true)
+         for _, l in ipairs(lines) do
+            TRACE("FETCH:", l)
+            local files = string.match(l, "Giving up on fetching files: (.*)")
+            if files then
+               success = false
+               for _, file in ipairs(split_words(files)) do
+                  DISTINFO_CACHE[file].checked = false
+               end
             end
          end
+         setall(distinfo, "fetching", false)
       end
       Lock.release(fetch_lock, unchecked)
    end

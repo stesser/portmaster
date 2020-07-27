@@ -65,14 +65,18 @@ local function add_missing_deps(action_list)
                 for _, dep in ipairs(deps) do
                     local o = Origin:new(dep)
                     local p = o.pkg_new
-                    if not Action.get(p.name) and not dep_ports[dep] then
-                        if add_dep_hdr then
-                            Msg.show {level = 2, start = true, add_dep_hdr}
-                            add_dep_hdr = nil
+                    if p then
+                        if not Action.get(p.name) and not dep_ports[dep] then
+                            if add_dep_hdr then
+                                Msg.show {level = 2, start = true, add_dep_hdr}
+                                add_dep_hdr = nil
+                            end
+                            dep_ports[dep] = true
+                            add_action{build_type = "auto", dep_type = "build", pkg_new = p, o_n = o}
+                            p.is_build_dep = true
                         end
-                        dep_ports[dep] = true
-                        add_action{build_type = "auto", dep_type = "build", pkg_new = p, o_n = o}
-                        p.is_build_dep = true
+                    else
+                        a.failed = "Build dependency " .. dep .. " cannot be found"
                     end
                 end
                 add_dep_hdr = "Add run dependencies of " .. a.short_name
@@ -80,14 +84,18 @@ local function add_missing_deps(action_list)
                 for _, dep in ipairs(deps) do
                     local o = Origin:new(dep)
                     local p = o.pkg_new
-                    if not Action.get(p.name) and not dep_ports[dep] then
-                        if add_dep_hdr then
-                            Msg.show {level = 2, start = true, add_dep_hdr}
-                            add_dep_hdr = nil
+                    if p then
+                        if not Action.get(p.name) and not dep_ports[dep] then
+                            if add_dep_hdr then
+                                Msg.show {level = 2, start = true, add_dep_hdr}
+                                add_dep_hdr = nil
+                            end
+                            dep_ports[dep] = true
+                            add_action{build_type = "auto", dep_type = "run", pkg_new = p, o_n = o}
+                            p.is_run_dep = true
+                        else
+                            a.failed = "Build dependency " .. dep .. " cannot be found"
                         end
-                        dep_ports[dep] = true
-                        add_action{build_type = "auto", dep_type = "run", pkg_new = p, o_n = o}
-                        p.is_run_dep = true
                     end
                 end
             end
@@ -108,12 +116,14 @@ local function sort_list(action_list)
                 for _, o in ipairs(deps) do
                     local origin = Origin.get(o)
                     local pkg_new = origin.pkg_new
-                    local a = Action.get(pkg_new.name)
-                    TRACE("ADD_DEPS", type, a and rawget(a, "action"), origin.name, origin.pkg_new,
-                          origin.pkg_new and rawget(origin.pkg_new, "is_installed"))
-                    -- if a and not rawget (a, "planned") then
-                    if a and not rawget(a, "planned") and not rawget(origin.pkg_new, "is_installed") then
-                        add_deps(a)
+                    if pkg_new then
+                        local a = Action.get(pkg_new.name)
+                        TRACE("ADD_DEPS", type, a and rawget(a, "action"), origin.name, origin.pkg_new,
+                            origin.pkg_new and rawget(origin.pkg_new, "is_installed"))
+                        -- if a and not rawget (a, "planned") then
+                        if a and not rawget(a, "planned") and not rawget(origin.pkg_new, "is_installed") then
+                            add_deps(a)
+                        end
                     end
                 end
             end
@@ -338,10 +348,26 @@ Locks:
     3) PackageLock
     4) RunnableLock
 
-    No parallel build within a port if either of the following is defined:
-        DISABLE_MAKE_JOBS -- User variable?
-        MAKE_JOBS_UNSAFE -- Makefile variable?
-        NO_BUILD -- No build phase
+Acquired locks (the table used for the locking request) should be recorded in the action to support the release operation
+
+Fundamental operations are:
+    Fetch_and_checksum_test
+    Provide build dependency in jail (incl. recursive run dependencies)
+    Build port and provide in stage area (different make targets supported for special_depends)
+    Clean work directory
+    Create package for local repository from stage area
+    Create backup package from base system
+    Install port in jail
+    Install package in jail
+    Install port in base
+    Install package in base
+    Delete installed package from jail
+    Delete installed package from base system
+
+No parallel build within a port if either of the following is defined:
+    DISABLE_MAKE_JOBS -- User variable?
+    MAKE_JOBS_UNSAFE -- Makefile variable?
+    NO_BUILD -- No build phase
 
 --> Fetch and check distfiles: -- implements check_distfiles()
 EL1+    acquire exclusive lock(s) on distfile name(s) to protect fetching of distfile(s) to collide

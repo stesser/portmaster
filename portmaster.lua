@@ -200,6 +200,7 @@ function split_lines(str)
     return result
 end
 
+--[[
 -- split line at blanks into parts at most columns long and return as table
 function split_at(line, columns)
     local result = {}
@@ -214,6 +215,7 @@ function split_at(line, columns)
     end
     return result
 end
+--]]
 
 --
 function set_str(self, field, v)
@@ -306,7 +308,7 @@ function is_dir(path)
 end
 
 --
-function scan_files(dir)
+local function scan_files(dir)
     TRACE("SCANFILES", dir)
     local result = {}
     assert(dir, "empty directory argument")
@@ -326,7 +328,7 @@ function scan_files(dir)
 end
 
 --
-function scan_dirs(dir)
+local function scan_dirs(dir)
     TRACE("SCANDIRS", dir)
     local result = {}
     assert(dir, "empty directory argument")
@@ -833,10 +835,11 @@ local function main()
         end
     end
 
-    -- disable setting the terminal title if output goes to a pipe or file (fd=3 is remapped from STDOUT)
+    -- disable setting the terminal title if output goes to a pipe or file
     if not ttyname(2) then
         Options.no_term_title = true
     end
+
     -- initialize environment variables based on globals set in prior functions
     init_environment()
 
@@ -848,11 +851,11 @@ local function main()
         if #args ~= 1 then
             error("exactly one port or packages required with -o")
         end
-        ports_add_changed_origin("force", args, Options.replace_origin)
+        ports_add_changed_origin("force", args, Options.replace_origin) -- XXX NYI
     elseif Options.all then
         Strategy.add_all_outdated()
     elseif Options.all_old_abi then
-        ports_add_all_old_abi() -- create from ports_add_all_outdated() ???
+        ports_add_all_old_abi() -- XXX create from ports_add_all_outdated() ??? NYI
     end
 
     --  allow the specification of -a and -r together with further individual ports to install or upgrade
@@ -889,7 +892,7 @@ local function main()
         clean_stale_package_files()
     end
     if Options.deinstall_unused then
-        packages_delete_stale()
+        packages_delete_stale() -- XXX NYI
     end
     if Options.check_port_dbdir then
         portdb_purge()

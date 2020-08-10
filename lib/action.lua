@@ -352,7 +352,7 @@ end
 -------------------------------------------------------------------------------------
 -- extract and patch files, but do not try to fetch any missing dist files
 -- have dependencies of special_depends to be checked before proceeding???
-local function provide_special_depends(special_depends)
+local function provide_special_depends(action, special_depends)
     TRACE("SPECIAL_DEPENDS", table.unpack(special_depends or {}))
     -- local special_depends = action.o_n.special_depends
     for _, origin_target in ipairs(special_depends) do
@@ -369,7 +369,7 @@ local function provide_special_depends(special_depends)
                 "DEFER_CONFLICTS_CHECK=1",
                 "DISABLE_CONFLICTS=1",
                 "FETCH_CMD=true",
-                target,
+                target
             }
             local out, err = origin:port_make(args)
             if not out then
@@ -405,65 +405,79 @@ local function perform_portbuild(action)
         -- <se> VERIFY THAT ALL DEPENDENCIES ARE AVAILABLE AT THIS POINT!!!
         -- extract and patch the port and all special build dependencies ($make_target=extract/patch)
         TRACE("SPECIAL:", #special_depends, special_depends[1])
-        if #special_depends == 0 or provide_special_depends(special_depends) then
-            o_n:fetch_wait()
-            action:log{"Extract and patch port", portname}
-            local out, err = o_n:port_make{
-                log = true,
-                jailed = true,
-                "NO_DEPENDS=1",
-                "DEFER_CONFLICTS_CHECK=1",
-                "DISABLE_CONFLICTS=1",
-                "FETCH=true",
-                "patch",
-            }
-            if not out then
-                return fail(action, "Build failed in patch phase:", err)
+        if #special_depends > 0 and not provide_special_depends(action, special_depends) then
+	   return false -- sets failure message in action
+	end
+        o_n:fetch_wait()
+        action:log{"Extract port", portname}
+        local out, err = o_n:port_make{
+            log = true,
+            jailed = true,
+            "NO_DEPENDS=1",
+            "DEFER_CONFLICTS_CHECK=1",
+            "DISABLE_CONFLICTS=1",
+            "FETCH=true",
+            "extract",
+        }
+        if not out then
+            return fail(action, "Build failed in extract phase:", err)
+        end
+        action:log{"Patch port", portname}
+        local out, err = o_n:port_make{
+            log = true,
+            jailed = true,
+            "NO_DEPENDS=1",
+            "DEFER_CONFLICTS_CHECK=1",
+            "DISABLE_CONFLICTS=1",
+            "FETCH=true",
+            "patch",
+        }
+        if not out then
+            return fail(action, "Build failed in patch phase:", err)
+        end
+        --[[
+        -- check whether build of new port is in conflict with currently installed version
+        local deleted = {}
+        local conflicts = check_build_conflicts (action)
+        for i, pkg in ipairs (conflicts) do
+            if pkg == pkgname_old then
+                -- ??? pkgname_old is NOT DEFINED
+                action:log{"Build of", portname, "conflicts with installed package", pkg .. ", deleting old package"}
+                automatic = PkgDb.automatic_get (pkg)
+                table.insert (deleted, pkg)
+                perform_pkg_deinstall (pkg)
+                break
             end
-            --[[
-            -- check whether build of new port is in conflict with currently installed version
-            local deleted = {}
-            local conflicts = check_build_conflicts (action)
-            for i, pkg in ipairs (conflicts) do
-                if pkg == pkgname_old then
-                    -- ??? pkgname_old is NOT DEFINED
-                    action:log{"Build of", portname, "conflicts with installed package", pkg .. ", deleting old package"}
-                    automatic = PkgDb.automatic_get (pkg)
-                    table.insert (deleted, pkg)
-                    perform_pkg_deinstall (pkg)
-                    break
-                end
-            end
-            --]]
-            -- build port
-            action:log{"Build port", portname}
-            out, err = o_n:port_make{
-                log = true,
-                --to_tty = true,
-                jailed = true,
-                "NO_DEPENDS=1",
-                "DISABLE_CONFLICTS=1",
-                "_OPTIONS_OK=1",
-        --        "MAKE_JOBS=" .. <X>, -- prepare to pass limit on the number of sub-processes to spawn
-                "build"
-            }
-            if not out then
-                return fail(action, "Build failed in build phase:", err)
-            end
-            --stage port
-            action:log{"Install port", portname, "to staging area"}
-            out, err = o_n:port_make{
-                log = true,
-                --to_tty = true,
-                jailed = true,
-                "NO_DEPENDS=1",
-                "DISABLE_CONFLICTS=1",
-                "_OPTIONS_OK=1",
-                "stage"
-            }
-            if not out then
-                return fail(action, "Build failed in stage phase:", err)
-            end
+        end
+        --]]
+        -- build port
+        action:log{"Build port", portname}
+        out, err = o_n:port_make{
+            log = true,
+            --to_tty = true,
+            jailed = true,
+            "NO_DEPENDS=1",
+            "DISABLE_CONFLICTS=1",
+            "_OPTIONS_OK=1",
+    --        "MAKE_JOBS=" .. <X>, -- prepare to pass limit on the number of sub-processes to spawn
+            "build"
+        }
+        if not out then
+            return fail(action, "Build failed in build phase:", err)
+        end
+        --stage port
+        action:log{"Install port", portname, "to staging area"}
+        out, err = o_n:port_make{
+            log = true,
+            --to_tty = true,
+            jailed = true,
+            "NO_DEPENDS=1",
+            "DISABLE_CONFLICTS=1",
+            "_OPTIONS_OK=1",
+            "stage"
+        }
+        if not out then
+            return fail(action, "Build failed in stage phase:", err)
         end
     end
     local function none_failed(pkgs)

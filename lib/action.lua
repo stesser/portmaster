@@ -30,7 +30,7 @@ local Origin = require("portmaster.origin")
 local Options = require("portmaster.options")
 local PkgDb = require("portmaster.pkgdb")
 local Msg = require("portmaster.msg")
-local Progress = require("portmaster.progress")
+--local Progress = require("portmaster.progress")
 local Exec = require("portmaster.exec")
 local Lock = require("portmaster.locks")
 
@@ -40,7 +40,7 @@ local glob = P.glob
 
 local P_US = require("posix.unistd")
 local access = P_US.access
-local chown = P_US.chown
+--local chown = P_US.chown
 
 -------------------------------------------------------------------------------------
 local ACTION_CACHE = {}
@@ -340,9 +340,12 @@ local function pkgs_from_origin_tables(...)
     local pkgs = {}
     for _, t in ipairs({...}) do
         for _, origin in ipairs(t) do
-            local o = Origin.get(origin)
-            local p = o.pkg_new.name
-            pkgs[#pkgs + 1] = p
+            if not string.match(origin, ":.*") then -- ignore special depends
+                local o = Origin.get(origin)
+                TRACE("PKG_FROM_ORIGIN_TABLES", origin, o)
+                local p = o.pkg_new.name
+                pkgs[#pkgs + 1] = p
+            end
         end
     end
     TRACE("PKGS_FROM_ORIGIN_TABLES", pkgs, ...)
@@ -720,7 +723,7 @@ local function perform_install_or_upgrade(action)
     if workdirlocked then
         Lock.release(WorkDirLock, {o_n.port})
     end
-    -- report success
+    -- report success or failure ...
     if not Options.dry_run then
         local failed_msg = failed(action)
         if failed_msg then

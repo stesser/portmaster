@@ -30,7 +30,6 @@ local Origin = require("portmaster.origin")
 local Options = require("portmaster.options")
 local PkgDb = require("portmaster.pkgdb")
 local Msg = require("portmaster.msg")
---local Progress = require("portmaster.progress")
 local Exec = require("portmaster.exec")
 local Lock = require("portmaster.locks")
 
@@ -40,7 +39,6 @@ local glob = P.glob
 
 local P_US = require("posix.unistd")
 local access = P_US.access
---local chown = P_US.chown
 
 -------------------------------------------------------------------------------------
 local ACTION_CACHE = {}
@@ -64,7 +62,7 @@ end
 --
 local function action_set(action, verb)
     TRACE ("ACTION_SET", action.pkg_new or action.pkg_old, verb)
-    verb = verb ~= "keep" and verb or false
+    verb = verb ~= "keep" and verb ~= "exclude" and verb or false
     action.action = verb
 end
 

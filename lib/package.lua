@@ -121,17 +121,22 @@ local function shlibs_backup(pkg)
                                     CMD.unlink, backup_lib
                                 }
                             end
-                            Exec.run{
+                            local out, err = Exec.run{
                                 as_root = true,
                                 log = true,
                                 CMD.cp, libpath, backup_lib
                             }
+                            TRACE("SHLIBS_BACKUP", tostring(out), err)
+                            if not out then
+                                return out, err
+                            end
                         end
                     end
                 end
             end
         end
     end
+    return true
 end
 
 -- remove from shlib backup directory all shared libraries replaced by new versions
@@ -158,7 +163,6 @@ local function shlibs_backup_remove_stale(pkg)
                 CMD.ldconfig, "-R"
             }
         end
-        return true
     end
 end
 

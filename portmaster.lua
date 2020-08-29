@@ -62,7 +62,7 @@ end
 debug.sethook (trace, "l")
 --]]
 
-R = require("std.strict")
+local R = require("std.strict")
 
 -- local _debug = require 'std._debug'(true)
 
@@ -381,6 +381,7 @@ local function init_globals()
 
     -- important commands
     CMD.chroot = init_global_cmd("/usr/sbin/chroot")
+    CMD.chown = init_global_cmd("/usr/sbin/chown")
     CMD.ldconfig = init_global_cmd("/sbin/ldconfig")
     CMD.make = init_global_cmd("/usr/bin/make")
     CMD.sysctl = "/sbin/sysctl"

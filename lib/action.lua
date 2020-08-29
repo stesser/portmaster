@@ -136,18 +136,18 @@ local previous_action_no
 
 local function log(action, args)
     TRACE("LOG", args, action)
-    local action_no = action.listpos
-    local task_no_string
-    local num_tasks = #ACTION_LIST
-    if num_tasks > 0 and PARAM.phase ~= "scan" then
-        task_no_string = "[" .. tostring(action_no) .. "/" .. tonumber(#ACTION_LIST) .. "]"
-        args.start = args.start or action_no ~= previous_action_no
-        table.insert(args, 1, task_no_string)
+    if PARAM.phase ~= "scan" then
+        if not rawget(action, "startno_string") then
+            action.startno_string = "[" .. tostring(action.startno) .. "/" .. tostring(#ACTION_LIST) .. "]"
+            action:log{describe(action)}
+        end
+        args.start = args.start or action.startno ~= previous_action_no
+        previous_action_no = action.startno
+        table.insert(args, 1, action.startno_string)
         table.insert(args, 2, action.pkg_new.name .. ":")
     end
     TRACE("LOG", args)
     Msg.show(args)
-    previous_action_no = action_no
 end
 
 -------------------------------------------------------------------------------------
@@ -481,25 +481,27 @@ local function perform_portbuild(action)
             return fail(action, "Build failed in stage phase:", err)
         end
     end
-    local function none_failed(pkgs)
+    local function check_failed(pkgs)
         for _, p in ipairs(pkgs) do
             TRACE("FAILED?", p)
             local a = get(p)
-            if a and failed(a) then -- what should be done if a == nil here???
-                return fail(action, "Build of", pkgname_new, "skipped because of failed dependency:", p)
+            if not a or failed(a) then
+                return p
             end
         end
-        return true
     end
 
     local build_depends = o_n.build_depends
     TRACE("perform_portbuild", portname, pkgname_new, special_depends)
+    -- wait for all packages of build dependencies being available
     local build_dep_pkgs = pkgs_from_origin_tables(build_depends, special_depends)
     Lock.acquire(PackageLock, build_dep_pkgs)
-    if none_failed(build_dep_pkgs) then
-        build_dep_pkgs.shared = true
-        do_build()
+    local failed_build_dep = check_failed(build_dep_pkgs)
+    if failed_build_dep then
+        fail(action, "Build of", pkgname_new, "skipped because of failed dependency:", failed_build_dep)
     end
+    build_dep_pkgs.shared = true
+    do_build()
     Lock.release(PackageLock, build_dep_pkgs)
     return not failed(action)
 end
@@ -681,7 +683,6 @@ local function perform_install_or_upgrade(action)
         TRACE("PKGFILE", pkgfile)
     end
     local skip_install = (Options.skip_install or Options.jailed) and not p_n.is_build_dep -- NYI: and BUILDDEP[o_n]
-    local taskmsg = describe(action)
     -- if not installing from a package file ...
     local workdirlocked
     local buildrequired = not pkgfile and not Options.fetch_only
@@ -691,7 +692,6 @@ local function perform_install_or_upgrade(action)
         Lock.acquire(WorkDirLock, {o_n.port})
         workdirlocked = true
     end
-    action:log{taskmsg}
     if buildrequired then
         if perform_portbuild(action) and Options.create_package then
             -- create package file from staging area
@@ -727,7 +727,7 @@ local function perform_install_or_upgrade(action)
         if failed_msg then
             action:log{failed_msg}
         else
-            action:log{taskmsg, "successfully completed."}
+            action:log{describe(action), "successfully completed."}
         end
     end
     return not failed(action)
@@ -1354,7 +1354,7 @@ local function port_options()
         local o = rawget(a, "o_n")
         -- if o then print ("O", o, o.new_options) end
         if o and rawget(o, "new_options") then
-            log(a, {"Set port options for port", o.name})
+            a:log{"Set port options for port", o.name}
         end
     end
     Msg.show {level = 2, start = true, "Check for new port options has completed"}
@@ -1397,6 +1397,8 @@ local function __newindex(action, n, v)
     rawset(action, n, v)
 end
 
+local actions_started = 0
+
 local function __index(action, k)
     local function __depends(action, k)
         local o_n = action.o_n
@@ -1411,6 +1413,10 @@ local function __index(action, k)
         return action.pkg_new and action.pkg_new.name or action.pkg_old and action.pkg_old.name or action.o_n and
                    action.o_n.name or action.o_o and action.o_o.name or "<unknown>"
     end
+    local function __startno (action, k)
+        actions_started = actions_started + 1
+        return actions_started -- action.listpos
+    end
     local dispatch = {
         pkg_old = determine_pkg_old,
         pkg_new = determine_pkg_new,
@@ -1421,6 +1427,7 @@ local function __index(action, k)
         run_depends = __depends,
         action = determine_action,
         short_name = __short_name,
+        startno = __startno,
     }
 
     TRACE("INDEX(a)", k)

@@ -409,10 +409,10 @@ local function run(args)
     if args.to_tty then
         return exitcode == 0, "", exitcode
     else
-        if stdout == "" then
-            stdout = nil
-        end
-        if stdout then
+        TRACE("EXEC:STDOUT", tostring(stdout))
+        if stdout == nil and exitcode == 0 then
+            stdout = task_result
+        elseif stdout then
             if args.table then
                 stdout = split_lines(stdout)
             elseif args.split then

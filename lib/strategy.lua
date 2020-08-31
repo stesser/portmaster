@@ -65,6 +65,7 @@ local function add_missing_deps(action_list)
                 for _, dep in ipairs(deps) do
                     local o = Origin:new(dep)
                     local p = o.pkg_new
+                    TRACE("ADD_MISSING_DEPS(build)", dep, o, p)
                     if p then
                         if not Action.get(p.name) and not dep_ports[dep] then
                             if add_dep_hdr then
@@ -84,6 +85,7 @@ local function add_missing_deps(action_list)
                 for _, dep in ipairs(deps) do
                     local o = Origin:new(dep)
                     local p = o.pkg_new
+                    TRACE("ADD_MISSING_DEPS(run)", dep, o, p)
                     if p then
                         if not Action.get(p.name) and not dep_ports[dep] then
                             if add_dep_hdr then

@@ -117,7 +117,11 @@ local function port_var(origin, vars)
         table.insert(args, "LOC=" .. dbginfo.name .. ":" .. dbginfo.currentline)
     end
     table.insert(args, "-DBUILD_ALL_PYTHON_FLAVORS") -- required for make -V FLAVORS to get the full list :X
-    local result = port_make(origin, args)
+    local result, _, exitcode = port_make(origin, args)
+    TRACE("PORTVAR->", result, exitcode)
+    if exitcode ~= 0 then
+        result = nil
+    end
     if result and args.table then
         for i = 1, #vars do
             local value = result[i]

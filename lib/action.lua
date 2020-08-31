@@ -182,11 +182,12 @@ local function pkgfiles_rename(action) -- UNTESTED !!!
         for _, pkgfile_old in ipairs(pkgfiles) do
             if access(pkgfile_old, "r") and not strpfx(pkgfile_old, PATH.packages_backup) then
                 local pkgfile_new = path_concat(dirname(pkgfile_old), p_n.name .. pkgfile_old:gsub(".*(%.%w+)", "%1"))
-                if not Exec.run{
+                local _, _, exitcode = Exec.run{
                     as_root = true,
                     log = true,
                     CMD.mv, pkgfile_old, pkgfile_new
-                } then
+                }
+                if exitcode ~= 0 then
                     fail(action, "Failed to rename package file from", pkgfile_old, "to", pkgfile_new)
                 end
             end
@@ -204,11 +205,13 @@ local function portdb_update_origin(action)
         local portdb_dir_new = action.o_n:portdb_path()
         if is_dir(portdb_dir_new) then
             return fail(action, "Target directory does already exist")
-        elseif not Exec.run{
+        end
+        local _, _, exitcode = Exec.run{
             as_root = true,
             log = true,
             CMD.mv, portdb_dir_old, portdb_dir_new
-        } then
+        }
+        if exitcode ~= 0 then
             return fail(action, "Failed to rename", portdb_dir_old, "to", portdb_dir_new, "in the package database")
         end
     end
@@ -249,7 +252,7 @@ local function package_create(action)
         local as_root = PARAM.packages_ro
         local base = (as_root or jailed) and PATH.tmpdir or PATH.packages -- use random tempdir !!!
         local sufx = "." .. PARAM.package_format
-        local out, err = o_n:port_make{
+        local out, err, exitcode = o_n:port_make{
             log = true,
             jailed = jailed,
             "_OPTIONS_OK=1",
@@ -257,7 +260,7 @@ local function package_create(action)
             "PKG_SUFX=" .. sufx,
             "package"
         }
-        if not out then
+        if exitcode ~= 0 then
             return fail(action, "Package file " .. pkgfile .. " could not be created:", err)
         end
         if as_root or jailed then
@@ -288,7 +291,8 @@ local function port_clean(action)
     local args = {log = true, jailed = true, "NO_CLEAN_DEPENDS=1", "clean"} -- as_root required???
     local o_n = action.o_n
     action:log{"Clean work directory of port", o_n.name}
-    if not o_n:port_make(args) then
+    local _, _, exitcode = o_n:port_make(args)
+    if exitcode ~= 0 then
         return false
     end
     local special_depends = o_n.special_depends or {}
@@ -298,7 +302,8 @@ local function port_clean(action)
         local origin = Origin:new(origin_target:gsub(":.*", ""))
         if target ~= "fetch" and target ~= "checksum" then
             action:log{"Clean work directory of special dependency", origin.name}
-            if not origin:port_make(args) then
+            local _, _, exitcode = origin:port_make(args)
+            if exitcode ~= 0 then
                 return fail(action, "Failed to clean the work directory of", origin.port)
             end
         end
@@ -372,9 +377,9 @@ local function provide_special_depends(action, special_depends)
                 "FETCH_CMD=true",
                 target
             }
-            local out, err = origin:port_make(args)
-            if not out then
-                return fail(action, "Failed to provide special dependency", origin_target .. ":", err)
+            local out, err, exitcode = origin:port_make(args)
+            if exitcode ~= 0 then
+                return fail(action, "Failed to provide special dependency", origin_target .. ":", out, err)
             end
         end
     end
@@ -411,7 +416,7 @@ local function perform_portbuild(action)
 	end
         o_n:fetch_wait()
         action:log{"Extract port", portname}
-        local out, err = o_n:port_make{
+        local out, err, exitcode = o_n:port_make{
             log = true,
             jailed = true,
             "NO_DEPENDS=1",
@@ -420,11 +425,11 @@ local function perform_portbuild(action)
             "FETCH=true",
             "extract",
         }
-        if not out then
-            return fail(action, "Build failed in extract phase:", err)
+        if exitcode ~= 0 then
+            return fail(action, "Build failed in extract phase:", out, err)
         end
         action:log{"Patch port", portname}
-        local out, err = o_n:port_make{
+        out, err, exitcode = o_n:port_make{
             log = true,
             jailed = true,
             "NO_DEPENDS=1",
@@ -433,8 +438,8 @@ local function perform_portbuild(action)
             "FETCH=true",
             "patch",
         }
-        if not out then
-            return fail(action, "Build failed in patch phase:", err)
+        if exitcode ~= 0 then
+            return fail(action, "Build failed in patch phase:", out, err)
         end
         --[[
         -- check whether build of new port is in conflict with currently installed version
@@ -453,7 +458,7 @@ local function perform_portbuild(action)
         --]]
         -- build port
         action:log{"Build port", portname}
-        out, err = o_n:port_make{
+        out, err, exitcode = o_n:port_make{
             log = true,
             --to_tty = true,
             jailed = true,
@@ -463,12 +468,12 @@ local function perform_portbuild(action)
     --        "MAKE_JOBS=" .. <X>, -- prepare to pass limit on the number of sub-processes to spawn
             "build"
         }
-        if not out then
-            return fail(action, "Build failed in build phase:", err)
+        if exitcode ~= 0 then
+            return fail(action, "Build failed in build phase:", out, err)
         end
         --stage port
         action:log{"Install port", portname, "to staging area"}
-        out, err = o_n:port_make{
+        out, err, exitcode = o_n:port_make{
             log = true,
             --to_tty = true,
             jailed = true,
@@ -477,8 +482,8 @@ local function perform_portbuild(action)
             "_OPTIONS_OK=1",
             "stage"
         }
-        if not out then
-            return fail(action, "Build failed in stage phase:", err)
+        if exitcode ~= 0 then
+            return fail(action, "Build failed in stage phase:", out, err)
         end
     end
     local function check_failed(pkgs)
@@ -509,12 +514,13 @@ end
 -- de-install (possibly partially installed) port after installation failure
 local function deinstall_failed(action)
     action:log{"Installation from", action.o_n.name, "failed, deleting partially installed package"}
-    return action.o_n:port_make{
+    local out, err, exitcode = action.o_n:port_make{
         log = true,
         jailed = true,
         as_root = true,
         "deinstall"
     }
+    return exitcode == 0
 end
 
 --

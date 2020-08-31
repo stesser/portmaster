@@ -432,11 +432,7 @@ local function make(args)
     end
     local stdout, stderr, exitcode = run(args)
     TRACE ("MAKE->", args, exitcode, stdout, stderr)
-    if exitcode == 0 then
-        return stdout or args.table and {} or ""
-    else
-        return false, stderr
-    end
+    return stdout, stderr, exitcode
 end
 
 -- execute and log a package command that does not modify any state (JAILED)

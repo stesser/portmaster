@@ -121,13 +121,13 @@ local function shlibs_backup(pkg)
                                     CMD.unlink, backup_lib
                                 }
                             end
-                            local out, err = Exec.run{
+                            local out, err, exitcode = Exec.run{
                                 as_root = true,
                                 log = true,
                                 CMD.cp, libpath, backup_lib
                             }
                             TRACE("SHLIBS_BACKUP", tostring(out), err)
-                            if not out then
+                            if exitcode ~= 0 then
                                 return out, err
                             end
                         end
@@ -209,15 +209,15 @@ local function install(pkg, abi)
     if string.match(pkgfile, ".*/pkg-[^/]+$") then -- pkg command itself
         if not access(CMD.pkg, "x") then
             env.ASSUME_ALWAYS_YES = "yes"
-            local flag, errmsg = Exec.run{
+            local out, err, exitcode = Exec.run{
                 as_root = true,
                 jailed = jailed, -- ???
                 log = true,
                 env = env,
                 CMD.pkg_b, "-v"
             }
-            if not flag then
-                return flag, errmsg
+            if exitcode ~= 0 then
+                return out, err
             end
         end
         env.SIGNATURE_TYPE = "none"

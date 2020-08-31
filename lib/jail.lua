@@ -127,7 +127,8 @@ local function do_mount(fs_type, from, onto, param)
     end
     table.insert(args, from)
     table.insert(args, onto)
-    return Exec.run(args)
+    local _, _, exitcode = Exec.run(args)
+    return exitcode == 0
 end
 
 local function mount_dir(fs_type, what, where, param)

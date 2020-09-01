@@ -61,7 +61,8 @@ end
 local function set(...)
     return Exec.pkg{
         as_root = true,
-        log = true, "set", "-y", ...
+        log = true,
+        "set", "-y", ...
     }
 end
 
@@ -79,8 +80,29 @@ local function annotate_set(var, name, value)
     local opt = value and #value > 0 and "-M" or "-D"
     return Exec.pkg{
         as_root = true,
-        log = true, "annotate", "-qy", opt, name, var, value
+        log = true,
+        "annotate", "-qy", opt, name, var, value
     }
+end
+
+-- check package dependency information in the pkg db
+local function check_depends()
+    Exec.run{
+        as_root = true,
+        to_tty = true,
+        CMD.pkg, "check", "-dn"
+    }
+end
+
+-- return system ABI
+local function system_abi()
+    local abi = chomp(Exec.run{
+        safe = true,
+        CMD.pkg, "config", "abi"
+    })
+    local abi_noarch = string.match(abi, "^[%a]+:[%d]+:") .. "*"
+    TRACE("SYSTEM_ABI", abi, abi_noarch)
+    return abi, abi_noarch
 end
 
 -- ---------------------------------------------------------------------------
@@ -132,6 +154,8 @@ return {
     query = query,
     info = info,
     set = set,
+    check_depends = check_depends,
+    system_abi = system_abi,
     flavor_get = flavor_get,
     flavor_set = flavor_set,
     flavor_check = flavor_check,

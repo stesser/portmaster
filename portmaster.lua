@@ -467,11 +467,7 @@ local function init_globals()
     PARAM.backup_format = Options.backup_format or "txz"
 
     -- some important global variables
-    PARAM.abi = chomp(Exec.run{
-        safe = true,
-        CMD.pkg, "config", "abi"
-    })
-    PARAM.abi_noarch = string.match(PARAM.abi, "^[^:]+:[^:]+:") .. "*"
+    PARAM.abi, PARAM.abi_noarch = PkgDb.system_abi()
 
     -- determine number of CPUs (threads)
     PARAM.ncpu = tonumber (Exec.run{
@@ -872,10 +868,7 @@ local function main()
     -------------------------------------------------------------------------------------
     -- non-upgrade operations supported by portmaster - executed after upgrades if requested
     if Options.check_depends then
-        Exec.run{
-            to_tty = true,
-            CMD.pkg, "check", "-dn"
-        }
+        PkgDb.check_depends()
     end
     if Options.list then
         list_ports(Options.list)

@@ -370,7 +370,7 @@ local function run(args)
                 table.insert(args, 2, k .. "=" .. v)
             end
         end
-        args.env = {SUDO_PROMPT = "#   >>>\tEnter password of user %p: "}
+        args.env = {SUDO_PROMPT = "#  >>>\tEnter password of user %p: "}
         TRACE("SUDO", args)
     end
     if args.log then

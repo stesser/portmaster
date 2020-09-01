@@ -365,10 +365,9 @@ local function run(args)
                 TRACE("SETENV(Sudo)", k, v)
                 table.insert(args, 2, k .. "=" .. v)
             end
-            table.insert(args, 2, "-p" .. "#   >>>\tEnter password of user %p: ")
-            args.env = nil
-            TRACE("SUDO", args)
         end
+        args.env = {SUDO_PROMPT = "#   >>>\tEnter password of user %p: "}
+        TRACE("SUDO", args)
     end
     if args.log then
         if Options.dry_run or Options.show_work then

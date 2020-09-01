@@ -367,6 +367,7 @@ local function run(args)
             end
             table.insert(args, 2, "-p" .. "#   >>>\tEnter password of user %p: ")
             args.env = nil
+            TRACE("SUDO", args)
         end
     end
     if args.log then

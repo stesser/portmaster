@@ -101,6 +101,7 @@ end
 -- preserve currently installed shared libraries // <se> check name of control variable
 local function shlibs_backup(pkg)
     local pkg_libs = pkg.shared_libs
+    TRACE("SHLIBS_BACKUP", pkg.name, pkg_libs, pkg)
     if pkg_libs then
         local ldconfig_lines = Exec.run{ -- "RT?" ??? CACHE LDCONFIG OUTPUT???
             table = true,
@@ -110,6 +111,7 @@ local function shlibs_backup(pkg)
         for _, line in ipairs(ldconfig_lines) do
             local libpath, lib = string.match(line, " => (" .. PATH.local_lib .. "*(lib.*%.so%..*))")
             if lib then
+                TRACE("SHLIBS_BACKUP+", libpath, lib, stat_isreg(lstat(libpath).st_mode))
                 if stat_isreg(lstat(libpath).st_mode) then
                     for _, l in ipairs(pkg_libs) do
                         if l == lib then
@@ -396,7 +398,7 @@ local PACKAGES_CACHE_LOADED = false -- should be local with iterator ...
 -- setmetatable (PACKAGES_CACHE, {__mode = "v"})
 
 local function shared_libs_cache_load()
-    Msg.show {level = 2, start = true, "Load list of provided shared libraries"}
+    Msg.show {level = 2, start = true, "Load list of shared libraries provided by packages"}
     local p = {}
     local lines = PkgDb.query {table = true, "%n-%v %b"}
     for _, line in ipairs(lines) do
@@ -414,7 +416,7 @@ local function shared_libs_cache_load()
 end
 
 local function req_shared_libs_cache_load()
-    Msg.show {level = 2, start = true, "Load list of required shared libraries"}
+    Msg.show {level = 2, start = true, "Load list of shared libraries required by packages"}
     local p = {}
     local lines = PkgDb.query {table = true, "%n-%v %B"}
     for _, line in ipairs(lines) do
@@ -631,12 +633,8 @@ local function __index(pkg, k)
             return file_get_abi(filename {pkg}) or false
         end,
         -- bakfile_abi = file_get_abi,
-        shared_libs = function(pkg, k)
-            return PkgDb.query {table = true, "%b", pkg.name} -- should be cached!!!
-        end,
-        req_shared_libs = function(pkg, k)
-            return PkgDb.query {table = true, "%B", pkg.name} -- should be cached!!!
-        end,
+        shared_libs = false, -- batch loaded at start
+        req_shared_libs = false, -- batch loaded at start
         is_installed = function(pkg, k)
             return false -- always explicitly set when found or during installation
         end,

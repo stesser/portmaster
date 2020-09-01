@@ -77,7 +77,7 @@ local function add_missing_deps(action_list)
                             p.is_build_dep = true
                         end
                     else
-                        a.failed = "Build dependency " .. dep .. " cannot be found"
+                        TRACE("ADD_BUILD_DEP-", dep, "cannot be found")
                     end
                 end
                 add_dep_hdr = "Add run dependencies of " .. a.short_name
@@ -96,7 +96,7 @@ local function add_missing_deps(action_list)
                             add_action{build_type = "auto", dep_type = "run", pkg_new = p, o_n = o}
                             p.is_run_dep = true
                         else
-                            a.failed = "Build dependency " .. dep .. " cannot be found"
+                            TRACE("ADD_RUN_DEP-", dep, "cannot be found")
                         end
                     end
                 end

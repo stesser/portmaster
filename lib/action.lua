@@ -161,9 +161,13 @@ local function fail(action, ...)
     return false
 end
 
+local function faillog(action, logmsg)
+    action.failed_log = logmsg
+end
+
 local function failed(action)
-    TRACE("CHK_FAILED", action.pkg_new.name , rawget(action, "failed_msg"))
-    return rawget(action, "failed_msg")
+    --TRACE("CHK_FAILED", action.pkg_new.name , rawget(action, "failed_msg"), rawget(action, "failed_log"))
+    return rawget(action, "failed_msg"), rawget(action, "failed_log")
 end
 
 -------------------------------------------------------------------------------------
@@ -379,7 +383,9 @@ local function provide_special_depends(action, special_depends)
             }
             local out, err, exitcode = origin:port_make(args)
             if exitcode ~= 0 then
-                return fail(action, "Failed to provide special dependency", origin_target .. ":", out, err)
+                fail(action, "Failed to provide special dependency", origin_target .. ":")
+                faillog(action, out)
+                return false
             end
         end
     end
@@ -418,28 +424,34 @@ local function perform_portbuild(action)
         action:log{"Extract port", portname}
         local out, err, exitcode = o_n:port_make{
             log = true,
+            errtoout = true,
             jailed = true,
             "NO_DEPENDS=1",
             "DEFER_CONFLICTS_CHECK=1",
             "DISABLE_CONFLICTS=1",
             "FETCH=true",
-            "extract",
+            "extract"
         }
         if exitcode ~= 0 then
-            return fail(action, "Build failed in extract phase:", out, err)
+            fail(action, "Build failed in extract phase:")
+            faillog(action, out)
+            return false
         end
         action:log{"Patch port", portname}
         out, err, exitcode = o_n:port_make{
             log = true,
+            errtoout = true,
             jailed = true,
             "NO_DEPENDS=1",
             "DEFER_CONFLICTS_CHECK=1",
             "DISABLE_CONFLICTS=1",
             "FETCH=true",
-            "patch",
+            "patch"
         }
         if exitcode ~= 0 then
-            return fail(action, "Build failed in patch phase:", out, err)
+            fail(action, "Build failed in patch phase:")
+            faillog(action, out)
+            return false
         end
         --[[
         -- check whether build of new port is in conflict with currently installed version
@@ -460,7 +472,7 @@ local function perform_portbuild(action)
         action:log{"Build port", portname}
         out, err, exitcode = o_n:port_make{
             log = true,
-            --to_tty = true,
+            errtoout = true,
             jailed = true,
             "NO_DEPENDS=1",
             "DISABLE_CONFLICTS=1",
@@ -469,13 +481,15 @@ local function perform_portbuild(action)
             "build"
         }
         if exitcode ~= 0 then
-            return fail(action, "Build failed in build phase:", out, err)
+            fail(action, "Build failed in build phase:")
+            faillog(action, out)
+            return false
         end
         --stage port
         action:log{"Install port", portname, "to staging area"}
         out, err, exitcode = o_n:port_make{
             log = true,
-            --to_tty = true,
+            errtoout = true,
             jailed = true,
             "NO_DEPENDS=1",
             "DISABLE_CONFLICTS=1",
@@ -483,7 +497,9 @@ local function perform_portbuild(action)
             "stage"
         }
         if exitcode ~= 0 then
-            return fail(action, "Build failed in stage phase:", out, err)
+            fail(action, "Build failed in stage phase:")
+            faillog(action, out)
+            return false
         end
     end
     local function check_failed(pkgs)
@@ -729,9 +745,12 @@ local function perform_install_or_upgrade(action)
     end
     -- report success or failure ...
     if not Options.dry_run then
-        local failed_msg = failed(action)
+        local failed_msg, failed_log = failed(action)
         if failed_msg then
-            action:log{failed_msg}
+            action:log{describe(action), "failed:", failed_msg}
+            if failed_log then
+                Msg.show{verbatim = true, failed_log, "\n"}
+            end
         else
             action:log{describe(action), "successfully completed."}
         end

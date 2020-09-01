@@ -259,7 +259,11 @@ local function task_create (args)
             close(fd1r)
             dup2(fd1w, fileno(io.stdout)) -- stdout
             close(fd2r)
-            dup2(fd2w, fileno(io.stderr)) -- stderr
+            if args.errtoout then
+                dup2(fd1w, fileno(io.stderr)) -- mix stderr into stdout
+            else
+                dup2(fd2w, fileno(io.stderr)) -- stderr
+            end
         end
         if args.env then
             for k, v in pairs(args.env) do

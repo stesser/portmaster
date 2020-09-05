@@ -274,7 +274,7 @@ local function package_create(action)
             end
             Exec.run{
                 as_root = as_root,
-                CMD.chown, "0", "0", tmpfile
+                CMD.chown, "0:0", tmpfile
             }
             Exec.run{
                 as_root = as_root,

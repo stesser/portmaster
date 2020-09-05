@@ -455,6 +455,7 @@ local __port_vars_table = {
     "PATCHFILES", -- as above
     "DIST_SUBDIR",
     "OPTIONS_FILE",
+    "WRKDIR",
 }
 
 local function __port_vars(origin, k, recursive)
@@ -529,6 +530,7 @@ local function __port_vars(origin, k, recursive)
         set_table(origin, "patchfiles", t.PATCHFILES)
         origin.dist_subdir = t.DIST_SUBDIR
         origin.options_file = t.OPTIONS_FILE
+        origin.wrkdir = t.WRKDIR
     end
     return rawget(origin, k)
 end

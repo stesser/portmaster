@@ -441,24 +441,32 @@ end
 
 -- execute and log a package command that does not modify any state (JAILED)
 local function pkg(args)
-    if args.jailed then
-        if PARAM.jailbase then
-            table.insert(args, 1, "-c")
-            table.insert(args, 2, PARAM.jailbase)
+    for i = 1, 10 do
+        if args.jailed then
+            if PARAM.jailbase then
+                table.insert(args, 1, "-c")
+                table.insert(args, 2, PARAM.jailbase)
+            end
+            args.jailed = nil
         end
-        args.jailed = nil
+        --[[
+        if Options.developer_mode then
+            table.insert(args, 1, "--debug")
+        end
+        --]]
+        table.insert(args, 1, CMD.pkg)
+        local stdout, stderr, exitcode = run(args) -- XXX retry if exitcode indicates lock timeout occurred
+        TRACE("PKG->", args, exitcode, stdout, stderr)
+        if exitcode == 0 then
+            return stdout or args.table and {} or ""
+        elseif exitcode ~= 75 then
+            return false, stderr
+        end
+        TRACE("PKG!", args)
+        run{log=true, "/usr/bin/pgrep", "-lf", "/usr/local/sbin/pkg"}
+        tasks_poll(1000)
     end
-    if Options.developer_mode then
-        --table.insert(args, 1, "--debug")
-    end
-    table.insert(args, 1, CMD.pkg)
-    local stdout, stderr, exitcode = run(args)
-    TRACE ("PKG->", args, exitcode, stdout, stderr)
-    if exitcode == 0 then
-        return stdout or args.table and {} or ""
-    else
-        return false, stderr
-    end
+    return false, "PKG DB locked"
 end
 
 --

@@ -293,26 +293,23 @@ end
 -- clean work directory and special build depends (might also be delayed to just before program exit)
 local function port_clean(action)
     local function do_clean(origin)
-        local args = {
+        assert(origin.wrkdir, "do_clean() called for port without work directory:", origin.name)
+        local writable =  access(origin.wrkdir, "w") and  access(path_concat(origin.wrkdir, ".."), "w")
+        TRACE("DO_CLEAN", origin.name, writable)
+        return origin:port_make{
             log = true,
             jailed = true,
+            errtoout = true,
+            as_root = not writable,
             "NO_CLEAN_DEPENDS=1",
             "clean"
-        } -- as_root required???
-        local _, _, exitcode = origin:port_make(args)
-        if exitcode == 0 then
-            return true
-        end
-        args.as_root = true
-        _, _, exitcode = origin:port_make(args)
-        if exitcode == 0 then
-            return true
-        end
+        }
     end
     local o_n = action.o_n
     action:log{"Clean work directory of port", o_n.name}
-    if not do_clean(o_n) then
-        return fail(action, "Failed to clean the work directory of", o_n.name)
+    local out, _, exitcode = do_clean(o_n)
+    if exitcode ~= 0 then
+        return fail(action, "Failed to clean the work directory of", o_n.name, out)
     end
     local special_depends = o_n.special_depends or {}
     for _, origin_target in ipairs(special_depends) do
@@ -321,8 +318,9 @@ local function port_clean(action)
         local origin = Origin:new(origin_target:gsub(":.*", ""))
         if target ~= "fetch" and target ~= "checksum" then
             action:log{"Clean work directory of special dependency", origin.name}
-            if not do_clean(origin) then
-                return fail(action, "Failed to clean the work directory of", origin.port)
+            out, _, exitcode = do_clean(origin)
+            if exitcode ~= 0 then
+                return fail(action, "Failed to clean the work directory of", origin.port, out)
             end
         end
     end
@@ -448,10 +446,25 @@ local function perform_portbuild(action)
     end
     local function extract()
         action:log{"Extract port", portname}
-        local out, err, exitcode = o_n:port_make{
+        local out, err, exitcode = Exec.run{
+            CMD.mkdir, "-p", o_n.wrkdir
+        }
+        if exitcode ~= 0 then
+            Exec.run{
+                as_root = true,
+                CMD.mkdir, "-p", o_n.wrkdir
+            }
+            Exec.run{
+                as_root = true,
+                CMD.chown, PARAM.uid, o_n.wrkdir
+            }
+        end
+        local needs_root = exitcode ~= 0
+        out, err, exitcode = o_n:port_make{
             log = true,
             errtoout = true,
             jailed = true,
+            as_root = needs_root,
             "NO_DEPENDS=1",
             "DEFER_CONFLICTS_CHECK=1",
             "DISABLE_CONFLICTS=1",
@@ -562,6 +575,8 @@ local function perform_portbuild(action)
     Lock.acquire(PackageLock, build_dep_pkgs)
     build_step(wait_for_build_deps)
     build_step(pre_clean)
+    build_step(check_license)
+    build_step(provide_special_depends)
     o_n:fetch_wait()
     build_step(extract)
     build_step(patch)

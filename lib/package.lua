@@ -111,29 +111,35 @@ local function shlibs_backup(pkg)
         for _, line in ipairs(ldconfig_lines) do
             local libpath, lib = string.match(line, " => (" .. PATH.local_lib .. "*(lib.*%.so%..*))")
             if lib then
-                TRACE("SHLIBS_BACKUP+", libpath, lib, stat_isreg(lstat(libpath).st_mode))
-                if stat_isreg(lstat(libpath).st_mode) then
-                    for _, l in ipairs(pkg_libs) do
-                        if l == lib then
-                            local backup_lib = PATH.local_lib_compat .. lib
-                            if access(backup_lib, "r") then
-                                Exec.run{
+                local stat = lstat(libpath)
+                local mode = stat and stat.st_mode
+                if mode then
+                    TRACE("SHLIBS_BACKUP+", libpath, lib, stat, mode)
+                    if stat_isreg(mode) then
+                        for _, l in ipairs(pkg_libs) do
+                            if l == lib then
+                                local backup_lib = PATH.local_lib_compat .. lib
+                                if access(backup_lib, "r") then
+                                    Exec.run{
+                                        as_root = true,
+                                        log = true,
+                                        CMD.unlink, backup_lib
+                                    }
+                                end
+                                local out, err, exitcode = Exec.run{
                                     as_root = true,
                                     log = true,
-                                    CMD.unlink, backup_lib
+                                    CMD.cp, libpath, backup_lib
                                 }
-                            end
-                            local out, err, exitcode = Exec.run{
-                                as_root = true,
-                                log = true,
-                                CMD.cp, libpath, backup_lib
-                            }
-                            TRACE("SHLIBS_BACKUP", tostring(out), err)
-                            if exitcode ~= 0 then
-                                return out, err
+                                TRACE("SHLIBS_BACKUP", tostring(out), err)
+                                if exitcode ~= 0 then
+                                    return out, err
+                                end
                             end
                         end
                     end
+                else
+                    TRACE("SHLIBS_BACKUP-", libpath, lib, stat, mode)
                 end
             end
         end

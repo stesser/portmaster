@@ -292,12 +292,27 @@ end
 
 -- clean work directory and special build depends (might also be delayed to just before program exit)
 local function port_clean(action)
-    local args = {log = true, jailed = true, "NO_CLEAN_DEPENDS=1", "clean"} -- as_root required???
+    local function do_clean(origin)
+        local args = {
+            log = true,
+            jailed = true,
+            "NO_CLEAN_DEPENDS=1",
+            "clean"
+        } -- as_root required???
+        local _, _, exitcode = origin:port_make(args)
+        if exitcode == 0 then
+            return true
+        end
+        args.as_root = true
+        _, _, exitcode = origin:port_make(args)
+        if exitcode == 0 then
+            return true
+        end
+    end
     local o_n = action.o_n
     action:log{"Clean work directory of port", o_n.name}
-    local _, _, exitcode = o_n:port_make(args)
-    if exitcode ~= 0 then
-        return false
+    if not do_clean(o_n) then
+        return fail(action, "Failed to clean the work directory of", o_n.name)
     end
     local special_depends = o_n.special_depends or {}
     for _, origin_target in ipairs(special_depends) do
@@ -306,8 +321,7 @@ local function port_clean(action)
         local origin = Origin:new(origin_target:gsub(":.*", ""))
         if target ~= "fetch" and target ~= "checksum" then
             action:log{"Clean work directory of special dependency", origin.name}
-            local _, _, exitcode = origin:port_make(args)
-            if exitcode ~= 0 then
+            if not do_clean(origin) then
                 return fail(action, "Failed to clean the work directory of", origin.port)
             end
         end
@@ -406,21 +420,33 @@ local function perform_portbuild(action)
     local special_depends = o_n.special_depends        -- check for special license and ask user to accept it (may require make extract/patch)
     local portname = o_n.name
     local pkgname_new = action.pkg_new.name
-    local function do_build()
+    local build_depends = o_n.build_depends
+    local build_dep_pkgs = pkgs_from_origin_tables(build_depends, special_depends)
+
+    local function pre_clean()
         if not Options.no_pre_clean then
             port_clean(action)
         end
+    end
+    local function check_license()
         -- may depend on OPTIONS set by make configure
-        if not PARAM.disable_licenses and not o_n:check_license() then
-            return fail(action, "License check failed")
+        if not PARAM.disable_licenses then
+            if not o_n:check_license() then
+                return fail(action, "License check failed")
+            end
         end
+    end
+    local function provide_special_depends()
         -- <se> VERIFY THAT ALL DEPENDENCIES ARE AVAILABLE AT THIS POINT!!!
         -- extract and patch the port and all special build dependencies ($make_target=extract/patch)
         TRACE("SPECIAL:", #special_depends, special_depends[1])
-        if #special_depends > 0 and not provide_special_depends(action, special_depends) then
-	   return false -- sets failure message in action
-	end
-        o_n:fetch_wait()
+        if #special_depends > 0 then
+            if not provide_special_depends(action, special_depends) then
+                return false -- sets failure message in action
+            end
+        end
+    end
+    local function extract()
         action:log{"Extract port", portname}
         local out, err, exitcode = o_n:port_make{
             log = true,
@@ -437,8 +463,10 @@ local function perform_portbuild(action)
             faillog(action, out)
             return false
         end
+    end
+    local function patch()
         action:log{"Patch port", portname}
-        out, err, exitcode = o_n:port_make{
+        local out, err, exitcode = o_n:port_make{
             log = true,
             errtoout = true,
             jailed = true,
@@ -453,7 +481,9 @@ local function perform_portbuild(action)
             faillog(action, out)
             return false
         end
-        --[[
+    end
+    --[[
+    local function conflicts()
         -- check whether build of new port is in conflict with currently installed version
         local deleted = {}
         local conflicts = check_build_conflicts (action)
@@ -467,10 +497,12 @@ local function perform_portbuild(action)
                 break
             end
         end
-        --]]
+    end
+    --]]
+    local function build()
         -- build port
         action:log{"Build port", portname}
-        out, err, exitcode = o_n:port_make{
+        local out, err, exitcode = o_n:port_make{
             log = true,
             errtoout = true,
             jailed = true,
@@ -485,9 +517,11 @@ local function perform_portbuild(action)
             faillog(action, out)
             return false
         end
+    end
+    local function stage()
         --stage port
         action:log{"Install port", portname, "to staging area"}
-        out, err, exitcode = o_n:port_make{
+        local out, err, exitcode = o_n:port_make{
             log = true,
             errtoout = true,
             jailed = true,
@@ -502,27 +536,39 @@ local function perform_portbuild(action)
             return false
         end
     end
-    local function check_failed(pkgs)
-        for _, p in ipairs(pkgs) do
-            TRACE("FAILED?", p)
-            local a = get(p)
-            if not a or failed(a) then
-                return p
+    local function wait_for_build_deps()
+        local function check_failed(pkgs)
+            for _, p in ipairs(pkgs) do
+                TRACE("FAILED?", p)
+                local a = get(p)
+                if not a or failed(a) then
+                    return p
+                end
             end
+        end
+        local failed_build_dep = check_failed(build_dep_pkgs)
+        if failed_build_dep then
+            fail(action, "Build of", pkgname_new, "skipped because of failed dependency:", failed_build_dep)
+        end
+    end
+    local function build_step(step)
+        if not failed(action) then
+            step()
         end
     end
 
-    local build_depends = o_n.build_depends
     TRACE("perform_portbuild", portname, pkgname_new, special_depends)
     -- wait for all packages of build dependencies being available
-    local build_dep_pkgs = pkgs_from_origin_tables(build_depends, special_depends)
     Lock.acquire(PackageLock, build_dep_pkgs)
-    local failed_build_dep = check_failed(build_dep_pkgs)
-    if failed_build_dep then
-        fail(action, "Build of", pkgname_new, "skipped because of failed dependency:", failed_build_dep)
-    end
+    build_step(wait_for_build_deps)
+    build_step(pre_clean)
+    o_n:fetch_wait()
+    build_step(extract)
+    build_step(patch)
+    --build_step(conflicts)
+    build_step(build)
+    build_step(stage)
     build_dep_pkgs.shared = true
-    do_build()
     Lock.release(PackageLock, build_dep_pkgs)
     return not failed(action)
 end

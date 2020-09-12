@@ -152,17 +152,18 @@ end
 
 -------------------------------------------------------------------------------------
 -- record failure of an action and return false
-local function fail(action, ...)
+local function fail(action, msg, errlog)
     if not rawget(action, "failed_msg") then
-        local msg = table.concat({...}, " ")
         action.failed_msg = msg
         TRACE("SET_FAILED", action.pkg_new.name, msg)
     end
+    if errlog then
+        if rawget(action, "failed_log") then
+            errlog = action.failed_log .. "\n" .. errlog
+        end
+        action.failed_log = errlog
+    end
     return false
-end
-
-local function faillog(action, logmsg)
-    action.failed_log = logmsg
 end
 
 local function failed(action)
@@ -186,13 +187,13 @@ local function pkgfiles_rename(action) -- UNTESTED !!!
         for _, pkgfile_old in ipairs(pkgfiles) do
             if access(pkgfile_old, "r") and not strpfx(pkgfile_old, PATH.packages_backup) then
                 local pkgfile_new = path_concat(dirname(pkgfile_old), p_n.name .. pkgfile_old:gsub(".*(%.%w+)", "%1"))
-                local _, _, exitcode = Exec.run{
+                local _, err, exitcode = Exec.run{
                     as_root = true,
                     log = true,
                     CMD.mv, pkgfile_old, pkgfile_new
                 }
                 if exitcode ~= 0 then
-                    fail(action, "Failed to rename package file from", pkgfile_old, "to", pkgfile_new)
+                    fail(action, "Failed to rename package file from " .. pkgfile_old .. " to " .. pkgfile_new, err)
                 end
             end
         end
@@ -210,13 +211,13 @@ local function portdb_update_origin(action)
         if is_dir(portdb_dir_new) then
             return fail(action, "Target directory does already exist")
         end
-        local _, _, exitcode = Exec.run{
+        local _, err, exitcode = Exec.run{
             as_root = true,
             log = true,
             CMD.mv, portdb_dir_old, portdb_dir_new
         }
         if exitcode ~= 0 then
-            return fail(action, "Failed to rename", portdb_dir_old, "to", portdb_dir_new, "in the package database")
+            return fail(action, "Failed to rename " .. portdb_dir_old .. " to " .. portdb_dir_new .. " in the package database", err)
         end
     end
     return true
@@ -256,7 +257,7 @@ local function package_create(action)
         local as_root = PARAM.packages_ro
         local base = (as_root or jailed) and PATH.tmpdir or PATH.packages -- use random tempdir !!!
         local sufx = "." .. PARAM.package_format
-        local out, err, exitcode = o_n:port_make{
+        local _, err, exitcode = o_n:port_make{
             log = true,
             jailed = jailed,
             "_OPTIONS_OK=1",
@@ -264,25 +265,26 @@ local function package_create(action)
             "PKG_SUFX=" .. sufx,
             "package"
         }
-        if exitcode ~= 0 then
-            return fail(action, "Package file " .. pkgfile .. " could not be created:", err)
-        end
-        if as_root or jailed then
-            local tmpfile = path_concat(base, "All", pkgname .. sufx)
-            if jailed then
-                tmpfile = path_concat(PARAM.jailbase, tmpfile)
+        if exitcode == 0 then
+            if as_root or jailed then
+                local tmpfile = path_concat(base, "All", pkgname .. sufx)
+                if jailed then
+                    tmpfile = path_concat(PARAM.jailbase, tmpfile)
+                end
+                if as_root then
+                    Exec.run{
+                        as_root = true,
+                        CMD.chown, "0:0", tmpfile
+                    }
+                end
+                _, err, exitcode = Exec.run{
+                    as_root = as_root,
+                    CMD.mv, tmpfile, pkgfile
+                }
             end
-            Exec.run{
-                as_root = as_root,
-                CMD.chown, "0:0", tmpfile
-            }
-            Exec.run{
-                as_root = as_root,
-                CMD.mv, tmpfile, pkgfile
-            }
         end
-        if not Options.dry_run and not access(pkgfile, "r") then
-            return fail(action, "Package file " .. pkgfile .. " could not be created")
+        if exitcode ~= 0 or not Options.dry_run and not access(pkgfile, "r") then
+            return fail(action, "Package file " .. pkgfile .. " could not be created", err)
         end
         action.pkg_new:category_links_create(o_n.categories)
         action:log{"Package saved to file", pkgfile}
@@ -309,7 +311,7 @@ local function port_clean(action)
     action:log{"Clean work directory of port", o_n.name}
     local out, _, exitcode = do_clean(o_n)
     if exitcode ~= 0 then
-        return fail(action, "Failed to clean the work directory of", o_n.name, out)
+        return fail(action, "Failed to clean the work directory of " .. o_n.name, out)
     end
     local special_depends = o_n.special_depends or {}
     for _, origin_target in ipairs(special_depends) do
@@ -320,7 +322,7 @@ local function port_clean(action)
             action:log{"Clean work directory of special dependency", origin.name}
             out, _, exitcode = do_clean(origin)
             if exitcode ~= 0 then
-                return fail(action, "Failed to clean the work directory of", origin.port, out)
+                return fail(action, "Failed to clean the work directory of " .. origin.port, out)
             end
         end
     end
@@ -387,17 +389,16 @@ local function provide_special_depends(action, special_depends)
             local args = {
                 log = true,
                 jailed = true,
+                errtoout = true,
                 "NO_DEPENDS=1",
                 "DEFER_CONFLICTS_CHECK=1",
                 "DISABLE_CONFLICTS=1",
                 "FETCH_CMD=true",
                 target
             }
-            local out, err, exitcode = origin:port_make(args)
+            local out, _, exitcode = origin:port_make(args)
             if exitcode ~= 0 then
-                fail(action, "Failed to provide special dependency", origin_target .. ":")
-                faillog(action, out)
-                return false
+                return fail(action, "Failed to provide special dependency " .. origin_target .. ":", out)
             end
         end
     end
@@ -426,6 +427,9 @@ local function perform_portbuild(action)
             port_clean(action)
         end
     end
+    local function wait_for_distfiles()
+        o_n:fetch_wait()
+    end
     local function check_license()
         -- may depend on OPTIONS set by make configure
         if not PARAM.disable_licenses then
@@ -434,7 +438,7 @@ local function perform_portbuild(action)
             end
         end
     end
-    local function provide_special_depends()
+    local function special_deps()
         -- <se> VERIFY THAT ALL DEPENDENCIES ARE AVAILABLE AT THIS POINT!!!
         -- extract and patch the port and all special build dependencies ($make_target=extract/patch)
         TRACE("SPECIAL:", #special_depends, special_depends[1])
@@ -445,18 +449,19 @@ local function perform_portbuild(action)
         end
     end
     local function extract()
+        local wrkdir_parent = path_concat(o_n.wrkdir, "..")
         action:log{"Extract port", portname}
         local out, err, exitcode = Exec.run{
-            CMD.mkdir, "-p", o_n.wrkdir
+            CMD.mkdir, "-p", wrkdir_parent
         }
         if exitcode ~= 0 then
             Exec.run{
                 as_root = true,
-                CMD.mkdir, "-p", o_n.wrkdir
+                CMD.mkdir, "-p", wrkdir_parent
             }
             Exec.run{
                 as_root = true,
-                CMD.chown, PARAM.uid, o_n.wrkdir
+                CMD.chown, PARAM.uid, wrkdir_parent
             }
         end
         local needs_root = exitcode ~= 0
@@ -464,7 +469,7 @@ local function perform_portbuild(action)
             log = true,
             errtoout = true,
             jailed = true,
-            as_root = needs_root,
+            --as_root = needs_root,
             "NO_DEPENDS=1",
             "DEFER_CONFLICTS_CHECK=1",
             "DISABLE_CONFLICTS=1",
@@ -472,9 +477,7 @@ local function perform_portbuild(action)
             "extract"
         }
         if exitcode ~= 0 then
-            fail(action, "Build failed in extract phase:")
-            faillog(action, out)
-            return false
+            return fail(action, "Build failed in extract phase:", out)
         end
     end
     local function patch()
@@ -490,9 +493,7 @@ local function perform_portbuild(action)
             "patch"
         }
         if exitcode ~= 0 then
-            fail(action, "Build failed in patch phase:")
-            faillog(action, out)
-            return false
+            return fail(action, "Build failed in patch phase:", out)
         end
     end
     --[[
@@ -522,13 +523,11 @@ local function perform_portbuild(action)
             "NO_DEPENDS=1",
             "DISABLE_CONFLICTS=1",
             "_OPTIONS_OK=1",
-    --        "MAKE_JOBS=" .. <X>, -- prepare to pass limit on the number of sub-processes to spawn
+            -- "MAKE_JOBS=" .. <X>, -- prepare to pass limit on the number of sub-processes to spawn
             "build"
         }
         if exitcode ~= 0 then
-            fail(action, "Build failed in build phase:")
-            faillog(action, out)
-            return false
+            return fail(action, "Build failed in build phase:", out)
         end
     end
     local function stage()
@@ -544,24 +543,16 @@ local function perform_portbuild(action)
             "stage"
         }
         if exitcode ~= 0 then
-            fail(action, "Build failed in stage phase:")
-            faillog(action, out)
-            return false
+            return fail(action, "Build failed in stage phase:", out)
         end
     end
-    local function wait_for_build_deps()
-        local function check_failed(pkgs)
-            for _, p in ipairs(pkgs) do
-                TRACE("FAILED?", p)
-                local a = get(p)
-                if not a or failed(a) then
-                    return p
-                end
+    local function check_build_deps()
+        for _, p in ipairs(build_dep_pkgs) do
+            TRACE("FAILED?", p)
+            local a = get(p)
+            if not a or failed(a) then
+                return fail(action, "Skipped because of failed dependency: " .. p)
             end
-        end
-        local failed_build_dep = check_failed(build_dep_pkgs)
-        if failed_build_dep then
-            fail(action, "Build of", pkgname_new, "skipped because of failed dependency:", failed_build_dep)
         end
     end
     local function build_step(step)
@@ -573,11 +564,11 @@ local function perform_portbuild(action)
     TRACE("perform_portbuild", portname, pkgname_new, special_depends)
     -- wait for all packages of build dependencies being available
     Lock.acquire(PackageLock, build_dep_pkgs)
-    build_step(wait_for_build_deps)
+    build_step(check_build_deps)
     build_step(pre_clean)
+    build_step(wait_for_distfiles)
     build_step(check_license)
-    build_step(provide_special_depends)
-    o_n:fetch_wait()
+    build_step(special_deps)
     build_step(extract)
     build_step(patch)
     --build_step(conflicts)
@@ -642,7 +633,7 @@ local function perform_installation(action)
             end
             --
             if create_backup and not p_o:backup_old_package() then
-                return fail(action, "Create backup package for", pkgname_old)
+                return fail(action, "Create backup package for " .. pkgname_old)
             end
             -- delete old package version
             if not p_o:deinstall() then
@@ -666,8 +657,8 @@ local function perform_installation(action)
         TRACE("PERFORM_INSTALLATION/PKGFILE", pkgfile)
         action:log{"Install from package file", pkgfile}
         -- <se> DEAL WITH CONFLICTS ONLY DETECTED BY PLIST CHECK DURING PKG REGISTRATION!!!
-        local out, err = p_n:install()
-        if not out then
+        local out, err, exitcode = p_n:install()
+        if exitcode ~= 0 then
             -- OUTPUT
             if not Options.jailed then
                 p_n:deinstall() -- OUTPUT
@@ -679,21 +670,21 @@ local function perform_installation(action)
             {"Rename", pkgfile, "to", pkgfile .. ".NOTOK after failed installation")
             os.rename(pkgfile, pkgfile .. ".NOTOK")
             --]]
-            return fail(action, "Failed to install from package file " .. pkgfile)
+            return fail(action, "Failed to install from package file " .. pkgfile, err)
         end
     else
         -- try to install new port
         TRACE("PERFORM_INSTALLATION/PORT", portname)
         action:log{"Install", pkgname_new, "built from", portname, "on base system"}
         -- <se> DEAL WITH CONFLICTS ONLY DETECTED BY PLIST CHECK DURING PKG REGISTRATION!!!
-        local result, errmsg = o_n:install()
-        if not result then
+        local result, err, exitcode = o_n:install()
+        if exitcode ~= 0 then
             -- OUTPUT
             deinstall_failed(action)
             if p_o then
                 p_o:recover()
             end
-            return fail(action, "Failed to install port", portname .. ":", errmsg)
+            return fail(action, "Failed to install port", portname .. ":", err)
         end
     end
     -- set automatic flag to the value the previous version had
@@ -774,11 +765,11 @@ local function perform_install_or_upgrade(action)
         WorkDirLock = WorkDirLock or Lock.new("WorkDirLock")
         Lock.acquire(WorkDirLock, {o_n.port})
         workdirlocked = true
-    end
-    if buildrequired then
-        if perform_portbuild(action) and Options.create_package then
-            -- create package file from staging area
-            package_create(action)
+        if perform_portbuild(action) then
+            if Options.create_package then
+                -- create package file from staging area
+                package_create(action)
+            end
         end
     end
     -- install build depends immediately but optionally delay installation of other ports
@@ -878,9 +869,9 @@ local function perform_pkg_rename(action)
     local p_o = action.pkg_old
     local p_n = action.pkg_new
     action:log{"Rename package", p_o.name, "to", p_n.name}
-    local success, errmsg = PkgDb.update_pkgname(p_o, p_n)
-    if not success then
-        return fail(action, "Rename package", p_o.name, "to", p_n.name, "failed:", errmsg)
+    local out, err, exitcode = PkgDb.update_pkgname(p_o, p_n)
+    if exitcode ~= 0 then
+        return fail(action, "Rename package " .. p_o.name .. " to " .. p_n.name .. " failed:", err)
     end
     pkgfiles_rename(action)
     action.done = true

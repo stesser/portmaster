@@ -943,13 +943,9 @@ local function perform_upgrades(action_list)
 end
 
 -- update repository database after creation of new packages
-local function perform_repo_update() -- move to Package module XXX
-    -- create repository database
+local function perform_repo_update()
     Msg.show {start = true, "Create local package repository database ..."}
-    Exec.pkg {
-        as_root = true,
-        "repo", PATH.packages .. "All"
-    }
+    PkgDb.update_repo()
 end
 
 --[[

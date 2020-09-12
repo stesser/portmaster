@@ -150,6 +150,14 @@ local function update_pkgname(p_o, p_n)
     return true
 end
 
+-- update repository database after creation of new packages
+local function update_repo() -- move to Package module XXX
+    Exec.pkg {
+        as_root = true,
+        "repo", PATH.packages .. "All"
+    }
+end
+
 return {
     query = query,
     info = info,
@@ -161,4 +169,5 @@ return {
     flavor_check = flavor_check,
     update_origin = update_origin,
     update_pkgname = update_pkgname,
+    update_repo = update_repo,
 }

@@ -90,8 +90,8 @@ setenv("LOCK_RETRIES", "120")
 
 -------------------------------------------------------------------------------------
 -- clean up when script execution ends
-local function exit_cleanup(exit_code)
-    exit_code = exit_code or 0
+local function exit_cleanup(exitcode)
+    exitcode = exitcode or 0
     Progress.clear()
     Distfile.fetch_finish()
     Options.save()
@@ -99,7 +99,7 @@ local function exit_cleanup(exit_code)
     if tracefd then
         io.close(tracefd)
     end
-    os.exit(exit_code)
+    os.exit(exitcode)
     -- not reached
 end
 

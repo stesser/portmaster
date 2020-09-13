@@ -225,7 +225,7 @@ local function install(pkg, abi)
                 CMD.pkg_b, "-v"
             }
             if exitcode ~= 0 then
-                return out, err
+                return out, err, exitcode
             end
         end
         env.SIGNATURE_TYPE = "none"
@@ -520,11 +520,13 @@ local function split_version_string(pkgname)
     local result = {}
     local function store_results(n1, a1, n2)
         local rn = #result
-        result[rn+1] = n1 ~= "" and tonumber(n1) or -1
+        TRACE("SPLIT_VERSION-STORE_RESULTS", n1, a1, n2)
+        result[rn+1] = n1 ~= "" and tonumber(n1) or -1 -- 0.6.0.p1 ---> { 1=0, 2=0, 3=0, 4=6, 5=0, 6=0, 7=0, 8=0, 9=0, 10=-1, 11=16, 12=1, epoch=0, revision=0 }
         result[rn+2] = alpha_tonumber(a1)
         result[rn+3] = n2 ~= "" and tonumber(n2) or 0
     end
-    local version = string.match(pkgname, ".*[%a%d%*]")
+    local version = string.match(pkgname, "[%a%d%._]*%*?$")
+    TRACE("SPLIT_VERSION_STRING", pkgname, version)
     local s, revision, epoch = string.match (version, "([^_,]*)_?([^,]*),?(.*)")
     version = s or version
     for n1, a1, n2 in string.gmatch(version, "(%d*)([%a%*]*)(%d*)") do
@@ -536,6 +538,7 @@ local function split_version_string(pkgname)
     end
     result.epoch = tonumber(epoch) or 0
     result.revision = tonumber(revision) or 0
+    TRACE("SPLIT_VERSION_STRING->", result)
     return result
 end
 
@@ -553,23 +556,25 @@ local function compare_versions(p1, p2)
         end
         return 0
     end
-    TRACE("COMPARE_VERSIONS", p1.name, p2.name)
-    local result
+    TRACE("COMPARE_VERSIONS", p1 and p1.name, p2 and p2.name)
     if p1 and p2 then
+        local result = 0
         local vs1 = p1.version
         local vs2 = p2.version
         if vs1 ~= vs2 then
             local v1 = split_version_string(vs1)
             local v2 = split_version_string(vs2)
             result = v1.epoch - v2.epoch
-            result = result ~= 0 and result or compare_lists(v1, v2)
-            result = result ~= 0 and result or v1.revision - v2.revision
-        else
-            result = 0
+            if result == 0 then
+                result = compare_lists(v1, v2)
+                if result == 0 then
+                    result = result ~= 0 and result or v1.revision - v2.revision
+                end
+            end
         end
+        TRACE("COMPARE_VERSIONS->", p1 and p1.name, p2 and p2.name, result)
+        return result
     end
-    TRACE("COMPARE_VERSIONS->", result, p1.name, p2.name)
-    return result
 end
 
 --

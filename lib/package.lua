@@ -521,11 +521,11 @@ local function split_version_string(pkgname)
     local function store_results(n1, a1, n2)
         local rn = #result
         TRACE("SPLIT_VERSION-STORE_RESULTS", n1, a1, n2)
-        result[rn+1] = n1 ~= "" and tonumber(n1) or -1 -- 0.6.0.p1 ---> { 1=0, 2=0, 3=0, 4=6, 5=0, 6=0, 7=0, 8=0, 9=0, 10=-1, 11=16, 12=1, epoch=0, revision=0 }
+        result[rn+1] = n1 ~= "" and tonumber(n1) or -1
         result[rn+2] = alpha_tonumber(a1)
         result[rn+3] = n2 ~= "" and tonumber(n2) or 0
     end
-    local version = string.match(pkgname, "[%a%d%._]*%*?$")
+    local version = string.match(pkgname, "[%a%d%._,]*%*?$")
     TRACE("SPLIT_VERSION_STRING", pkgname, version)
     local s, revision, epoch = string.match (version, "([^_,]*)_?([^,]*),?(.*)")
     version = s or version

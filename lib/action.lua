@@ -335,12 +335,12 @@ local function conflicting_pkgs(action, mode)
     if origin and origin.build_conflicts and origin.build_conflicts[1] then
         local list = {}
         local make_target = mode == "build_conflicts" and "check-build-conflicts" or "check-conflicts"
-        local conflicts_table = origin:port_make{
+        local conflicts_table, err, exitcode = origin:port_make{
             table = true,
             safe = true,
             make_target
         }
-        if conflicts_table then
+        if exitcode == 0 then
             for _, line in ipairs(conflicts_table) do
                 TRACE("CONFLICTS", line)
                 local pkgname = line:match("^%s+(%S+)%s*")
@@ -636,8 +636,9 @@ local function perform_installation(action)
                 return fail(action, "Create backup package for " .. pkgname_old)
             end
             -- delete old package version
-            if not p_o:deinstall() then
-                return fail(action, "Failed to deinstall old version")
+            local out, err, exitcode = p_o:deinstall()
+            if exitcode ~= 0 then
+                return fail(action, "Failed to deinstall old version", err)
             end
             -- restore pkg-static if it has been preserved
             if portname == "ports-mgmt/pkg" then
@@ -663,7 +664,10 @@ local function perform_installation(action)
             if not Options.jailed then
                 p_n:deinstall() -- OUTPUT
                 if p_o then
-                    p_o:recover()
+                    out, err, exitcode = p_o:recover()
+                    if exitcode ~= 0 then
+                        return fail("Could not re-install previously installed version after failed installation", err)
+                    end
                 end
             end
             --[[ rename only if failure was not due to a conflict with an installed package!!!
@@ -677,12 +681,15 @@ local function perform_installation(action)
         TRACE("PERFORM_INSTALLATION/PORT", portname)
         action:log{"Install", pkgname_new, "built from", portname, "on base system"}
         -- <se> DEAL WITH CONFLICTS ONLY DETECTED BY PLIST CHECK DURING PKG REGISTRATION!!!
-        local result, err, exitcode = o_n:install()
+        local out, err, exitcode = o_n:install()
         if exitcode ~= 0 then
             -- OUTPUT
             deinstall_failed(action)
             if p_o then
-                p_o:recover()
+                local out, err, exitcode = p_o:recover()
+                if exitcode ~= 0 then
+                    return fail("Could not re-install previously installed version after failed installation", err)
+                end
             end
             return fail(action, "Failed to install port", portname .. ":", err)
         end
@@ -709,7 +716,7 @@ local function perform_installation(action)
             end
         end
     end
-    return true
+    return "", "", 0
 end
 
 --[[
@@ -831,8 +838,9 @@ local function perform_deinstall(action)
     if Options.backup and not p_o:backup_old_package() then
         return false, "Failed to create backup package of " .. p_o.name
     end
-    if not p_o:deinstall() then
-        return false, "Failed to deinstall package " .. p_o.name
+    local out, err, exitcode = p_o:deinstall()
+    if exitcode ~= 0 then
+        return fail(action, "Failed to deinstall package " .. p_o.name .. ": ", err)
     end
     action.done = true
     return true
@@ -1275,6 +1283,65 @@ local function lookup_cached_action(args) -- args.pkg_new is a string not an obj
 end
 
 --
+local function check_config_allow(action, recursive)
+    local origin = action.o_n
+    TRACE("CHECK_CONFIG_ALLOW", origin, recursive)
+    if not origin then
+        return
+    end
+    local function check_ignore(name, field)
+        TRACE("CHECK_IGNORE", origin.name, name, field, rawget(origin, field))
+        if rawget(origin, field) then
+            fail(action, "Is marked " .. name .. " and will be skipped: " .. origin[field] .. "\n" ..
+                    "If you are sure you can build this port, remove the " .. name .. " line in the Makefile and try again")
+        end
+    end
+    check_ignore("BROKEN", "is_broken")
+    check_ignore("IGNORE", "is_ignore")
+    if Options.no_make_config then
+        check_ignore("FORBIDDEN", "is_forbidden")
+    end
+    if not recursive then
+        local do_config
+        if origin.is_forbidden then
+            Msg.show {origin.name, "is marked FORBIDDEN:", origin.is_forbidden}
+            if origin.all_options then
+                Msg.show {"You may try to change the port options to allow this port to build"}
+                Msg.show {}
+                if Msg.read_yn("Do you want to try again with changed port options") then
+                    do_config = true
+                end
+            end
+        elseif origin.new_options or Options.force_config then
+            do_config = true
+        elseif origin.port_options and origin.options_file and not access(origin.options_file, "r") then
+            TRACE("NO_OPTIONS_FILE", origin)
+            -- do_config = true
+        end
+        if do_config then
+            TRACE("NEW_OPTIONS", origin.new_options)
+            configure(origin, recursive)
+            return false
+        end
+    end
+    -- ask for confirmation if requested by a program option
+    if Options.interactive then
+        if not Msg.read_yn("Perform upgrade", "y") then
+            Msg.show {"Action will be skipped on user request"}
+            origin.skip = true
+            return false
+        end
+    end
+    -- warn if port is interactive
+    if origin.is_interactive then
+        Msg.show {"Warning:", origin.name, "is interactive, and will likely require attention during the build"}
+        if not Options.no_confirm then
+            Msg.read_nl("Press the [Enter] or [Return] key to continue ")
+        end
+    end
+end
+
+--
 local function action_enrich(action)
     --[[
    o_n (o_o, pkg_old)
@@ -1362,10 +1429,7 @@ local function action_enrich(action)
         return action
     end
     --
-    local origin = action.o_n
-    if origin then
-        origin:check_config_allow(rawget(action, "recursive"))
-    end
+    check_config_allow(action, rawget(action, "recursive"))
 
     TRACE("CHECK_PKG_OLD_o_o", action.o_o, action.pkg_old, action.o_n, action.pkg_new)
     if not action.pkg_old and action.o_o and action.pkg_new then
@@ -1586,7 +1650,7 @@ local function new(Action, args)
                 Msg.show{tostring(#ACTION_LIST) .. ".", describe(action)}
             end
             if action_is(action, "upgrade") then
-                action.o_n:fetch()
+                action.o_n:fetch() -- XXX call fetch() only when not installing from package file !!!
             end
         end
         return cache_add(action)

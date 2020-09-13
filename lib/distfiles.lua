@@ -126,7 +126,7 @@ local function dist_fetch(origin)
       if #really_unchecked > 0 then
          setall(distinfo, "fetching", true)
          TRACE("FETCH_MISSING", really_unchecked)
-         local lines = origin:port_make{
+         local lines, err, exitcode = origin:port_make{
             as_root = PARAM.distdir_ro,
             table = true,
             "FETCH_BEFORE_ARGS=-v",

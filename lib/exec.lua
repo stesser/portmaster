@@ -364,6 +364,7 @@ local function run(args)
     end
     if args.as_root and PARAM.uid ~= 0 then
         table.insert(args, 1, CMD.sudo)
+        args.as_root = nil
         if args.env then -- does not work with doas as CMD.sudo !!!
             for k, v in pairs(args.env) do
                 TRACE("SETENV(Sudo)", k, v)
@@ -441,32 +442,34 @@ end
 
 -- execute and log a package command that does not modify any state (JAILED)
 local function pkg(args)
+    if args.jailed then
+        if PARAM.jailbase then
+            table.insert(args, 1, "-c")
+            table.insert(args, 2, PARAM.jailbase)
+        end
+        args.jailed = nil
+    end
+    --[[
+    if Options.developer_mode then
+        table.insert(args, 1, "--debug")
+    end
+    --]]
+    local out, err, exitcode
+    table.insert(args, 1, CMD.pkg)
     for i = 1, 10 do
-        if args.jailed then
-            if PARAM.jailbase then
-                table.insert(args, 1, "-c")
-                table.insert(args, 2, PARAM.jailbase)
-            end
-            args.jailed = nil
-        end
-        --[[
-        if Options.developer_mode then
-            table.insert(args, 1, "--debug")
-        end
-        --]]
-        table.insert(args, 1, CMD.pkg)
-        local stdout, stderr, exitcode = run(args) -- XXX retry if exitcode indicates lock timeout occurred
-        TRACE("PKG->", args, exitcode, stdout, stderr)
+        TRACE("PKG<-", args)
+        out, err, exitcode = run(args) -- XXX retry if exitcode indicates lock timeout occurred
+        TRACE("PKG->", args, exitcode, out, err)
         if exitcode == 0 then
-            return stdout or args.table and {} or ""
+            return (out or args.table and {} or ""), err, 0
         elseif exitcode ~= 75 then
-            return false, stderr
+            break
         end
         TRACE("PKG!", args)
-        run{log=true, "/usr/bin/pgrep", "-lf", "/usr/local/sbin/pkg"}
+        run{log=true, "/usr/bin/pgrep", "-lf", "/usr/local/sbin/pkg"} -- XXX debugging only
         tasks_poll(1000)
     end
-    return false, "PKG DB locked"
+    return "", err, exitcode
 end
 
 --

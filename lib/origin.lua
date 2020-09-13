@@ -86,7 +86,7 @@ local function port_make(origin, args)
         end
         --]]
         if not is_dir(dir) then
-            return nil, "port directory " .. dir .. " does not exist"
+            return "", "port directory " .. dir .. " does not exist", 20 -- ENOTDIR
         end
         table.insert(args, 1, "-C")
         table.insert(args, 2, dir)
@@ -117,18 +117,18 @@ local function port_var(origin, vars)
         table.insert(args, "LOC=" .. dbginfo.name .. ":" .. dbginfo.currentline)
     end
     table.insert(args, "-DBUILD_ALL_PYTHON_FLAVORS") -- required for make -V FLAVORS to get the full list :X
-    local result, _, exitcode = port_make(origin, args)
-    TRACE("PORTVAR->", result, exitcode)
+    local out, _, exitcode = port_make(origin, args)
+    TRACE("PORTVAR->", out, exitcode)
     if exitcode ~= 0 then
-        result = nil
+        out = nil
     end
-    if result and args.table then
+    if out and args.table then
         for i = 1, #vars do
-            local value = result[i]
-            result[vars[i]] = value ~= "" and value or false
+            local value = out[i]
+            out[vars[i]] = value ~= "" and value or false
         end
     end
-    return result
+    return out
 end
 
 -- local function only to be called when the flavor is queried via __index !!!
@@ -313,65 +313,6 @@ local function lookup_moved_origin(origin)
         end
         origin.reason = r -- XXX reason might be set on wrong port (old vs. new???)
         return origin
-    end
-end
-
---
-local function check_config_allow(origin, recursive)
-    TRACE("CHECK_CONFIG_ALLOW", origin.name, recursive)
-    local function check_ignore(name, field)
-        TRACE("CHECK_IGNORE", origin.name, name, field, rawget(origin, field))
-        if rawget(origin, field) then
-            Msg.show {origin.name, "will be skipped since it is marked", name .. ":", origin[field]}
-            Msg.show {"If you are sure you can build this port, remove the", name, "line in the Makefile and try again"}
-            if not Options.no_confirm then
-                Msg.read_nl("Press the [Enter] or [Return] key to continue ")
-            end
-            origin.skip = true
-            return true
-        end
-    end
-    if check_ignore("BROKEN", "is_broken") or check_ignore("IGNORE", "is_ignore") or Options.no_make_config and
-        check_ignore("FORBIDDEN", "is_forbidden") then
-        return false
-    end
-    if not recursive then
-        local do_config
-        if origin.is_forbidden then
-            Msg.show {origin.name, "is marked FORBIDDEN:", origin.is_forbidden}
-            if origin.all_options then
-                Msg.show {"You may try to change the port options to allow this port to build"}
-                Msg.show {}
-                if Msg.read_yn("Do you want to try again with changed port options") then
-                    do_config = true
-                end
-            end
-        elseif origin.new_options or Options.force_config then
-            do_config = true
-        elseif origin.port_options and origin.options_file and not access(origin.options_file, "r") then
-            TRACE("NO_OPTIONS_FILE", origin.options_file)
-            -- do_config = true
-        end
-        if do_config then
-            TRACE("NEW_OPTIONS", origin.new_options)
-            configure(origin, recursive)
-            return false
-        end
-    end
-    -- ask for confirmation if requested by a program option
-    if Options.interactive then
-        if not Msg.read_yn("Perform upgrade", "y") then
-            Msg.show {"Action will be skipped on user request"}
-            origin.skip = true
-            return false
-        end
-    end
-    -- warn if port is interactive
-    if origin.is_interactive then
-        Msg.show {"Warning:", origin.name, "is interactive, and will likely require attention during the build"}
-        if not Options.no_confirm then
-            Msg.read_nl("Press the [Enter] or [Return] key to continue ")
-        end
     end
 end
 
@@ -685,7 +626,7 @@ return {
     new = new,
     get = get,
     check_excluded = check_excluded,
-    check_config_allow = check_config_allow,
+    --check_config_allow = check_config_allow,
     fetch = Distfile.fetch,
     fetch_wait = Distfile.fetch_wait,
     delete = delete,

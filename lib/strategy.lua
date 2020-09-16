@@ -49,7 +49,7 @@ local function add_action (args)
 end
 
 --
-local function add_missing_deps(action_list)
+local function add_missing_deps(action_list) -- XXX need to also add special dependencies, somewhat similar to build dependencies
     local start_elem = 1
     while start_elem <= #action_list do
         local dep_ports = {}
@@ -57,7 +57,7 @@ local function add_missing_deps(action_list)
         for i = start_elem, last_elem do
             local a = action_list[i]
             TRACE("ADD_MISSING_DEPS", i, #action_list)
-            if a.pkg_new and rawget(a.pkg_new, "is_installed") then
+            if a.pkg_new and rawget(a.pkg_new, "is_installed") and not Options.force then
                 -- print (a, "is already installed")
             else
                 local add_dep_hdr = "Add build dependencies of " .. a.short_name
@@ -66,7 +66,7 @@ local function add_missing_deps(action_list)
                     local o = Origin:new(dep)
                     local p = o.pkg_new
                     TRACE("ADD_MISSING_DEPS(build)", dep, o, p)
-                    if p then
+                    if p and not p.is_installed then
                         if not Action.get(p.name) and not dep_ports[dep] then
                             if add_dep_hdr then
                                 Msg.show {level = 2, start = true, add_dep_hdr}
@@ -86,7 +86,7 @@ local function add_missing_deps(action_list)
                     local o = Origin:new(dep)
                     local p = o.pkg_new
                     TRACE("ADD_MISSING_DEPS(run)", dep, o, p)
-                    if p then
+                    if p and not p.is_installed then
                         if not Action.get(p.name) and not dep_ports[dep] then
                             if add_dep_hdr then
                                 Msg.show {level = 2, start = true, add_dep_hdr}
@@ -342,15 +342,65 @@ return {
 }
 
 --[[
-Concept for parallel port building:
+Build actions:
+    Create package:
+        < Build port
 
-Locks:
-    1) FetchLock
-    2) WorkLock
-    3) PackageLock
-    4) RunnableLock
+    Install or provide (to base vs. jail) from package:
+        < Install all required run dependencies
 
-Acquired locks (the table used for the locking request) should be recorded in the action to support the release operation
+    Install or provide (to base vs. jail) from port:
+        < Build port
+        < Install available run dependencies (avoid dead-lock)
+
+    Build port:
+        < Fetch distfiles
+            < Provide build dependencies
+                < Provide run dependencies
+            < Provide special dependencies
+                < Provide required run dependencies (depending on special depends target)
+
+    Provide build dependency:
+        < Install (to base or jail) from port or package
+
+    Provide special dependency:
+        < Fetch distfiles
+        < perform build steps as indicated by special depends target
+
+    Provide run dependency:
+        < Install (to base or jail) from port or package
+
+    Clean work directories (implicit before start of next build step or after all updates done):
+        < delete no longer required work directories of port and its special dependencies
+
+    Delete package:
+        -- no dependencies
+
+    Rename installed package:
+        -- no dependencies
+
+    Update origin in package database:
+        -- no dependencies
+
+    Update repository index:
+        < Create package
+
+Options:
+    force:
+        build and install from port (ignore package, no version check)
+        does not recursively affect building of dependencies (another option needed for that?)
+    create package:
+        save ports to package repository
+    create backup package:
+        save installed version of a package before it is deleted
+    use package:
+        install from package if available
+    use package for build:
+        install build dependencies from package
+    delete build only:
+        de-install automatically installed build dependencies after last use
+    keep failed work directory:
+        do not delete work directory when build failed
 
 Fundamental operations are:
     Fetch_and_checksum_test
@@ -365,6 +415,16 @@ Fundamental operations are:
     Install package in base
     Delete installed package from jail
     Delete installed package from base system
+
+Concept for parallel port building:
+
+Locks:
+    1) FetchLock
+    2) WorkLock
+    3) PackageLock
+    4) RunnableLock
+
+Acquired locks (the table used for the locking request) should be recorded in the action to support the release operation
 
 No parallel build within a port if either of the following is defined:
     DISABLE_MAKE_JOBS -- User variable?

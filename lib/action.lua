@@ -295,14 +295,18 @@ end
 -- clean work directory and special build depends (might also be delayed to just before program exit)
 local function port_clean(action)
     local function do_clean(origin)
-        assert(origin.wrkdir, "do_clean() called for port without work directory:", origin.name)
-        local writable =  access(origin.wrkdir, "w") and  access(path_concat(origin.wrkdir, ".."), "w")
-        TRACE("DO_CLEAN", origin.name, writable)
+        TRACE("DO_CLEAN", origin)
+        local must_clean = access(origin.wrkdir, "r")
+        if not must_clean then
+            return "", "", 0
+        end
+        local need_root = not access(origin.wrkdir, "w") or not access(path_concat(origin.wrkdir, ".."), "w")
+        TRACE("DO_CLEAN_AS", origin.name, need_root)
         return origin:port_make{
             log = true,
             jailed = true,
             errtoout = true,
-            as_root = not writable,
+            as_root = need_root,
             "NO_CLEAN_DEPENDS=1",
             "clean"
         }
@@ -1295,6 +1299,17 @@ local function check_config_allow(action, recursive)
             fail(action, "Is marked " .. name .. " and will be skipped: " .. origin[field] .. "\n" ..
                     "If you are sure you can build this port, remove the " .. name .. " line in the Makefile and try again")
         end
+    end
+    -- optionally or forcefully configure port
+    local function configure(origin, force)
+        local target = force and "config" or "config-conditional"
+        return origin:port_make{
+            to_tty = true,
+            as_root = PARAM.port_dbdir_ro,
+            "-DNO_DEPENDS",
+            "-DDISABLE_CONFLICTS",
+            target
+        }
     end
     check_ignore("BROKEN", "is_broken")
     check_ignore("IGNORE", "is_ignore")

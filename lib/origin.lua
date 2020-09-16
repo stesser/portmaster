@@ -147,18 +147,6 @@ local function port_flavor_get(origin)
    --]]
 end
 
--- optionally or forcefully configure port
-local function configure(origin, force)
-    local target = force and "config" or "config-conditional"
-    return origin:port_make{
-        to_tty = true,
-        as_root = PARAM.port_dbdir_ro,
-        "-DNO_DEPENDS",
-        "-DDISABLE_CONFLICTS",
-        target
-    }
-end
-
 --[[
 -- # wait for a line stating success or failure fetching all distfiles for some port origin and return status
 local function wait_checksum(origin)
@@ -564,6 +552,7 @@ local __index_dispatch = {
     conflicts_build_var = __port_vars,
     conflicts_install_var = __port_vars,
     conflicts_var = __port_vars,
+    wrkdir = __port_vars,
     build_conflicts = __port_conflicts,
     install_conflicts = __port_conflicts,
 }

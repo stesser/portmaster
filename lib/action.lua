@@ -666,7 +666,7 @@ local function perform_installation(action)
                 if p_o then
                     out, err, exitcode = p_o:recover()
                     if exitcode ~= 0 then
-                        return fail("Could not re-install previously installed version after failed installation", err)
+                        return fail(action, "Could not re-install previously installed version after failed installation", err)
                     end
                 end
             end
@@ -688,7 +688,7 @@ local function perform_installation(action)
             if p_o then
                 local out, err, exitcode = p_o:recover()
                 if exitcode ~= 0 then
-                    return fail("Could not re-install previously installed version after failed installation", err)
+                    return fail(action, "Could not re-install previously installed version after failed installation", err)
                 end
             end
             return fail(action, "Failed to install port", portname .. ":", err)

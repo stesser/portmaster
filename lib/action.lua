@@ -756,14 +756,14 @@ local WorkDirLock
 local function perform_install_or_upgrade(action)
     local p_n = action.pkg_new
     local o_n = action.o_n
-    TRACE("P", p_n.name, p_n}
+    TRACE("P", p_n.name, p_n)
     -- has a package been identified to be used instead of building the port?
     PackageLock = PackageLock or Lock.new("PackageLock")
     Lock.acquire(PackageLock, {p_n.name})
     local pkgfile
     -- CHECK CONDITION for use of pkgfile: if build_type ~= "force" and not Options.packages and (not Options.packages_build or dep_type ~= "build") then
     if not rawget (action, "force") and (Options.packages or Options.packages_build and not p_n.is_run_dep) then
-        TRACE("P", p_n.name, p_n}
+        TRACE("P", p_n.name, p_n)
         pkgfile = p_n.pkgfile
         TRACE("PKGFILE", pkgfile)
     end

@@ -381,7 +381,7 @@ end
 -- extract and patch files, but do not try to fetch any missing dist files
 -- have dependencies of special_depends to be checked before proceeding???
 local function provide_special_depends(action, special_depends)
-    TRACE("SPECIAL_DEPENDS", table.unpack(special_depends or {}))
+    TRACE("SPECIAL_DEPENDS", special_depends)
     -- local special_depends = action.o_n.special_depends
     for _, origin_target in ipairs(special_depends) do
         -- print ("SPECIAL_DEPENDS", origin_target)
@@ -756,14 +756,14 @@ local WorkDirLock
 local function perform_install_or_upgrade(action)
     local p_n = action.pkg_new
     local o_n = action.o_n
-    TRACE("P", p_n.name, p_n.pkgfile, table.unpack(table.keys(p_n)))
+    TRACE("P", p_n.name, p_n}
     -- has a package been identified to be used instead of building the port?
     PackageLock = PackageLock or Lock.new("PackageLock")
     Lock.acquire(PackageLock, {p_n.name})
     local pkgfile
     -- CHECK CONDITION for use of pkgfile: if build_type ~= "force" and not Options.packages and (not Options.packages_build or dep_type ~= "build") then
     if not rawget (action, "force") and (Options.packages or Options.packages_build and not p_n.is_run_dep) then
-        TRACE("P", p_n.name, p_n.pkgfile, table.unpack(table.keys(p_n)))
+        TRACE("P", p_n.name, p_n}
         pkgfile = p_n.pkgfile
         TRACE("PKGFILE", pkgfile)
     end
@@ -1490,7 +1490,7 @@ local function check_licenses()
         local o = rawget(action, "o_n")
         if o and rawget(o, "license") then
             if not check_accepted(o.license) then
-                action:log{"Check license for", o.name, table.unpack(o.license)}
+                action:log{"Check license for", o.name, o.license}
                 -- o:port_make {"-DDEFER_CONFLICTS_CHECK", "-DDISABLE_CONFLICTS", "extract", "ask-license", accepted_opt}
                 -- o:port_make {"clean"}
                 set_accepted(o.license)
@@ -1554,8 +1554,8 @@ local actions_started = 0
 local function __index(action, k)
     local function __depends(action, k)
         local o_n = action.o_n
-        TRACE("DEP_REF", k, o_n and table.unpack(o_n[k]) or nil)
         if o_n then
+            TRACE("DEP_REF", k, o_n[k])
             return o_n[k]
             -- k = string.match (k, "[^_]+")
             -- return o_n.depends (action.o_n, k)

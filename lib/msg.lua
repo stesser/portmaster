@@ -208,7 +208,7 @@ end
 
 -- print $prompt and read checked user input
 local function read_answer(prompt, default, choices)
-    TRACE("READ_ANSWER", prompt, default, table.unpack(choices))
+    TRACE("READ_ANSWER", prompt, default, choices)
     local choice
     local opt_list
     local display_default = ""

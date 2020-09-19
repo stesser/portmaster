@@ -192,7 +192,7 @@ local function tasks_poll(timeout)
             for fd in pairs(pollfds) do
                 local revents = pollfds[fd].revents
                 if revents then
-                    --TRACE("REVENTS", fd, table.unpack(table.keys(revents)))
+                    --TRACE("REVENTS", fd, revents)
                     if revents.IN then
                         local data = read (fd, 128 * 1024) -- 4096 max on FreeBSD
                         if #data > 0 then
@@ -244,7 +244,7 @@ end
 
 -------------------------------------------------------------------------------------
 local function task_create (args)
-    --TRACE("TASK_CREATE", table.unpack(args))
+    --TRACE("TASK_CREATE", args)
     local fd1r, fd1w
     local fd2r, fd2w
     if not args.to_tty then

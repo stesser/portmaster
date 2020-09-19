@@ -114,7 +114,7 @@ local function list()
     for i, v in ipairs(EXCLUDED_PORT_PREFIX) do
         table.insert(result, v .. "*")
     end
-    TRACE("EXCLUDES_LIST", table.unpack(result))
+    TRACE("EXCLUDES_LIST", result)
     return result
 end
 

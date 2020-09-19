@@ -107,7 +107,7 @@ local function acquire(lock, items)
     if not tryacquire(lock, items) then
         local co, in_main = coroutine.running()
         assert(not in_main, "Attempt to acquire lock outside of coroutine")
-        TRACE("ACQUIRE_WAIT", co, lock.name, items.shared or false, items.weight or 1, table.unpack(items))
+        TRACE("ACQUIRE_WAIT", co, lock.name, items.shared or false, items.weight or 1, items)
         blocked[items] = co
         TRACE("ACQUIRE_BLOCKED", co, items)
         for i = 1, #items do
@@ -127,7 +127,7 @@ local function acquire(lock, items)
         coroutine.yield()
         --return coroutine.yield()
     end
-    TRACE("ACQUIRE->", lock.name, table.unpack(items))
+    TRACE("ACQUIRE->", lock.name, items)
 end
 
 --
@@ -149,7 +149,7 @@ local function release_one(lock, item)
 end
 
 local function release (lock, items)
-    TRACE("RELEASE", lock.name, lock.blocked, #items, table.unpack(items))
+    TRACE("RELEASE", lock.name, lock.blocked, #items, items)
     if #items < 1 then
         TRACE("RELEASE: #items<1")
         return
@@ -176,7 +176,7 @@ local function release (lock, items)
                             lock.blocked = lock.blocked - 1
                             blocked[items] = nil
                             queue[j] = nil -- use loop with pairs(shared-queue) instead ???
-                            TRACE("RELEASE_RESUME_SHARED", lock.name, co, table.unpack(items))
+                            TRACE("RELEASE_RESUME_SHARED", lock.name, co, items)
                             coroutine.resume(co)
                         end
                     else
@@ -202,7 +202,7 @@ local function release (lock, items)
                                 lock.blocked = lock.blocked - 1
                                 blocked[items] = nil
                                 exclusive_queue[j] = nil
-                                TRACE("RELEASE_RESUME_EXCLUSIVE", lock.name, co, table.unpack(items))
+                                TRACE("RELEASE_RESUME_EXCLUSIVE", lock.name, co, items)
                                 coroutine.resume(co)
                             end
                         else
@@ -237,19 +237,19 @@ local function destroy (lock)
     assert(lock and lock.name and lock.blocked == 0)
     TRACE("DESTROY", lock.name, lock.blocked)
     if next(lock.shared) then
-        TRACE("DESTROY_SHARED!", lock.name, table.unpack(table.keys(lock.shared)))
+        TRACE("DESTROY_SHARED!", lock.name, lock.shared)
         lock.shared = nil
     end
     if next(lock.shared_queue) then
-        TRACE("DESTROY_SHARED_QUEUE!", lock.name, table.unpack(table.keys(lock.shared_queue)))
+        TRACE("DESTROY_SHARED_QUEUE!", lock.name, lock.shared_queue)
         lock.shared_queue = nil
     end
     if next(lock.exclusive) then
-        TRACE("DESTROY_EXCLUSIVE!", lock.name, table.unpack(table.keys(lock.exclusive)))
+        TRACE("DESTROY_EXCLUSIVE!", lock.name, lock.exclusive)
         lock.exclusive = nil
     end
     if next(lock.exclusive_queue) then
-        TRACE("DESTROY_EXCLUSIVE_QUEUE!", lock.name, table.unpack(table.keys(lock.exclusive_queue)))
+        TRACE("DESTROY_EXCLUSIVE_QUEUE!", lock.name, lock.exclusive_queue)
         lock.exclusive_queue = nil
     end
     LOCKS[lock.name] = nil

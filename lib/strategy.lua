@@ -185,8 +185,8 @@ local function add_multiple(args)
             end
         end
     end
-    TRACE("PORTS_ADD_MULTIPLE-<", table.unpack(args))
-    TRACE("PORTS_ADD_MULTIPLE->", table.unpack(pattern_table))
+    TRACE("PORTS_ADD_MULTIPLE-<", args)
+    TRACE("PORTS_ADD_MULTIPLE->", pattern_table)
     ports_update {filter_match}
     for _, v in ipairs(args) do
         if string.match(v, "/") and access(path_concat(PATH.portsdir, v, "Makefile"), "r") then

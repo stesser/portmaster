@@ -336,12 +336,41 @@ local function execute()
 end
 
 return {
-    add_multiple= add_multiple,
+    add_multiple = add_multiple,
     add_all_outdated = add_all_outdated,
     execute = execute,
 }
 
 --[[
+Build goals:
+    create package
+        < fetch/checksum
+        < provide build dependencies
+        < build (in base or jail)
+
+    install to base or jail
+        from package (if pkgfile exists and not forced to rebuild)
+            < verify package integrity
+            < install run-dependencies
+        from port
+            < fetch/checksum
+            < provide build dependencies
+            < build (in base or jail)
+            < install run-dependencies
+
+    provide as dependency (includes special dependencies)
+        in jail (for options --jailed, --repo-mode)
+            from port or package --> install to jail
+            < mark for deletion (after last use as dependency)
+        in base
+            from port or package --> install to base
+            < mark for deletion (if unused and deletion of build-only tools requested)
+
+    deinstall from base
+
+    change port origin in package database
+
+
 Build actions:
     Create package:
         < Build port

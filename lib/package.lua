@@ -288,7 +288,7 @@ local function recover(pkg)
             --[[ Exec.run{ -- required ???
                 as_root = true,
                 log = true,
-                CMD.unlink, PATH.packages_backup .. pkgname .. ".t??"
+                CMD.unlink, PATH.packages_backup .. pkgname .. ".t?*"
             }--]]
             return true
         end
@@ -300,7 +300,7 @@ end
 local function file_search(pkg)
     for d in ipairs({"All", "package-backup"}) do
         local file
-        for _, f in ipairs(glob(filename {subdir = d, ext = ".t??", pkg}) or {}) do
+        for _, f in ipairs(glob(filename {subdir = d, ext = ".t?*", pkg}) or {}) do
             if file_valid_abi(f) then
                 if not file or stat(file).modification < stat(f).modification then
                     file = f
@@ -317,7 +317,7 @@ end
 local function pkg_lookup(pkg, k)
     local subdir = k == "pkgfile" and "All" or "portmaster-backup"
     local file
-    for _, f in ipairs(glob(filename {subdir = subdir, ext = ".t??", pkg}) or {}) do
+    for _, f in ipairs(glob(filename {subdir = subdir, ext = ".t?*", pkg}) or {}) do
         if file_valid_abi(f) then
             if not file or stat(file).st_mtime < stat(f).st_mtime then
                 file = f
@@ -329,7 +329,7 @@ end
 
 -- delete backup package file
 local function backup_delete(pkg)
-    local g = filename {subdir = "portmaster-backup", ext = ".t??", pkg}
+    local g = filename {subdir = "portmaster-backup", ext = ".t?*", pkg}
     for _, backupfile in pairs(glob(g) or {}) do
         TRACE("BACKUP_DELETE", backupfile, PATH.packages .. "portmaster-backup/")
         Exec.run{
@@ -343,7 +343,7 @@ end
 -- delete stale package file ==> convert to be based on pkg.pkgfile and pkg.bakfile XXX
 local function delete_old(pkg)
     local bakfile = pkg.bak_file
-    local g = filename {subdir = "*", ext = "t??", pkg}
+    local g = filename {subdir = "*", ext = "t?*", pkg}
     TRACE("DELETE_OLD", pkg.name, g)
     for _, pkgfile in pairs(glob(g) or {}) do
         TRACE("CHECK_BACKUP", pkgfile, bakfile)

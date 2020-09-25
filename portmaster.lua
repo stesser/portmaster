@@ -159,7 +159,7 @@ function TRACE(...)
         local dbginfo = debug.getinfo(3, "Sl") or debug.getinfo(2, "Sl")
         tracefd:write(tostring(os.time() - STARTTIMESECS) .. "	" .. (dbginfo.short_src or "(main)") .. ":" ..
                           dbginfo.currentline .. "\t" .. tracemsg .. "\n")
-        --tracefd:flush()
+        tracefd:flush()
     end
 end
 

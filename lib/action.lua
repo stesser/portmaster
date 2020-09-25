@@ -417,6 +417,7 @@ end
 -------------------------------------------------------------------------------------
 -- perform all steps required to build a port (extract, patch, build, stage, opt. package)
 local PackageLock
+local JobsLock
 
 local function perform_portbuild(action)
     local o_n = action.o_n
@@ -569,8 +570,11 @@ local function perform_portbuild(action)
     TRACE("perform_portbuild", portname, pkgname_new, special_depends)
     -- wait for all packages of build dependencies being available
     PackageLock:acquire(build_dep_pkgs)
+    JobsLock = JobsLock or Lock.new("Jobs", 1)
     build_step(check_build_deps)
     build_step(pre_clean)
+    local jobs = 1 -- number of processes this build might spawn
+    JobsLock:acquire{weight = jobs, pkgname_new}
     build_step(wait_for_distfiles)
     build_step(check_license)
     build_step(special_deps)
@@ -578,6 +582,7 @@ local function perform_portbuild(action)
     build_step(patch)
     --build_step(conflicts)
     build_step(build)
+    JobsLock:release{weight = jobs, pkgname_new}
     build_step(stage)
     build_dep_pkgs.shared = true
     PackageLock:release(build_dep_pkgs)

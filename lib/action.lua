@@ -180,7 +180,7 @@ local function pkgfiles_rename(action) -- UNTESTED !!!
         print "BUG"
     end
     TRACE("PKGFILES_RENAME", action, p_o.name, p_n.name)
-    local file_pattern = Package.filename{subdir = "*", ext = "t??", p_o}
+    local file_pattern = Package.filename{subdir = "*", ext = "t?*", p_o}
     TRACE("PKGFILES_RENAME-Pattern", file_pattern)
     local pkgfiles = glob(file_pattern)
     if pkgfiles then

@@ -425,6 +425,7 @@ local function perform_portbuild(action)
     local pkgname_new = action.pkg_new.name
     local build_depends = o_n.build_depends
     local build_dep_pkgs = pkgs_from_origin_tables(build_depends, special_depends)
+    build_dep_pkgs.shared = true
 
     local function pre_clean()
         if not Options.no_pre_clean then

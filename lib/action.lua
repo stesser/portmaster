@@ -568,7 +568,7 @@ local function perform_portbuild(action)
 
     TRACE("perform_portbuild", portname, pkgname_new, special_depends)
     -- wait for all packages of build dependencies being available
-    Lock.acquire(PackageLock, build_dep_pkgs)
+    PackageLock:acquire(build_dep_pkgs)
     build_step(check_build_deps)
     build_step(pre_clean)
     build_step(wait_for_distfiles)
@@ -580,7 +580,7 @@ local function perform_portbuild(action)
     build_step(build)
     build_step(stage)
     build_dep_pkgs.shared = true
-    Lock.release(PackageLock, build_dep_pkgs)
+    PackageLock:release(build_dep_pkgs)
     return not failed(action)
 end
 

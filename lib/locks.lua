@@ -30,6 +30,7 @@ SUCH DAMAGE.
 
 --local TRACE = print
 local LOCKS = {}
+local Lock = {}
 
 local tasks_blocked = 0 -- number of coroutines blocked by wait_cond -- CURRENTLY UNUSED -> move to Locks module
 local blocked = {} --! table for all currently blocked coroutines waiting for a lock to be acquired
@@ -40,10 +41,28 @@ local blocked = {} --! table for all currently blocked coroutines waiting for a 
 -- @param name name of the lock for identification in trace and debug messages
 -- @param avail optional limit on the number of exclusive locks to grant for different items using this lock structure
 -- @retval lock the initialized lock structure
+local mt = {
+    __index = Lock,
+    -- __newindex = __newindex, -- DEBUGGING ONLY
+    __tostring = function(self)
+        return self.name
+    end,
+}
+
 local function new(name, avail)
-    local lock = {name = name, avail = avail, blocked = 0, shared = {}, exclusive = {}, shared_queue = {}, exclusive_queue = {}}
-    LOCKS[name] = lock
-    return lock
+    if name then
+        local L =LOCKS[name]
+        if not L then
+            L = {name = name, avail = avail, blocked = 0, shared = {}, exclusive = {}, shared_queue = {}, exclusive_queue = {}}
+            L.__class = Lock
+            setmetatable(L, mt)
+            LOCKS[name] = L
+            TRACE("NEW Lock", name)
+        else
+            TRACE("NEW Lock", name, "(cached)")
+        end
+        return L
+    end
 end
 
 --!
@@ -311,15 +330,15 @@ TRACE ("EXIT")
 --]]
 
 -- module interface
-return {
-    new = new,
-    destroy = destroy,
-    acquire = acquire,
-    release = release,
-    tryacquire = tryacquire,
-    blocked_tasks = blocked_tasks,
-    trace_locked = trace_locked,
-}
+Lock.new = new
+Lock.destroy = destroy
+Lock.acquire = acquire
+Lock.release = release
+Lock.tryacquire = tryacquire
+Lock.blocked_tasks = blocked_tasks
+Lock.trace_locked = trace_locked
+
+return Lock
 
 --[[
 

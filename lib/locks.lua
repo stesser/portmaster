@@ -27,7 +27,6 @@ SUCH DAMAGE.
 
 -------------------------------------------------------------------------------
 
---local TRACE = print
 local Lock = {} -- Lock module
 local LOCKS = {} -- table of all created lock objects
 
@@ -53,7 +52,7 @@ local function new(name, avail)
             L = {name = name, avail = avail, blocked = 0}
             setmetatable(L, mt)
             LOCKS[name] = L
-            LockCache[name] = {}
+            LockCache[L] = {}
             TRACE("Lock.NEW", name)
         else
             TRACE("Lock.NEW", name, "(cached)")
@@ -74,18 +73,14 @@ end
 -- @todo recursive locking or upgrading from a shared to a exclusive lock is not supported (yet?)
 local function tryacquire(lock, items)
     local function islocked(lock, items)
-        local shared = items.shared
         local avail = lock.avail
         if avail and avail < (items.weight or 1) then
             return true
         end
-        for i = 1, #items do
-            local item = items[i]
+        for _, item in ipairs(items) do
             local listitem = lock[item]
-            if listitem then
-                if listitem.exclusive or not shared and listitem.sharedcount > 0 then
-                    return true
-                end
+            if listitem and listitem.acquired ~= 0 then
+                return true
             end
         end
         return false
@@ -98,21 +93,16 @@ local function tryacquire(lock, items)
         if avail then
             lock.avail = avail - (items.weight or 1)
         end
-        if shared then
-            for i = 1, #items do
-                local item = items[i]
-                local listitem = lock[item] or {sharedcount = 0}
-                listitem.sharedcount = listitem.sharedcount + 1
-                lock[item] = listitem
+        for _, item in ipairs(items) do
+            local listitem = lock[item] or {acquired = 0}
+            if shared then
+                assert(listitem.acquired >= 0)
+                listitem.acquired = listitem.acquired + 1
+            else
+                assert(listitem.acquired == 0)
+                listitem.acquired = -1
             end
-        else
-            for _, item in ipairs(items) do
-                if lock[item] then
-                    lock[item].exclusive = true
-                else
-                    lock[item] = {exclusive = true}
-                end
-            end
+            lock[item] = listitem
         end
     end
 
@@ -121,11 +111,8 @@ local function tryacquire(lock, items)
         acquire_register(lock, items)
     end
     TRACE("LOCK.TRYACQUIRE->", not locked, lock.name, items)
-    --    TRACE("LockCache:", LockCache)
-    --    TRACE("LockList:", lock)
     return not locked
 end
-
 
 -- aquire lock with parameters like { item1, item2, ..., shared=true, weight=1 }
 local count = 0
@@ -134,16 +121,16 @@ local function acquire(lock, items)
     local function acquire_enqueue(lock, items)
         TRACE("LOCK.ACQUIRE_ENQUEUE", lock.name, items)
         count = count + 1
-        local key = items.tag or "<" .. count .. ">" items.tag = nil -- XXX tag or anonymous table {}
+        local key = items.tag or "<" .. count .. ">"
+        items.tag = nil -- XXX tag or anonymous table {}
         local co = coroutine.running()
-        local lockcache = LockCache[lock.name]
+        local lockcache = LockCache[lock]
         lockcache[key] = {lock = lock, co = co, items = items}
-        for i = 1, #items do
-            local item = items[i]
+        for _, item in ipairs(items) do
             if lock[item] then
                 table.insert(lock[item], key)
             else
-                lock[item] = {sharedcount = 0, key}
+                lock[item] = {acquired = 0, key}
             end
         end
         tasks_blocked = tasks_blocked + 1
@@ -163,72 +150,64 @@ local function acquire(lock, items)
     TRACE("---")
 end
 
-local function release_items(lock, items)
-    local shared = items.shared
-    local released = {}
-    local function set_released(listitem)
-        for _, key in ipairs(listitem or {}) do
-            TRACE("LOCK.SET_RELEASED", key)
-            released[key] = true
-        end
-    end
-    local avail = lock.avail
-    if avail then
-        lock.avail = avail + (items.weight or 1)
-    end
-    for i = #items, 1, -1 do
-        local item = items[i]
-        local listitem = lock[item] or { exclusive = false, sharedcount = 0 }
-        local sharedcount = listitem.sharedcount or 0
-        local exclusive = listitem.exclusive
-        assert(not (exclusive and sharedcount ~= 0),
-            "Illegal combination of sharedcount==" .. sharedcount ..
-            " and exclusive==" .. tostring(exclusive) ..
-            " for \"" .. item .. "\"")
-        if shared then
-            assert(sharedcount > 0, "No shared lock currently acquired for \"" .. item .. "\"")
-            sharedcount = sharedcount - 1
-            if sharedcount == 0 then
-                set_released(listitem)
-            end
-        else
-            assert(exclusive, "No exclusive lock currently acquired for \"" .. item .. "\"")
-            exclusive = nil
-            set_released(listitem)
-        end
-        if sharedcount == 0 and not exclusive then
-            lock[item] = nil
-        else
-            lock[item].sharedcount = sharedcount
-            lock[item].exclusive = exclusive
-        end
-    end
-    TRACE("LOCK.RELEASE_LIST", released)
-    return released
-end
-
 --
 local function release(lock, items)
+    local function release_items(lock, items)
+        local released = {}
+        local shared = items.shared
+        local avail = lock.avail
+        if avail then
+            lock.avail = avail + (items.weight or 1)
+        end
+        for i = #items, 1, -1 do -- XXX reverse of allocation order to prevent deadlocks (required???)
+            local item = items[i]
+            local listitem = lock[item] or {}
+            local acquired = listitem.acquired or 0
+            if shared then
+                assert(acquired > 0, lock.name .. ': No shared lock currently acquired for "' .. item .. '"')
+                acquired = acquired - 1
+            else
+                assert(acquired == -1, lock.name .. ': No exclusive lock currently acquired for "' .. item .. '"')
+                acquired = 0
+            end
+            listitem.acquired = acquired
+            local lockcache = LockCache[lock]
+            if acquired == 0 then
+                for i, key in ipairs(listitem or {}) do
+                    if lockcache[key] then
+                        TRACE("LOCK.SET_RELEASED", key)
+                        released[key] = true
+                    else
+                        --listitem[i] = listitem[#listitem]
+                        --listitem[#listitem] = nil
+                        TRACE("DELETE?", i, n)
+                    end
+                end
+            end
+            lock[item] = listitem
+        end
+        TRACE("LOCK.RELEASE_LIST", released)
+        return released
+    end
+
     local function resume_unlocked(lock, released)
-        --for key, _ in pairs(released) do
-        --    local lockstate = LockCache[lock.name][key]
         TRACE("LockCache:", LockCache)
-        --local keys = table.keys(LockCache)
-        local lockcache = LockCache[lock.name]
+        local lockcache = LockCache[lock]
         assert(lockcache, "No LockCache table named " .. lock.name)
-        for key, lockstate in pairs(lockcache) do -- XXX ipairs() may fail due to deletion of active element in other coroutine
+        for key, _ in pairs(released) do
+            local lockstate = LockCache[lock][key]
+            TRACE("LOCK.WAITTEST", lockstate and (lockstate.lock == lock), lockstate)
             if lockstate and lockstate.lock == lock then
                 local tryitems = lockstate.items
-                local locked = tryacquire(lock, tryitems)
-                if locked then
+                tryitems.tag = key
+                local success = tryacquire(lock, tryitems)
+                if success then
+                    TRACE("LOCK.WAITDONE", tryitems)
                     local co = lockstate.co
+                    lock.blocked = lock.blocked - 1
+                    tasks_blocked = tasks_blocked - 1
                     lockcache[key] = nil
-                    if co then
-                        lock.blocked = lock.blocked - 1
-                        tasks_blocked = tasks_blocked - 1
-                        coroutine.resume(co)
-                        break
-                    end
+                    coroutine.resume(co)
                 end
             end
         end
@@ -295,7 +274,6 @@ Exec.finish_spawned()
 destroy(TestLock)
 
 --]]
-
 -- module interface
 Lock.new = new
 Lock.destroy = destroy

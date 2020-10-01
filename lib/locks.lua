@@ -24,20 +24,19 @@ LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
 OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 SUCH DAMAGE.
 --]]
-
 -------------------------------------------------------------------------------
 
 local Lock = {} -- Lock module
-local LOCKS = {} -- table of all created lock objects
+local LockState = {} -- table of all created lock objects
 
 local tasks_blocked = 0 -- number of coroutines blocked by wait_cond
-local LockCache = {} -- table of all currently blocked lock requests
+local LockQueue = {} -- table of all currently blocked lock requests
 
 local mt = {
     __index = Lock,
     __tostring = function(self)
         return self.name
-    end,
+    end
 }
 --!
 -- allocate and initialize lock state structure
@@ -47,12 +46,12 @@ local mt = {
 -- @retval lock the initialized lock structure
 local function new(name, avail)
     if name then
-        local L = LOCKS[name]
+        local L = LockState[name]
         if not L then
             L = {name = name, avail = avail, blocked = 0}
             setmetatable(L, mt)
-            LOCKS[name] = L
-            LockCache[L] = {}
+            LockState[name] = L
+            LockQueue[L] = {}
             TRACE("Lock.NEW", name)
         else
             TRACE("Lock.NEW", name, "(cached)")
@@ -121,11 +120,11 @@ local function acquire(lock, items)
     local function acquire_enqueue(lock, items)
         TRACE("LOCK.ACQUIRE_ENQUEUE", lock.name, items)
         count = count + 1
-        local key = items.tag or "<" .. count .. ">"
-        items.tag = nil -- XXX tag or anonymous table {}
+        local key = items.tag or "<" .. count .. ">" -- XXX tag or anonymous table {}
+        items.tag = nil
         local co = coroutine.running()
-        local lockcache = LockCache[lock]
-        lockcache[key] = {lock = lock, co = co, items = items}
+        local lockwaitrecord = LockQueue[lock]
+        lockwaitrecord[key] = {co = co, items = items}
         for _, item in ipairs(items) do
             if lock[item] then
                 table.insert(lock[item], key)
@@ -135,8 +134,8 @@ local function acquire(lock, items)
         end
         tasks_blocked = tasks_blocked + 1
         lock.blocked = lock.blocked + 1
-        TRACE("LockCache:", LockCache)
-        TRACE("LockList:", lock)
+        TRACE("LockQueue:", LockQueue)
+        TRACE("LockState:", lock)
         coroutine.yield()
     end
 
@@ -145,8 +144,8 @@ local function acquire(lock, items)
         acquire_enqueue(lock, items)
     end
     TRACE("LOCK.ACQUIRE->", lock.name, items)
-    TRACE("LockCache:", LockCache)
-    TRACE("LockList:", lock)
+    TRACE("LockQueue:", LockQueue)
+    TRACE("LockState:", lock)
     TRACE("---")
 end
 
@@ -171,42 +170,41 @@ local function release(lock, items)
                 acquired = 0
             end
             listitem.acquired = acquired
-            local lockcache = LockCache[lock]
+            local lockwaitrecord = LockQueue[lock]
             if acquired == 0 then
-                for i, key in ipairs(listitem or {}) do
-                    if lockcache[key] then
+                local unused = {}
+                for pos, key in ipairs(listitem) do
+                    if lockwaitrecord[key] then
                         TRACE("LOCK.SET_RELEASED", key)
                         released[key] = true
                     else
-                        --listitem[i] = listitem[#listitem]
-                        --listitem[#listitem] = nil
-                        TRACE("DELETE?", i, n)
+                        table.insert(unused, pos)
                     end
                 end
+                for ii = #unused, 1, -1 do -- remove from end to keep lower index value unmoved
+                    table.remove(listitem, unused[ii])
+                end
             end
-            lock[item] = listitem
+            lock[item] = #listitem > 0 and listitem or nil
         end
         TRACE("LOCK.RELEASE_LIST", released)
         return released
     end
 
     local function resume_unlocked(lock, released)
-        TRACE("LockCache:", LockCache)
-        local lockcache = LockCache[lock]
-        assert(lockcache, "No LockCache table named " .. lock.name)
+        TRACE("LockQueue:", LockQueue)
+        local lockwaitrecord = LockQueue[lock]
+        assert(lockwaitrecord, "No LockQueue table named " .. lock.name)
         for key, _ in pairs(released) do
-            local lockstate = LockCache[lock][key]
+            local lockstate = lockwaitrecord[key]
             TRACE("LOCK.WAITTEST", lockstate and (lockstate.lock == lock), lockstate)
-            if lockstate and lockstate.lock == lock then
-                local tryitems = lockstate.items
-                tryitems.tag = key
-                local success = tryacquire(lock, tryitems)
-                if success then
-                    TRACE("LOCK.WAITDONE", tryitems)
+            if lockstate then
+                if tryacquire(lock, lockstate.items) then
+                    TRACE("LOCK.WAITDONE", lockstate.items)
                     local co = lockstate.co
                     lock.blocked = lock.blocked - 1
                     tasks_blocked = tasks_blocked - 1
-                    lockcache[key] = nil
+                    lockwaitrecord[key] = nil
                     coroutine.resume(co)
                 end
             end
@@ -217,8 +215,8 @@ local function release(lock, items)
     local released = release_items(lock, items)
     --TRACE("LOCK.RELEASED", lock.name, released)
     resume_unlocked(lock, released)
-    TRACE("LockCache:", LockCache)
-    TRACE("LockList:", lock)
+    TRACE("LockQueue:", LockQueue)
+    TRACE("LockState:", lock)
     TRACE("---")
 end
 
@@ -233,7 +231,7 @@ end
 
 --
 local function trace_locked()
-    for k, v in pairs(LOCKS) do
+    for k, v in pairs(LockState) do
         TRACE("LOCK.TRACE_LOCKED", k, v)
     end
 end

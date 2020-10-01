@@ -120,8 +120,9 @@ local function dist_fetch(origin)
    origin.distfiles = distfiles
    local unchecked = fetch_required(distfiles)
    if #unchecked > 0 then
+      unchecked.tag = port.name
       fetch_lock = fetch_lock or Lock.new("FetchLock")
-      Lock.acquire(fetch_lock, unchecked)
+      fetch_lock:acquire(unchecked)
       local really_unchecked = fetch_required(unchecked) -- fetch again since we may have been blocked and sleeping
       if #really_unchecked > 0 then
          setall(distinfo, "fetching", true)
@@ -149,7 +150,7 @@ local function dist_fetch(origin)
          end
          setall(distinfo, "fetching", false)
       end
-      Lock.release(fetch_lock, unchecked)
+      fetch_lock:release(unchecked)
    end
    TRACE("FETCH->", port, success)
    return success
@@ -166,8 +167,9 @@ local function fetch_wait(origin)
       local distfiles = origin.distfiles
       TRACE("FETCH_WAIT", distfiles)
       distfiles.shared = true
-      Lock.acquire(fetch_lock, distfiles)
-      Lock.release(fetch_lock, distfiles) -- release immediately
+      distfiles.tag = origin.name
+      fetch_lock:acquire(distfiles)
+      fetch_lock:release(distfiles) -- release immediately
    end
 end
 
@@ -176,7 +178,7 @@ local function fetch_finish()
    TRACE("FETCH_FINISH")
    Exec.finish_spawned(fetch, "Finish background fetching and checking of distribution files")
    if fetch_lock then
-      Lock.destroy(fetch_lock)
+      fetch_lock:destroy()
       fetch_lock = false -- prevent further use as a table
    end
 end

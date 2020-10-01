@@ -569,12 +569,14 @@ local function perform_portbuild(action)
 
     TRACE("perform_portbuild", portname, pkgname_new, special_depends)
     -- wait for all packages of build dependencies being available
+    build_dep_pkgs.tag = pkgname_new
     PackageLock:acquire(build_dep_pkgs)
-    JobsLock = JobsLock or Lock.new("Jobs", 1)
+    JobsLock = JobsLock or Lock.new("Jobs", 2)
     build_step(check_build_deps)
     build_step(pre_clean)
     local jobs = 1 -- number of processes this build might spawn
-    JobsLock:acquire{weight = jobs, pkgname_new}
+    local jobslockitems = {weight = jobs, pkgname_new}
+    JobsLock:acquire(jobslockitems)
     build_step(wait_for_distfiles)
     build_step(check_license)
     build_step(special_deps)
@@ -582,7 +584,7 @@ local function perform_portbuild(action)
     build_step(patch)
     --build_step(conflicts)
     build_step(build)
-    JobsLock:release{weight = jobs, pkgname_new}
+    JobsLock:release(jobslockitems)
     build_step(stage)
     build_dep_pkgs.shared = true
     PackageLock:release(build_dep_pkgs)
@@ -765,7 +767,7 @@ local function perform_install_or_upgrade(action)
     TRACE("P", p_n.name, p_n)
     -- has a package been identified to be used instead of building the port?
     PackageLock = PackageLock or Lock.new("PackageLock")
-    Lock.acquire(PackageLock, {p_n.name})
+    PackageLock:acquire{p_n.name}
     local pkgfile
     -- CHECK CONDITION for use of pkgfile: if build_type ~= "force" and not Options.packages and (not Options.packages_build or dep_type ~= "build") then
     if not rawget (action, "force") and (Options.packages or Options.packages_build and not p_n.is_run_dep) then
@@ -780,7 +782,7 @@ local function perform_install_or_upgrade(action)
     if buildrequired then
         -- assert (NYI: o_n:wait_checksum ())
         WorkDirLock = WorkDirLock or Lock.new("WorkDirLock")
-        Lock.acquire(WorkDirLock, {o_n.port})
+        WorkDirLock:acquire{tag=p_n.name, o_n.port}
         workdirlocked = true
         if perform_portbuild(action) then
             if Options.create_package then
@@ -796,7 +798,7 @@ local function perform_install_or_upgrade(action)
             perform_installation(action)
         end
     end
-    Lock.release(PackageLock, {p_n.name})
+    PackageLock:release{p_n.name}
 
     -- perform some book-keeping and clean-up if a port has been built
     if not pkgfile then
@@ -810,7 +812,7 @@ local function perform_install_or_upgrade(action)
         end
     end
     if workdirlocked then
-        Lock.release(WorkDirLock, {o_n.port})
+        WorkDirLock:release{o_n.port}
     end
     -- report success or failure ...
     if not Options.dry_run then
@@ -845,6 +847,7 @@ end
 -- deinstall package files after optionally creating a backup package
 local function perform_deinstall(action)
     local p_o = action.pkg_old
+    action:log{level=1, "Deinstall old version", p_o.name}
     if Options.backup and not p_o:backup_old_package() then
         return false, "Failed to create backup package of " .. p_o.name
     end

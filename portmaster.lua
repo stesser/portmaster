@@ -133,7 +133,8 @@ function TRACE(...)
         tbl_seen[t] = true
         local result = {}
         for k, v in pairs(t) do
-            v = type(v) == "table" and table_to_string(v, level - 1) or as_string(v)
+	    k = type(k) == "table" and table_to_string(k, 1) or as_string(k)
+	    v = type(v) == "table" and table_to_string(v, level - 1) or as_string(v)
             result[#result + 1] = k .. "=" .. v
         end
         if #result == 0 then

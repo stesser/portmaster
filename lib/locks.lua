@@ -71,7 +71,7 @@ end
 -- @retval true the locks requested in the items table have been acquired
 -- @todo recursive locking or upgrading from a shared to a exclusive lock is not supported (yet?)
 local function tryacquire(lock, items)
-    local function islocked(lock, items)
+    local function islocked()
         local avail = lock.avail
         if avail and avail < (items.weight or 1) then
             return true
@@ -85,7 +85,7 @@ local function tryacquire(lock, items)
         return false
     end
 
-    local function acquire_register(lock, items)
+    local function acquire_register()
         TRACE("LOCK.ACQUIRE_REGISTER", lock.name, items)
         local shared = items.shared
         local avail = lock.avail
@@ -93,7 +93,7 @@ local function tryacquire(lock, items)
             lock.avail = avail - (items.weight or 1)
         end
         for _, item in ipairs(items) do
-            local listitem = lock[item] or {acquired = 0}
+            local listitem = lock[item] or {acquired = 0, sharedqueue = {}, exclusivequeue = {}}
             if shared then
                 assert(listitem.acquired >= 0)
                 listitem.acquired = listitem.acquired + 1
@@ -105,12 +105,11 @@ local function tryacquire(lock, items)
         end
     end
 
-    local locked = islocked(lock, items)
-    if not locked then
-        acquire_register(lock, items)
+    if not islocked() then
+        acquire_register()
+        return true
     end
-    TRACE("LOCK.TRYACQUIRE->", not locked, lock.name, items)
-    return not locked
+    TRACE("LOCK.TRYACQUIRE->", lock.name, items)
 end
 
 -- aquire lock with parameters like { item1, item2, ..., shared=true, weight=1 }
@@ -125,15 +124,19 @@ local function acquire(lock, items)
         local co = coroutine.running()
         local lockwaitrecord = LockQueue[lock]
         lockwaitrecord[key] = {co = co, items = items}
+        local shared = items.shared
         for _, item in ipairs(items) do
-            if lock[item] then
-                table.insert(lock[item], key)
+            TRACE("L", lock[item])
+            local lockitem = lock[item] or {acquired = 0, sharedqueue = {}, exclusivequeue = {}}
+            if shared then
+                lockitem.sharedqueue[key] = true
             else
-                lock[item] = {acquired = 0, key}
+                lockitem.exclusivequeue[key] = true
             end
+            lock[item] = lockitem
         end
         tasks_blocked = tasks_blocked + 1
-        lock.blocked = lock.blocked + 1
+        lock.blocked = lock.blocked + 1 -- XXX required ???
         TRACE("LockQueue:", LockQueue)
         TRACE("LockState:", lock)
         coroutine.yield()
@@ -151,70 +154,85 @@ end
 
 --
 local function release(lock, items)
-    local function release_items(lock, items)
-        local released = {}
+    local function release_items()
         local shared = items.shared
         local avail = lock.avail
         if avail then
             lock.avail = avail + (items.weight or 1)
         end
+        for _, item in ipairs(items) do
+            local listitem = lock[item] -- or {acquired = 0, sharedqueue = {}, exclusivequeue = {}, I=3}
+            if listitem then
+                local acquired = listitem.acquired
+                if shared then
+                    assert(acquired > 0, lock.name .. ': No shared lock currently acquired for "' .. item .. '"')
+                    acquired = acquired - 1
+                else
+                    assert(acquired == -1, lock.name .. ': No exclusive lock currently acquired for "' .. item .. '"')
+                    acquired = 0
+                end
+                listitem.acquired = acquired
+                lock[item] = listitem
+            end
+        end
+    end
+    local function released(shared)
+        local result = {}
+        local lockwaitrecord = LockQueue[lock]
         for i = #items, 1, -1 do -- XXX reverse of allocation order to prevent deadlocks (required???)
             local item = items[i]
-            local listitem = lock[item] or {}
-            local acquired = listitem.acquired or 0
-            if shared then
-                assert(acquired > 0, lock.name .. ': No shared lock currently acquired for "' .. item .. '"')
-                acquired = acquired - 1
-            else
-                assert(acquired == -1, lock.name .. ': No exclusive lock currently acquired for "' .. item .. '"')
-                acquired = 0
-            end
-            listitem.acquired = acquired
-            local lockwaitrecord = LockQueue[lock]
-            if acquired == 0 then
-                local unused = {}
-                for pos, key in ipairs(listitem) do
+            local listitem = lock[item] or {acquired = 0, sharedqueue = {}, exclusivequeue = {}, I=3}
+            if listitem.acquired == 0 then
+                local queue = shared and listitem.sharedqueue or listitem.exclusivequeue
+                for key, _ in pairs(queue) do
                     if lockwaitrecord[key] then
                         TRACE("LOCK.SET_RELEASED", key)
-                        released[key] = true
+                        result[key] = true
                     else
-                        table.insert(unused, pos)
+                        TRACE("LOCK.CLEAR_STALE(1)", lock.name, key, item)
+                        listitem.sharedqueue[key] = nil
+                        listitem.exclusivequeue[key] = nil
                     end
                 end
-                for ii = #unused, 1, -1 do -- remove from end to keep lower index value unmoved
-                    table.remove(listitem, unused[ii])
-                end
             end
-            lock[item] = #listitem > 0 and listitem or nil
+            lock[item] = (next(listitem.sharedqueue) or next(listitem.exclusivequeue)) and listitem or nil
         end
-        TRACE("LOCK.RELEASE_LIST", released)
-        return released
+        TRACE("LOCK.RELEASE_LIST", result)
+        return result
     end
-
-    local function resume_unlocked(lock, released)
+    local function resume_unlocked(resume_list)
         TRACE("LockQueue:", LockQueue)
         local lockwaitrecord = LockQueue[lock]
         assert(lockwaitrecord, "No LockQueue table named " .. lock.name)
-        for key, _ in pairs(released) do
+        for key, _ in pairs(resume_list) do
             local lockstate = lockwaitrecord[key]
-            TRACE("LOCK.WAITTEST", lockstate and (lockstate.lock == lock), lockstate)
+            TRACE("LOCK.WAITTEST", lock.name, key, lockstate and (lockstate.lock == lock), lockstate)
             if lockstate then
                 if tryacquire(lock, lockstate.items) then
                     TRACE("LOCK.WAITDONE", lockstate.items)
+                    for _, item in ipairs(lockstate.items) do
+                        local listitem = lock[item]
+                        if listitem then
+                            listitem.sharedqueue[key] = nil
+                            listitem.exclusivequeue[key] = nil
+                        end
+                    end
                     local co = lockstate.co
                     lock.blocked = lock.blocked - 1
                     tasks_blocked = tasks_blocked - 1
                     lockwaitrecord[key] = nil
                     coroutine.resume(co)
                 end
+            else
+                TRACE("LOCK.CLEAR_STALE(2)", lock.name, key, items)
             end
         end
     end
 
     TRACE("LOCK.RELEASE", lock.name, items)
-    local released = release_items(lock, items)
-    --TRACE("LOCK.RELEASED", lock.name, released)
-    resume_unlocked(lock, released)
+    release_items()
+    resume_unlocked(released(true))
+    resume_unlocked(released(false))
     TRACE("LockQueue:", LockQueue)
     TRACE("LockState:", lock)
     TRACE("---")

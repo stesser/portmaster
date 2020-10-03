@@ -118,7 +118,6 @@ local tracefd
 local table_expand_level = 3
 
 function TRACE(...)
-    local tbl_seen = {}
     local function as_string(v)
         v = tostring(v)
         if v == "" or string.find(v, " ") then
@@ -127,14 +126,13 @@ function TRACE(...)
         return v
     end
     local function table_to_string(t, level)
-        if level <= 0 or tbl_seen[t] then
+        if level <= 0 then
             return tostring(t)
         end
-        tbl_seen[t] = true
         local result = {}
         for k, v in pairs(t) do
-	    k = type(k) == "table" and table_to_string(k, 1) or as_string(k)
-	    v = type(v) == "table" and table_to_string(v, level - 1) or as_string(v)
+            k = type(k) == "table" and table_to_string(k, 1) or as_string(k)
+            v = type(v) == "table" and table_to_string(v, level - 1) or as_string(v)
             result[#result + 1] = k .. "=" .. v
         end
         if #result == 0 then

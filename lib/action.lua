@@ -132,7 +132,7 @@ local function describe(action)
 end
 
 --
-local previous_action_no
+local previous_action_co
 
 local function log(action, args)
     TRACE("LOG", args, action)
@@ -141,8 +141,9 @@ local function log(action, args)
             action.startno_string = "[" .. tostring(action.startno) .. "/" .. tostring(#ACTION_LIST) .. "]"
             action:log{describe(action)}
         end
-        args.start = args.start or action.startno ~= previous_action_no
-        previous_action_no = action.startno
+        local co = coroutine.running()
+        args.start = args.start or co ~= previous_action_co
+        previous_action_co = co
         table.insert(args, 1, action.startno_string)
         table.insert(args, 2, action.pkg_new.name .. ":")
     end
@@ -290,47 +291,6 @@ local function package_create(action)
     return true
 end
 
--- clean work directory and special build depends (might also be delayed to just before program exit)
-local function port_clean(action)
-    local function do_clean(origin)
-        TRACE("DO_CLEAN", origin)
-        local must_clean = access(origin.wrkdir, "r")
-        if not must_clean then
-            return "", "", 0
-        end
-        local need_root = not access(origin.wrkdir, "w") or not access(path_concat(origin.wrkdir, ".."), "w")
-        TRACE("DO_CLEAN_AS", origin.name, need_root)
-        return origin:port_make{
-            log = true,
-            jailed = true,
-            errtoout = true,
-            as_root = need_root,
-            "NO_CLEAN_DEPENDS=1",
-            "clean"
-        }
-    end
-    local o_n = action.o_n
-    action:log{"Clean work directory of port", o_n.name}
-    local out, _, exitcode = do_clean(o_n)
-    if exitcode ~= 0 then
-        return fail(action, "Failed to clean the work directory of " .. o_n.name, out)
-    end
-    local special_depends = o_n.special_depends or {}
-    for _, origin_target in ipairs(special_depends) do
-        TRACE("PORT_CLEAN_SPECIAL_DEPENDS", o_n.name, origin_target)
-        local target = target_part(origin_target)
-        local origin = Origin:new(origin_target:gsub(":.*", ""))
-        if target ~= "fetch" and target ~= "checksum" then
-            action:log{"Clean work directory of special dependency", origin.name}
-            out, _, exitcode = do_clean(origin)
-            if exitcode ~= 0 then
-                return fail(action, "Failed to clean the work directory of " .. origin.port, out)
-            end
-        end
-    end
-    return true
-end
-
 -- check conflicts of new port with installed packages (empty table if no conflicts found)
 local function conflicting_pkgs(action, mode)
     local origin = action.o_n
@@ -375,38 +335,6 @@ local function pkgs_from_origin_tables(...)
     return pkgs
 end
 
--------------------------------------------------------------------------------------
--- extract and patch files, but do not try to fetch any missing dist files
--- have dependencies of special_depends to be checked before proceeding???
-local function provide_special_depends(action, special_depends)
-    TRACE("SPECIAL_DEPENDS", special_depends)
-    -- local special_depends = action.o_n.special_depends
-    for _, origin_target in ipairs(special_depends) do
-        -- print ("SPECIAL_DEPENDS", origin_target)
-        local target = target_part(origin_target)
-        local origin = Origin:new(origin_target:gsub(":.*", "")) -- define function to strip the target ???
-        -- assert (origin:wait_checksum ())
-        if target ~= "fetch" and target ~= "checksum" then
-            -- extract from package if $target=stage and _packages is set? <se>
-            local args = {
-                log = true,
-                jailed = true,
-                errtoout = true,
-                "NO_DEPENDS=1",
-                "DEFER_CONFLICTS_CHECK=1",
-                "DISABLE_CONFLICTS=1",
-                "FETCH_CMD=true",
-                target
-            }
-            local out, _, exitcode = origin:port_make(args)
-            if exitcode ~= 0 then
-                return fail(action, "Failed to provide special dependency " .. origin_target .. ":", out)
-            end
-        end
-    end
-    return true
-end
-
 --
 local function get(pkgname)
     return rawget(ACTION_CACHE, pkgname)
@@ -416,178 +344,6 @@ end
 -- perform all steps required to build a port (extract, patch, build, stage, opt. package)
 local PackageLock
 local JobsLock
-
-local function perform_portbuild(action)
-    local o_n = action.o_n
-    local special_depends = o_n.special_depends        -- check for special license and ask user to accept it (may require make extract/patch)
-    local portname = o_n.name
-    local pkgname_new = action.pkg_new.name
-    local build_depends = o_n.build_depends
-    local build_dep_pkgs = pkgs_from_origin_tables(build_depends, special_depends)
-    build_dep_pkgs.shared = true
-
-    local function pre_clean()
-        if not Options.no_pre_clean then
-            port_clean(action)
-        end
-    end
-    local function wait_for_distfiles()
-        o_n:fetch_wait()
-    end
-    local function check_license()
-        -- may depend on OPTIONS set by make configure
-        if not PARAM.disable_licenses then
-            if not o_n:check_license() then
-                return fail(action, "License check failed")
-            end
-        end
-    end
-    local function special_deps()
-        -- <se> VERIFY THAT ALL DEPENDENCIES ARE AVAILABLE AT THIS POINT!!!
-        -- extract and patch the port and all special build dependencies ($make_target=extract/patch)
-        TRACE("SPECIAL:", #special_depends, special_depends[1])
-        if #special_depends > 0 then
-            if not provide_special_depends(action, special_depends) then
-                return false -- sets failure message in action
-            end
-        end
-    end
-    local function extract()
-        local wrkdir_parent = path_concat(o_n.wrkdir, "..")
-        action:log{"Extract port", portname}
-        local out, err, exitcode = Exec.run{
-            CMD.mkdir, "-p", wrkdir_parent
-        }
-        if exitcode ~= 0 then
-            Exec.run{
-                as_root = true,
-                CMD.mkdir, "-p", wrkdir_parent
-            }
-            Exec.run{
-                as_root = true,
-                CMD.chown, PARAM.uid, wrkdir_parent
-            }
-        end
-        local needs_root = exitcode ~= 0
-        out, err, exitcode = o_n:port_make{
-            log = true,
-            errtoout = true,
-            jailed = true,
-            --as_root = needs_root,
-            "NO_DEPENDS=1",
-            "DEFER_CONFLICTS_CHECK=1",
-            "DISABLE_CONFLICTS=1",
-            "FETCH=true",
-            "extract"
-        }
-        if exitcode ~= 0 then
-            return fail(action, "Build failed in extract phase:", out)
-        end
-    end
-    local function patch()
-        action:log{"Patch port", portname}
-        local out, err, exitcode = o_n:port_make{
-            log = true,
-            errtoout = true,
-            jailed = true,
-            "NO_DEPENDS=1",
-            "DEFER_CONFLICTS_CHECK=1",
-            "DISABLE_CONFLICTS=1",
-            "FETCH=true",
-            "patch"
-        }
-        if exitcode ~= 0 then
-            return fail(action, "Build failed in patch phase:", out)
-        end
-    end
-    --[[
-    local function conflicts()
-        -- check whether build of new port is in conflict with currently installed version
-        local deleted = {}
-        local conflicts = check_build_conflicts (action)
-        for i, pkg in ipairs (conflicts) do
-            if pkg == pkgname_old then
-                -- ??? pkgname_old is NOT DEFINED
-                action:log{"Build of", portname, "conflicts with installed package", pkg .. ", deleting old package"}
-                automatic = PkgDb.automatic_get (pkg)
-                table.insert (deleted, pkg)
-                perform_pkg_deinstall (pkg)
-                break
-            end
-        end
-    end
-    --]]
-    local function build()
-        -- build port
-        action:log{"Build port", portname}
-        local out, err, exitcode = o_n:port_make{
-            log = true,
-            errtoout = true,
-            jailed = true,
-            "NO_DEPENDS=1",
-            "DISABLE_CONFLICTS=1",
-            "_OPTIONS_OK=1",
-            -- "MAKE_JOBS=" .. <X>, -- prepare to pass limit on the number of sub-processes to spawn
-            "build"
-        }
-        if exitcode ~= 0 then
-            return fail(action, "Build failed in build phase:", out)
-        end
-    end
-    local function stage()
-        --stage port
-        action:log{"Install port", portname, "to staging area"}
-        local out, err, exitcode = o_n:port_make{
-            log = true,
-            errtoout = true,
-            jailed = true,
-            "NO_DEPENDS=1",
-            "DISABLE_CONFLICTS=1",
-            "_OPTIONS_OK=1",
-            "stage"
-        }
-        if exitcode ~= 0 then
-            return fail(action, "Build failed in stage phase:", out)
-        end
-    end
-    local function check_build_deps()
-        for _, p in ipairs(build_dep_pkgs) do
-            TRACE("FAILED?", p)
-            local a = get(p)
-            if not a or failed(a) then
-                return fail(action, "Skipped because of failed dependency: " .. p)
-            end
-        end
-    end
-    local function build_step(step)
-        if not failed(action) then
-            step()
-        end
-    end
-
-    TRACE("perform_portbuild", portname, pkgname_new, special_depends)
-    -- wait for all packages of build dependencies being available
-    build_dep_pkgs.tag = pkgname_new
-    PackageLock:acquire(build_dep_pkgs)
-    JobsLock = JobsLock or Lock.new("Jobs", 2)
-    build_step(check_build_deps)
-    build_step(pre_clean)
-    local jobs = 1 -- number of processes this build might spawn
-    local jobslockitems = {weight = jobs, pkgname_new}
-    JobsLock:acquire(jobslockitems)
-    build_step(wait_for_distfiles)
-    build_step(check_license)
-    build_step(special_deps)
-    build_step(extract)
-    build_step(patch)
-    --build_step(conflicts)
-    build_step(build)
-    JobsLock:release(jobslockitems)
-    build_step(stage)
-    build_dep_pkgs.shared = true
-    PackageLock:release(build_dep_pkgs)
-    return not failed(action)
-end
 
 -- de-install (possibly partially installed) port after installation failure
 local function deinstall_failed(action)
@@ -605,128 +361,6 @@ end
 local function perform_provide(action)
     TRACE("PROVIDE", action.pkg_new.name)
     return action.pkg_new:install()
-end
-
--- perform actual installation from a port or package
-local function perform_installation(action)
-    TRACE("PERFORM_INSTALLATION", action)
-    local o_n = action.o_n
-    local p_o = action.pkg_old
-    local p_n = action.pkg_new
-    local pkgname_old = p_o and p_o.name
-    local pkgname_new = p_n.name
-    local portname = o_n.port
-    local pkgfile = p_n.pkgfile
-    local pkg_msg_old
-    -- prepare installation, if this is an upgrade (and not a fresh install)
-    if pkgname_old then
-        TRACE("PERFORM_INSTALLATION/REMOVE_OLD_PKG", pkgname_old)
-        if not Options.jailed or PARAM.phase == "install" then
-            -- keep old package message for later comparison with new message
-            pkg_msg_old = p_o:message()
-            -- create backup package file from installed files
-            local create_backup = pkgname_old ~= pkgname_new or not pkgfile
-            -- preserve currently installed shared libraries
-            if Options.save_shared and not p_o:shlibs_backup() then
-                return fail(action, "Could not save old shared libraries to compat directory")
-            end
-            -- preserve pkg-static even when deleting the "pkg" package
-            if portname == "ports-mgmt/pkg" then
-                Exec.run{
-                    as_root = true,
-                    CMD.unlink, CMD.pkg .. "~"
-                }
-                Exec.run{
-                    as_root = true,
-                    CMD.ln, CMD.pkg, CMD.pkg .. "~"
-                }
-            end
-            --
-            if create_backup and not p_o:backup_old_package() then
-                return fail(action, "Create backup package for " .. pkgname_old)
-            end
-            -- delete old package version
-            local out, err, exitcode = p_o:deinstall()
-            if exitcode ~= 0 then
-                return fail(action, "Failed to deinstall old version", err)
-            end
-            -- restore pkg-static if it has been preserved
-            if portname == "ports-mgmt/pkg" then
-                Exec.run{
-                    as_root = true,
-                    CMD.unlink, CMD.pkg
-                }
-                Exec.run{
-                    as_root = true,
-                    CMD.mv, CMD.pkg .. "~", CMD.pkg
-                }
-            end
-        end
-    end
-    if pkgfile then
-        -- try to install from package
-        TRACE("PERFORM_INSTALLATION/PKGFILE", pkgfile)
-        action:log{"Install from package file", pkgfile}
-        -- <se> DEAL WITH CONFLICTS ONLY DETECTED BY PLIST CHECK DURING PKG REGISTRATION!!!
-        local out, err, exitcode = p_n:install()
-        if exitcode ~= 0 then
-            -- OUTPUT
-            if not Options.jailed then
-                p_n:deinstall() -- OUTPUT
-                if p_o then
-                    out, err, exitcode = p_o:recover()
-                    if exitcode ~= 0 then
-                        return fail(action, "Could not re-install previously installed version after failed installation", err)
-                    end
-                end
-            end
-            --[[ rename only if failure was not due to a conflict with an installed package!!!
-            {"Rename", pkgfile, "to", pkgfile .. ".NOTOK after failed installation")
-            os.rename(pkgfile, pkgfile .. ".NOTOK")
-            --]]
-            return fail(action, "Failed to install from package file " .. pkgfile, err)
-        end
-    else
-        -- try to install new port
-        TRACE("PERFORM_INSTALLATION/PORT", portname)
-        action:log{"Install", pkgname_new, "built from", portname, "on base system"}
-        -- <se> DEAL WITH CONFLICTS ONLY DETECTED BY PLIST CHECK DURING PKG REGISTRATION!!!
-        local out, err, exitcode = o_n:install()
-        if exitcode ~= 0 then
-            -- OUTPUT
-            deinstall_failed(action)
-            if p_o then
-                local out, err, exitcode = p_o:recover()
-                if exitcode ~= 0 then
-                    return fail(action, "Could not re-install previously installed version after failed installation", err)
-                end
-            end
-            return fail(action, "Failed to install port", portname .. ":", err)
-        end
-    end
-    -- set automatic flag to the value the previous version had
-    if p_o and p_o.is_automatic then
-        p_n:automatic_set(true)
-    end
-    -- register package name if package message changed
-    local pkg_msg_new = p_n:message()
-    if pkg_msg_old ~= pkg_msg_new then
-        action.pkgmsg = pkg_msg_new -- package message returned as field in action record ???
-    end
-    -- remove all shared libraries replaced by new versions from shlib backup directory
-    if p_o and Options.save_shared then
-        p_o:shlibs_backup_remove_stale() -- use action as argument???
-    end
-    -- delete stale package files
-    if pkgname_old then
-        if pkgname_old ~= pkgname_new then
-            p_o:delete_old()
-            if not Options.backup then
-                p_o:backup_delete()
-            end
-        end
-    end
-    return "", "", 0
 end
 
 --[[
@@ -760,58 +394,413 @@ local WorkDirLock
 
 -- install or upgrade a port
 local function perform_install_or_upgrade(action)
+    local p_o = action.pkg_old
+    local pkgname_old = p_o and p_o.name
     local p_n = action.pkg_new
+    local pkgname_new = p_n.name
+    local pkgfile = p_n.pkgfile
     local o_n = action.o_n
-    TRACE("P", p_n.name, p_n)
-    -- has a package been identified to be used instead of building the port?
-    PackageLock = PackageLock or Lock.new("PackageLock")
-    PackageLock:acquire{p_n.name}
-    local pkgfile
-    -- CHECK CONDITION for use of pkgfile: if build_type ~= "force" and not Options.packages and (not Options.packages_build or dep_type ~= "build") then
-    if not rawget (action, "force") and (Options.packages or Options.packages_build and not p_n.is_run_dep) then
-        TRACE("P", p_n.name, p_n)
-        pkgfile = p_n.pkgfile
-        TRACE("PKGFILE", pkgfile)
+    local portname = o_n.name -- o_n.port ???
+    local build_dep_pkgs
+
+    local function wait_for_distfiles()
+        o_n:fetch_wait()
     end
-    local skip_install = (Options.skip_install or Options.jailed) and not p_n.is_build_dep -- NYI: and BUILDDEP[o_n]
-    -- if not installing from a package file ...
-    local workdirlocked
-    local buildrequired = not pkgfile and not Options.fetch_only
-    if buildrequired then
-        -- assert (NYI: o_n:wait_checksum ())
-        WorkDirLock = WorkDirLock or Lock.new("WorkDirLock")
-        WorkDirLock:acquire{tag=p_n.name, o_n.port}
-        workdirlocked = true
-        if perform_portbuild(action) then
-            if Options.create_package then
-                -- create package file from staging area
-                package_create(action)
+    local function check_license()
+        -- may depend on OPTIONS set by make configure
+        if not PARAM.disable_licenses then
+            if not o_n:check_license() then
+                return fail(action, "License check failed")
             end
         end
     end
-    -- install build depends immediately but optionally delay installation of other ports
-    if not skip_install then
-        TRACE("PKGFILE2", pkgfile)
-        if not failed(action) then
-            perform_installation(action)
+    -- clean work directory and special build depends (might also be delayed to just before program exit)
+    local function port_clean()
+        local function do_clean(origin)
+            TRACE("DO_CLEAN", origin)
+            local must_clean = access(origin.wrkdir, "r")
+            if must_clean then
+                local need_root = not access(origin.wrkdir, "w") or not access(path_concat(origin.wrkdir, ".."), "w")
+                TRACE("DO_CLEAN_AS", origin.name, need_root)
+                return origin:port_make{
+                    log = true,
+                    jailed = true,
+                    errtoout = true,
+                    as_root = need_root,
+                    "NO_CLEAN_DEPENDS=1",
+                    "clean"
+                }
+            else
+                return "", "", 0
+            end
+        end
+        action:log{"Clean work directory of port", o_n.name}
+        local out, _, exitcode = do_clean(o_n)
+        if exitcode ~= 0 then
+            return fail(action, "Failed to clean the work directory of " .. o_n.name, out)
+        end
+        for _, origin_target in ipairs(special_depends or {}) do
+            TRACE("PORT_CLEAN_SPECIAL_DEPENDS", o_n.name, origin_target)
+            local target = target_part(origin_target)
+            local origin = Origin:new(origin_target:gsub(":.*", ""))
+            if target ~= "fetch" and target ~= "checksum" then
+                action:log{"Clean work directory of special dependency", origin.name}
+                out, _, exitcode = do_clean(origin)
+                if exitcode ~= 0 then
+                    return fail(action, "Failed to clean the work directory of " .. origin.port, out)
+                end
+            end
         end
     end
-    PackageLock:release{p_n.name}
+    local function special_deps()
+        TRACE("SPECIAL:", #special_depends, special_depends[1])
+        if #special_depends > 0 then
+            TRACE("SPECIAL_DEPENDS", special_depends)
+            -- local special_depends = action.o_n.special_depends
+            for _, origin_target in ipairs(special_depends) do
+                -- print ("SPECIAL_DEPENDS", origin_target)
+                local target = target_part(origin_target)
+                local origin = Origin:new(origin_target:gsub(":.*", "")) -- define function to strip the target ???
+                -- assert (origin:wait_checksum ())
+                if target ~= "fetch" and target ~= "checksum" then
+                    -- extract from package if $target=stage and _packages is set? <se>
+                    local args = {
+                        log = true,
+                        jailed = true,
+                        errtoout = true,
+                        "NO_DEPENDS=1",
+                        "DEFER_CONFLICTS_CHECK=1",
+                        "DISABLE_CONFLICTS=1",
+                        "FETCH_CMD=true",
+                        target
+                    }
+                    local out, _, exitcode = origin:port_make(args)
+                    if exitcode ~= 0 then
+                        fail(action, "Failed to provide special dependency " .. origin_target .. ":", out)
+                    end
+                end
+            end
+        end
+    end
+    local function extract()
+        local wrkdir_parent = path_concat(o_n.wrkdir, "..")
+        action:log{"Extract port", portname}
+        local _, _, exitcode = Exec.run{
+            CMD.mkdir, "-p", wrkdir_parent
+        }
+        if exitcode ~= 0 then
+            Exec.run{
+                as_root = true,
+                CMD.mkdir, "-p", wrkdir_parent
+            }
+            Exec.run{
+                as_root = true,
+                CMD.chown, PARAM.uid, wrkdir_parent
+            }
+        end
+        local out, _, exitcode = o_n:port_make{
+            log = true,
+            errtoout = true,
+            jailed = true,
+            "NO_DEPENDS=1",
+            "DEFER_CONFLICTS_CHECK=1",
+            "DISABLE_CONFLICTS=1",
+            "FETCH=true",
+            "extract"
+        }
+        if exitcode ~= 0 then
+            fail(action, "Build failed in extract phase:", out)
+        end
+    end
+    local function patch()
+        action:log{"Patch port", portname}
+        local out, _, exitcode = o_n:port_make{
+            log = true,
+            errtoout = true,
+            jailed = true,
+            "NO_DEPENDS=1",
+            "DEFER_CONFLICTS_CHECK=1",
+            "DISABLE_CONFLICTS=1",
+            "FETCH=true",
+            "patch"
+        }
+        if exitcode ~= 0 then
+            fail(action, "Build failed in patch phase:", out)
+        end
+    end
+    --[[
+    local function conflicts()
+        -- check whether build of new port is in conflict with currently installed version
+        local deleted = {}
+        local conflicts = check_build_conflicts (action)
+        for i, pkg in ipairs (conflicts) do
+            if pkg == pkgname_old then
+                -- ??? pkgname_old is NOT DEFINED
+                action:log{"Build of", portname, "conflicts with installed package", pkg .. ", deleting old package"}
+                automatic = PkgDb.automatic_get (pkg)
+                table.insert (deleted, pkg)
+                perform_pkg_deinstall (pkg)
+                break
+            end
+        end
+    end
+    --]]
+    local function build()
+        -- build port
+        action:log{"Build port", portname}
+        local out, _, exitcode = o_n:port_make{
+            log = true,
+            errtoout = true,
+            jailed = true,
+            "NO_DEPENDS=1",
+            "DISABLE_CONFLICTS=1",
+            "_OPTIONS_OK=1",
+            -- "MAKE_JOBS=" .. <X>, -- prepare to pass limit on the number of sub-processes to spawn
+            "build"
+        }
+        if exitcode ~= 0 then
+            fail(action, "Build failed in build phase:", out)
+        end
+    end
+    local function stage()
+        --stage port
+        action:log{"Install port", portname, "to staging area"}
+        local out, _, exitcode = o_n:port_make{
+            log = true,
+            errtoout = true,
+            jailed = true,
+            "NO_DEPENDS=1",
+            "DISABLE_CONFLICTS=1",
+            "_OPTIONS_OK=1",
+            "stage"
+        }
+        if exitcode ~= 0 then
+            fail(action, "Build failed in stage phase:", out)
+        end
+    end
+    local function check_build_deps()
+        for _, p in ipairs(build_dep_pkgs) do
+            TRACE("FAILED?", p)
+            local a = get(p)
+            if not a or failed(a) then
+                return fail(action, "Skipped because of failed dependency: " .. p)
+            end
+        end
+    end
+    -- create package file from staging area
+    local function create_package()
+        if Options.create_package then
+            package_create(action)
+        end
+    end
+    local function preserve_old_shared_libraries()
+        -- preserve currently installed shared libraries
+        if Options.save_shared and not p_o:shlibs_backup() then
+            return fail(action, "Could not save old shared libraries to compat directory")
+        end
+    end
+    local function preserve_precious()
+        -- preserve pkg-static even when deleting the "pkg" package
+        if portname == "ports-mgmt/pkg" then
+            Exec.run{
+                as_root = true,
+                CMD.unlink, CMD.pkg .. "~"
+            }
+            Exec.run{
+                as_root = true,
+                CMD.ln, CMD.pkg, CMD.pkg .. "~"
+            }
+        end
+    end
+    local function create_backup_package()
+        -- create backup package file from installed files
+        local create_backup = pkgname_old ~= pkgname_new or not pkgfile
+        if create_backup then
+            local out, err, exitcode = p_o:backup_old_package()
+            if exitcode ~= 0 then
+                return fail(action, "Create backup package for " .. pkgname_old, err)
+            end
+        end
+    end
+    local function delete_old_package()
+        -- delete old package version
+        local out, err, exitcode = p_o:deinstall()
+        if exitcode ~= 0 then
+            fail(action, "Failed to deinstall old version", err)
+        end
+    end
+    local function recover_precious()
+        -- restore pkg-static if it has been preserved
+        if portname == "ports-mgmt/pkg" then
+            Exec.run{
+                as_root = true,
+                CMD.unlink, CMD.pkg
+            }
+            Exec.run{
+                as_root = true,
+                CMD.mv, CMD.pkg .. "~", CMD.pkg
+            }
+        end
+    end
+    local function install_from_package()
+        -- try to install from package
+        TRACE("PERFORM_INSTALLATION/PKGFILE", p_n.pkgfile)
+        action:log{"Install from package file", p_n.pkgfile}
+        -- <se> DEAL WITH CONFLICTS ONLY DETECTED BY PLIST CHECK DURING PKG REGISTRATION!!!
+        local _, err, exitcode = p_n:install()
+        if exitcode ~= 0 then
+            p_n:deinstall() -- ignore output and exitcode
+            if not Options.jailed then
+                if p_o then
+                    _, err, exitcode = p_o:recover()
+                    if exitcode ~= 0 then
+                        fail(action, "Could not re-install previously installed version after failed installation", err)
+                    end
+                end
+            end
+            --[[ rename only if failure was not due to a conflict with an installed package!!!
+            {"Rename", pkgfile, "to", pkgfile .. ".NOTOK after failed installation")
+            os.rename(pkgfile, pkgfile .. ".NOTOK")
+            --]]
+            fail(action, "Failed to install from package file " .. p_n.pkgfile, err)
+        end
+    end
+    local function install_from_stage_area()
+        -- try to install new port
+        TRACE("PERFORM_INSTALLATION/PORT", portname)
+        action:log{"Install", pkgname_new, "built from", portname, "on base system"}
+        -- <se> DEAL WITH CONFLICTS ONLY DETECTED BY PLIST CHECK DURING PKG REGISTRATION!!!
+        local out, err, exitcode = o_n:install()
+        --InstalledLock:release(pkgname_new)
+        if exitcode ~= 0 then
+            -- OUTPUT
+            deinstall_failed(action)
+            if p_o then
+                local out, err, exitcode = p_o:recover()
+                if exitcode ~= 0 then
+                    return fail(action, "Could not re-install previously installed version after failed installation", err)
+                end
+            end
+            fail(action, "Failed to install port", portname .. ":", err)
+        end
+    end
+    -- perform actual installation from a port or package
+    local function post_install_fixup()
+        TRACE("PERFORM_INSTALLATION", action)
+        -- set automatic flag to the value the previous version had
+        if p_o and p_o.is_automatic then
+            p_n:automatic_set(true)
+        end
+    end
+    local function cleanup_old_shared_libraries()
+        -- remove all shared libraries replaced by new versions from shlib backup directory
+        if p_o and Options.save_shared then
+            p_o:shlibs_backup_remove_stale() -- use action as argument???
+        end
+    end
+    local function delete_stale_pkgfiles()
+        -- delete stale package files
+        if pkgname_old then
+            if pkgname_old ~= pkgname_new then
+                p_o:delete_old()
+                if not Options.backup then
+                    p_o:backup_delete()
+                end
+            end
+        end
+    end
+    local function build_step(step)
+        if not failed(action) then
+            step(action)
+        end
+    end
 
-    -- perform some book-keeping and clean-up if a port has been built
-    if not pkgfile then
+    TRACE("P", p_n.name, p_n)
+    -- has a package been identified to be used instead of building the port?
+    PackageLock = PackageLock or Lock.new("PackageLock")
+    -->> Packagelock(p_n.name)
+    PackageLock:acquire{p_n.name}
+    local buildrequired = not p_n.pkgfile or rawget (action, "force") or not (Options.packages or Options.packages_build and not p_n.is_run_dep)
+    TRACE("BUILDREQUIRED", buildrequired, rawget (action, "force"), Options.packages)
+    local skip_install = (Options.skip_install or Options.jailed) and not p_n.is_build_dep -- NYI: and BUILDDEP[o_n]
+    -- if not installing from a package file ...
+    if buildrequired then
+        local jobs = 1 -- number of processes this build might spawn
+        local jobslockitems = {weight = jobs, pkgname_new}
+
+        WorkDirLock = WorkDirLock or Lock.new("WorkDirLock")
+        JobsLock = JobsLock or Lock.new("JobsLock", 3)
+
+        -->> WorkDirLock(o_n.wrkdir)
+        WorkDirLock:acquire{tag=p_n.name, o_n.wrkdir}
+        TRACE("perform_portbuild", portname, pkgname_new, special_depends)
+        -- wait for all packages of build dependencies being available
+        local build_depends = o_n.build_depends
+        local special_depends = o_n.special_depends        -- check for special license and ask user to accept it (may require make extract/patch)
+        build_dep_pkgs = pkgs_from_origin_tables(build_depends, special_depends)
+        build_dep_pkgs.shared = true
+        build_dep_pkgs.tag = pkgname_new
+        -->> Packagelock(build_dep_pkgs, SHARED)
+        PackageLock:acquire(build_dep_pkgs)
+        build_step(check_build_deps)
+        if not Options.no_pre_clean then
+            build_step(port_clean)
+        end
+        -->> JobsLock(jobslockitems)
+        JobsLock:acquire(jobslockitems)
+        build_step(wait_for_distfiles)
+        build_step(check_license)
+        build_step(special_deps)
+        build_step(extract)
+        build_step(patch)
+        --build_step(conflicts)
+        build_step(build)
+        JobsLock:release(jobslockitems)
+        --<< JobsLock(jobslockitems)
+        build_step(stage)
+        build_dep_pkgs.shared = true
+        PackageLock:release(build_dep_pkgs)
+        --<< Packagelock(build_dep_pkgs, SHARED)
+        build_step(create_package)
+    end
+    -- install build depends immediately but optionally delay installation of other ports
+    if not skip_install then
+        TRACE("PKGFILE2", buildrequired, pkgfile)
+        -- prepare installation, if this is an upgrade (and not a fresh install)
+        if pkgname_old then
+            TRACE("PERFORM_INSTALLATION/REMOVE_OLD_PKG", pkgname_old)
+            if not Options.jailed or PARAM.phase == "install" then
+                build_step(create_backup_package)
+                build_step(preserve_old_shared_libraries)
+                build_step(preserve_precious)
+                build_step(delete_old_package)
+                build_step(recover_precious)
+            end
+        end
+        if buildrequired then
+            build_step(install_from_stage_area)
+        else
+            build_step(install_from_package)
+        end
+        --build_step(fetch_pkg_message)
+        build_step(post_install_fixup)
+    end
+    PackageLock:release{p_n.name}
+    --<< Packagelock(p_n.name)
+    if buildrequired then
         -- preserve file names and hashes of distfiles from new port
         -- NYI distinfo_cache_update (o_n, pkgname_new)
         -- backup clean port directory and special build depends (might also be delayed to just before program exit)
-        if not failed(action) and not Options.no_post_clean then
-            port_clean(action)
+        if not Options.no_post_clean then
+            build_step(port_clean)
             -- delete old distfiles
             -- NYI distfiles_delete_old (o_n, pkgname_old) -- OUTPUT
         end
+        WorkDirLock:release{o_n.wrkdir}
+        --<< WorkDirLock(o_n.wrkdir)
     end
-    if workdirlocked then
-        WorkDirLock:release{o_n.port}
-    end
+    build_step(cleanup_old_shared_libraries)
+    build_step(delete_stale_pkgfiles)
     -- report success or failure ...
     if not Options.dry_run then
         local failed_msg, failed_log = failed(action)
@@ -871,8 +860,6 @@ end
 --]]
 
 -------------------------------------------------------------------------------------
-local BUILDLOG = nil
-
 -- update changed port origin in the package db and move options file
 local function perform_origin_change(action)
     action:log{"Change origin of", action.pkg_old.name, "from", action.o_o.name, "to", action.o_n.name}

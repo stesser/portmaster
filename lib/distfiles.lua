@@ -122,6 +122,7 @@ local function dist_fetch(origin)
    if #unchecked > 0 then
       unchecked.tag = port.name
       fetch_lock = fetch_lock or Lock.new("FetchLock")
+      -->> FetchLock(unchecked)
       fetch_lock:acquire(unchecked)
       local really_unchecked = fetch_required(unchecked) -- fetch again since we may have been blocked and sleeping
       if #really_unchecked > 0 then
@@ -151,6 +152,7 @@ local function dist_fetch(origin)
          setall(distinfo, "fetching", false)
       end
       fetch_lock:release(unchecked)
+      --<< FetchLock(unchecked)
    end
    TRACE("FETCH->", port, success)
    return success
@@ -168,8 +170,10 @@ local function fetch_wait(origin)
       TRACE("FETCH_WAIT", distfiles)
       distfiles.shared = true
       distfiles.tag = origin.name
+      -->> FetchLock(distfiles, SHARED)
       fetch_lock:acquire(distfiles)
       fetch_lock:release(distfiles) -- release immediately
+      --<< FetchLock(distfiles, SHARED)
    end
 end
 

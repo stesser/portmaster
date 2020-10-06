@@ -75,26 +75,41 @@ end
 -- @retval true the locks requested in the items table have been acquired
 -- @todo recursive locking or upgrading from a shared to a exclusive lock is not supported (yet?)
 local function tryacquire(lock, items)
+    local shared = items.shared
+    local avail = lock.avail
+    if avail then
+        lock.avail = avail - (items.weight or 1)
+        if #items == 0 then
+            items[1] = ""
+            items.shared = true
+        end
+    end
     local function islocked()
-        local avail = lock.avail
         if avail and avail < (items.weight or 1) then
+            TRACE("TRYACQUIRE-", lock.name, avail, items.weight or 1)
             return true
         end
-        for _, item in ipairs(items) do
-            local listitem = lock[item]
-            if listitem and listitem.acquired ~= 0 then
-                return true
+        if shared then
+            for _, item in ipairs(items) do
+                local listitem = lock[item]
+                if listitem and listitem.acquired < 0 then
+                    TRACE("TRYACQUIRE_SHARED-", lock.name, item, listitem)
+                    return true
+                end
+            end
+        else
+            for _, item in ipairs(items) do
+                local listitem = lock[item]
+                if listitem and listitem.acquired ~= 0 then
+                    TRACE("TRYACQUIRE_EXCLUSIVE-", lock.name, item, listitem)
+                    return true
+                end
             end
         end
         return false
     end
     local function lockitems_register()
         TRACE("LOCK.ACQUIRE_REGISTER", lock.name, items)
-        local avail = lock.avail
-        if avail then
-            lock.avail = avail - (items.weight or 1)
-        end
-        local shared = items.shared
         for _, item in ipairs(items) do
             local listitem = lock[item] or {acquired = 0, sharedqueue = {}, exclusivequeue = {}}
             if shared then
@@ -253,9 +268,8 @@ end
 
 --
 local function trace_locked()
-    for k, v in pairs(LockState) do
-        TRACE("LOCK.TRACE_LOCKED", k, v)
-    end
+    TRACE("LOCK.LOCKSTATE", LockState)
+    TRACE("LOCK.LOCKTABLE", LockTable)
 end
 
 --

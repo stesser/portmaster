@@ -253,7 +253,7 @@ local function moved_cache_load()
             end
             io.close(movedfile)
         end
-        Msg.show {level = 2, "The list of renamed of removed ports has been loaded"}
+        Msg.show {level = 2, "The list of renamed or removed ports has been loaded"}
         Msg.show {level = 2, start = true}
     end
 end

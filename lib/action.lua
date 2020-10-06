@@ -342,8 +342,6 @@ end
 
 -------------------------------------------------------------------------------------
 -- perform all steps required to build a port (extract, patch, build, stage, opt. package)
-local PackageLock
-local JobsLock
 
 -- de-install (possibly partially installed) port after installation failure
 local function deinstall_failed(action)
@@ -391,6 +389,8 @@ end
 
 --
 local WorkDirLock
+local RunnableLock
+local JobsLock
 
 -- install or upgrade a port
 local function perform_install_or_upgrade(action)
@@ -401,6 +401,8 @@ local function perform_install_or_upgrade(action)
     local pkgfile = p_n.pkgfile
     local o_n = action.o_n
     local portname = o_n.name -- o_n.port ???
+    local build_depends = o_n.build_depends
+    local special_depends = o_n.special_depends        -- check for special license and ask user to accept it (may require make extract/patch)
     local build_dep_pkgs
 
     local function wait_for_distfiles()
@@ -464,7 +466,7 @@ local function perform_install_or_upgrade(action)
                 -- assert (origin:wait_checksum ())
                 if target ~= "fetch" and target ~= "checksum" then
                     -- extract from package if $target=stage and _packages is set? <se>
-                    local args = {
+                    local out, _, exitcode = origin:port_make{
                         log = true,
                         jailed = true,
                         errtoout = true,
@@ -474,7 +476,6 @@ local function perform_install_or_upgrade(action)
                         "FETCH_CMD=true",
                         target
                     }
-                    local out, _, exitcode = origin:port_make(args)
                     if exitcode ~= 0 then
                         fail(action, "Failed to provide special dependency " .. origin_target .. ":", out)
                     end
@@ -717,35 +718,33 @@ local function perform_install_or_upgrade(action)
 
     TRACE("P", p_n.name, p_n)
     -- has a package been identified to be used instead of building the port?
-    PackageLock = PackageLock or Lock.new("PackageLock")
-    -->> Packagelock(p_n.name)
-    PackageLock:acquire{p_n.name}
     local buildrequired = not p_n.pkgfile or rawget (action, "force") or not (Options.packages or Options.packages_build and not p_n.is_run_dep)
     TRACE("BUILDREQUIRED", buildrequired, rawget (action, "force"), Options.packages)
     local skip_install = (Options.skip_install or Options.jailed) and not p_n.is_build_dep -- NYI: and BUILDDEP[o_n]
-    -- if not installing from a package file ...
+    if not skip_install then -- XXX test whether this specific package is actually to be installed !!!
+        RunnableLock = RunnableLock or Lock.new("RunnableLock")
+        -->> RunnableLock(p_n.name)
+        RunnableLock:acquire(p_n.name)
+    end
     if buildrequired then
-        local jobs = 1 -- number of processes this build might spawn
-        local jobslockitems = {weight = jobs, pkgname_new}
-
+        -- if not installing from a package file ...
         WorkDirLock = WorkDirLock or Lock.new("WorkDirLock")
-        JobsLock = JobsLock or Lock.new("JobsLock", 3)
-
         -->> WorkDirLock(o_n.wrkdir)
         WorkDirLock:acquire{tag=p_n.name, o_n.wrkdir}
         TRACE("perform_portbuild", portname, pkgname_new, special_depends)
         -- wait for all packages of build dependencies being available
-        local build_depends = o_n.build_depends
-        local special_depends = o_n.special_depends        -- check for special license and ask user to accept it (may require make extract/patch)
         build_dep_pkgs = pkgs_from_origin_tables(build_depends, special_depends)
         build_dep_pkgs.shared = true
         build_dep_pkgs.tag = pkgname_new
-        -->> Packagelock(build_dep_pkgs, SHARED)
-        PackageLock:acquire(build_dep_pkgs)
+        -->> RunnableLock(build_dep_pkgs, SHARED)
+        RunnableLock:acquire(build_dep_pkgs)
         build_step(check_build_deps)
         if not Options.no_pre_clean then
             build_step(port_clean)
         end
+        local jobs = 1 -- number of processes this build might spawn
+        local jobslockitems = {weight = jobs, shared = true, "build"}
+        JobsLock = JobsLock or Lock.new("JobsLock", 3)
         -->> JobsLock(jobslockitems)
         JobsLock:acquire(jobslockitems)
         build_step(wait_for_distfiles)
@@ -759,7 +758,7 @@ local function perform_install_or_upgrade(action)
         --<< JobsLock(jobslockitems)
         build_step(stage)
         build_dep_pkgs.shared = true
-        PackageLock:release(build_dep_pkgs)
+        RunnableLock:release(build_dep_pkgs)
         --<< Packagelock(build_dep_pkgs, SHARED)
         build_step(create_package)
     end
@@ -782,11 +781,11 @@ local function perform_install_or_upgrade(action)
         else
             build_step(install_from_package)
         end
+        RunnableLock:release(p_n.name)
+        --<< RunnableLock(p_n.name)
         --build_step(fetch_pkg_message)
         build_step(post_install_fixup)
     end
-    PackageLock:release{p_n.name}
-    --<< Packagelock(p_n.name)
     if buildrequired then
         -- preserve file names and hashes of distfiles from new port
         -- NYI distinfo_cache_update (o_n, pkgname_new)

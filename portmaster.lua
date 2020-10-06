@@ -125,20 +125,23 @@ function TRACE(...)
         end
         return v
     end
-    local function table_to_string(t, level)
+    local function table_to_string(t, level, indent)
+        local indent2 = indent .. " "
         if level <= 0 then
             return tostring(t)
         end
         local result = {}
         for k, v in pairs(t) do
-            k = type(k) == "table" and table_to_string(k, 1) or as_string(k)
-            v = type(v) == "table" and table_to_string(v, level - 1) or as_string(v)
-            result[#result + 1] = k .. "=" .. v
+            k = type(k) == "table" and table_to_string(k, 1, "") or as_string(k)
+            v = type(v) == "table" and table_to_string(v, level - 1, indent2) or as_string(v)
+            result[#result + 1] = k .. " = " .. v
         end
         if #result == 0 then
             return "{}"
+        elseif #result == 1 then
+            return "{" .. result[1] .. "}"
         else
-            return "{ " .. table.concat(result, ", ") .. " }"
+            return "{\n" .. indent2 .. table.concat(result, ",\n" .. indent2) .. "\n" .. indent .. "}"
         end
     end
     if tracefd then
@@ -148,7 +151,7 @@ function TRACE(...)
         for i = 1, #t do
             local v
             if type(t[i]) == "table" then
-                v = table_to_string(t[i], table_expand_level)
+                v = table_to_string(t[i], table_expand_level, " ")
             else
                 v = as_string(t[i])
             end

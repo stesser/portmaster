@@ -132,7 +132,7 @@ local function describe(action)
 end
 
 --
-local previous_action_co
+local previous_action_no
 
 local function log(action, args)
     TRACE("LOG", args, action)
@@ -141,9 +141,8 @@ local function log(action, args)
             action.startno_string = "[" .. tostring(action.startno) .. "/" .. tostring(#ACTION_LIST) .. "]"
             action:log{describe(action)}
         end
-        local co = coroutine.running()
-        args.start = args.start or co ~= previous_action_co
-        previous_action_co = co
+        args.start = args.start or action.startno ~= previous_action_no
+        previous_action_no = action.startno
         table.insert(args, 1, action.startno_string)
         table.insert(args, 2, action.pkg_new.name .. ":")
     end
@@ -177,9 +176,7 @@ end
 local function pkgfiles_rename(action) -- UNTESTED !!!
     local p_n = action.pkg_new
     local p_o = action.pkg_old
-    if not p_o then
-        print "BUG"
-    end
+    assert(p_o, "No old package passed to pkgfiles_rename()")
     TRACE("PKGFILES_RENAME", action, p_o.name, p_n.name)
     local file_pattern = Package.filename{subdir = "*", ext = "t?*", p_o}
     TRACE("PKGFILES_RENAME-Pattern", file_pattern)

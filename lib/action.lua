@@ -132,7 +132,7 @@ local function describe(action)
 end
 
 --
-local previous_action_no
+local previous_action_co
 
 local function log(action, args)
     TRACE("LOG", args, action)
@@ -141,8 +141,9 @@ local function log(action, args)
             action.startno_string = "[" .. tostring(action.startno) .. "/" .. tostring(#ACTION_LIST) .. "]"
             action:log{describe(action)}
         end
-        args.start = args.start or action.startno ~= previous_action_no
-        previous_action_no = action.startno
+        local co = coroutine.running()
+        args.start = args.start or co ~= previous_action_co
+        previous_action_co = co
         table.insert(args, 1, action.startno_string)
         table.insert(args, 2, action.pkg_new.name .. ":")
     end

@@ -1585,7 +1585,7 @@ local function __index(action, k)
         return actions_started -- action.listpos
     end
     local function __jobs(action, k)
-        local p_n = action.p_n
+        local p_n = action.pkg_new
         if p_n.no_build or p_n.make_jobs_unsafe or p_n.disable_make_jobs then
             return 1
         end

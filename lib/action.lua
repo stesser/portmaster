@@ -963,11 +963,9 @@ local function packages_delete_stale()
     for _, l in ipairs(pkgnames_list) do
         if l then
             for _, pkgname in ipairs(l) do
-                if Msg.read_yn("y", "Package " .. pkgname ..
-                                   " was installed as a dependency and does not seem to used anymore, delete") then
+                if Msg.read_yn("y", "Package", pkgname, "was installed as a dependency and does not seem to be used anymore, delete") then
                     Package.deinstall(pkgname)
-                else
-                    if Msg.read_yn("y", "Mark " .. pkgname .. " as 'user installed' to protect it against automatic deletion") then
+                elseif Msg.read_yn("y", "Mark", pkgname, "as 'user installed' to protect it against automatic deletion") then
                         PkgDb.automatic_set(pkgname, false)
                     end
                 end
@@ -1322,7 +1320,7 @@ local function check_config_allow(action, recursive)
             if origin.all_options then
                 Msg.show {"You may try to change the port options to allow this port to build"}
                 Msg.show {}
-                if Msg.read_yn("Do you want to try again with changed port options") then
+                if Msg.read_yn("y", "Do you want to try again with changed port options") then
                     do_config = true
                 end
             end
@@ -1340,7 +1338,7 @@ local function check_config_allow(action, recursive)
     end
     -- ask for confirmation if requested by a program option
     if Options.interactive then
-        if not Msg.read_yn("Perform upgrade", "y") then
+        if not Msg.read_yn("y", "Perform upgrade") then
             Msg.show {"Action will be skipped on user request"}
             origin.skip = true
             return false

@@ -263,13 +263,13 @@ local function perform_actions(action_list)
     else
         Action.show_statistics(action_list)
         if Options.fetch_only then
-            if Msg.read_yn("Fetch and check distfiles required for these upgrades now?", "y") then
+            if Msg.read_yn("y", "Fetch and check distfiles required for these upgrades now?") then
                 Distfile.fetch_finish()
                 --check_fetch_success() -- display list of missing or wrong distfiles, if any
             end
         else
             Progress.clear()
-            if Msg.read_yn("Perform these upgrades now?", "y") then
+            if Msg.read_yn("y", "Perform these upgrades now?") then
                 -- perform the planned tasks in the order recorded in action_list
                 Msg.show {start = true}
                 Progress.set_max(tasks_count())

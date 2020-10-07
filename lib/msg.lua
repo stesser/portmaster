@@ -245,12 +245,12 @@ local function read_answer(prompt, default, choices)
 end
 
 -- read "y" or "n" from STDIN, with default provided for empty input lines
-local function read_yn(prompt, default)
-    if Options.default_yes then
-        default = "y"
-    end
+local function read_yn(default, ...)
+    local prompt = table.concat({...}, " ")
     if Options.default_no then
         default = "n"
+    elseif Options.default_yes then
+        default = "y"
     end
     return read_answer(prompt, default, {"y", "n"}) == "y"
 end

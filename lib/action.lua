@@ -1585,7 +1585,15 @@ local function __index(action, k)
         return actions_started -- action.listpos
     end
     local function __jobs(action, k)
-        return PARAM.ncpu // 2
+        local p_n = action.p_n
+        if p_n.no_build or p_n.make_jobs_unsafe or p_n.disable_make_jobs then
+            return 1
+        end
+        local n = p_n.make_jobs_number or (PARAM.ncpu // 2)
+        if n > p_n.make_jobs_number_limit then
+            n = p_n.make_jobs_number_limit
+        end
+        return n
     end
     local dispatch = {
         pkg_old = determine_pkg_old,

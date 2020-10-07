@@ -132,7 +132,7 @@ local count = 0
 
 local function acquire(lock, items)
     local state = lock.state
-    local function lockitems_enqueue(lock, key, items)
+    local function lockitems_enqueue(key)
         local shared = items.shared
         for _, item in ipairs(items) do
             TRACE("L", state[item])
@@ -147,7 +147,7 @@ local function acquire(lock, items)
         end
         lock.blocked = lock.blocked + 1 -- XXX required ???
     end
-    local function locktable_insert(lock, key, items)
+    local function locktable_insert(key)
         TRACE("LOCK.ACQUIRE_ENQUEUE", lock.name, items)
         local co = coroutine.running()
         local locktable = BlockedTasks[lock]
@@ -161,8 +161,8 @@ local function acquire(lock, items)
         count = count + 1
         local key = {items.tag or "<" .. count .. ">"} -- XXX tag or anonymous table {}
         items.tag = nil
-        lockitems_enqueue(lock, key, items)
-        locktable_insert(lock, key, items)
+        lockitems_enqueue(key)
+        locktable_insert(key)
         coroutine.yield()
     end
     TRACE("LOCK.ACQUIRE->", lock.name, items)

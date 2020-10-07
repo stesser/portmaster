@@ -391,6 +391,7 @@ end
 local WorkDirLock
 local RunnableLock
 local JobsLock
+local PkgDbLock
 
 -- install or upgrade a port
 local function perform_install_or_upgrade(action)
@@ -556,7 +557,7 @@ local function perform_install_or_upgrade(action)
             "NO_DEPENDS=1",
             "DISABLE_CONFLICTS=1",
             "_OPTIONS_OK=1",
-            -- "MAKE_JOBS=" .. <X>, -- prepare to pass limit on the number of sub-processes to spawn
+            "MAKE_JOBS_NUMBER_LIMIT=" .. action.jobs,
             "build"
         }
         if exitcode ~= 0 then
@@ -723,30 +724,30 @@ local function perform_install_or_upgrade(action)
     local skip_install = (Options.skip_install or Options.jailed) and not p_n.is_build_dep -- NYI: and BUILDDEP[o_n]
     if not skip_install then -- XXX test whether this specific package is actually to be installed !!!
         RunnableLock = RunnableLock or Lock.new("RunnableLock")
-        -->> RunnableLock(p_n.name)
-        RunnableLock:acquire(p_n.name)
+        -- >>>> RunnableLock(p_n.name)
+        RunnableLock:acquire(p_n.name) -- acquire exclusive lock until package is runnable
     end
     if buildrequired then
         -- if not installing from a package file ...
         WorkDirLock = WorkDirLock or Lock.new("WorkDirLock")
-        -->> WorkDirLock(o_n.wrkdir)
+        -- >>>> WorkDirLock(o_n.wrkdir)
         WorkDirLock:acquire{tag=p_n.name, o_n.wrkdir}
         TRACE("perform_portbuild", portname, pkgname_new, special_depends)
         -- wait for all packages of build dependencies being available
+        -- >>>> RunnableLock(build_dep_pkgs, SHARED)
         build_dep_pkgs = pkgs_from_origin_tables(build_depends, special_depends)
         build_dep_pkgs.shared = true
         build_dep_pkgs.tag = pkgname_new
-        -->> RunnableLock(build_dep_pkgs, SHARED)
-        RunnableLock:acquire(build_dep_pkgs)
+        RunnableLock:acquire(build_dep_pkgs) -- acquire shared lock to wait for build deps to become runnable
         build_step(check_build_deps)
+        JobsLock = JobsLock or Lock.new("JobsLock", PARAM.ncpu) -- limit number of processes to one per (virtual) core
+        -- XXX action.jobs = action.jobs or 4 -- PARAM.ncpu -- number of processes this build might spawn -- to be set in strategy module
+        local jobslockitems = {weight = action.jobs}
+        -- >>>> JobsLock(jobslockitems)
+        JobsLock:acquire(jobslockitems)
         if not Options.no_pre_clean then
             build_step(port_clean)
         end
-        local jobs = 1 -- number of processes this build might spawn
-        local jobslockitems = {weight = jobs, shared = true, "build"}
-        JobsLock = JobsLock or Lock.new("JobsLock", 3)
-        -->> JobsLock(jobslockitems)
-        JobsLock:acquire(jobslockitems)
         build_step(wait_for_distfiles)
         build_step(check_license)
         build_step(special_deps)
@@ -755,11 +756,11 @@ local function perform_install_or_upgrade(action)
         --build_step(conflicts)
         build_step(build)
         JobsLock:release(jobslockitems)
-        --<< JobsLock(jobslockitems)
+        -- <<<< JobsLock(jobslockitems)
         build_step(stage)
         build_dep_pkgs.shared = true
         RunnableLock:release(build_dep_pkgs)
-        --<< Packagelock(build_dep_pkgs, SHARED)
+        -- <<<< Packagelock(build_dep_pkgs, SHARED)
         build_step(create_package)
     end
     -- install build depends immediately but optionally delay installation of other ports
@@ -776,13 +777,18 @@ local function perform_install_or_upgrade(action)
                 build_step(recover_precious)
             end
         end
+        PkgDbLock = PkgDbLock or Lock.new("PkgDbLock", 1)
+        -- >>>> PkgDbLock(1)
+        PkgDbLock:acquire{weight = 1} -- only one installation at a time due to exclusive lock on pkgdb
         if buildrequired then
             build_step(install_from_stage_area)
         else
             build_step(install_from_package)
         end
+        PkgDbLock:release{weight = 1}
+        -- <<<< PkgDbLock(1)
         RunnableLock:release(p_n.name)
-        --<< RunnableLock(p_n.name)
+        -- <<<< RunnableLock(p_n.name)
         --build_step(fetch_pkg_message)
         build_step(post_install_fixup)
     end
@@ -796,7 +802,7 @@ local function perform_install_or_upgrade(action)
             -- NYI distfiles_delete_old (o_n, pkgname_old) -- OUTPUT
         end
         WorkDirLock:release{o_n.wrkdir}
-        --<< WorkDirLock(o_n.wrkdir)
+        -- <<<< WorkDirLock(o_n.wrkdir)
     end
     build_step(cleanup_old_shared_libraries)
     build_step(delete_stale_pkgfiles)
@@ -1562,6 +1568,9 @@ local function __index(action, k)
         actions_started = actions_started + 1
         return actions_started -- action.listpos
     end
+    local function __jobs (action, k)
+        return PARAM.ncpu // 2
+    end
     local dispatch = {
         pkg_old = determine_pkg_old,
         pkg_new = determine_pkg_new,
@@ -1573,6 +1582,7 @@ local function __index(action, k)
         action = determine_action,
         short_name = __short_name,
         startno = __startno,
+        jobs = __jobs,
     }
 
     TRACE("INDEX(a)", k)

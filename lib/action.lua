@@ -1590,8 +1590,9 @@ local function __index(action, k)
             return 1
         end
         local n = p_n.make_jobs_number or (PARAM.ncpu // 2)
-        if n > p_n.make_jobs_number_limit then
-            n = p_n.make_jobs_number_limit
+        local l = p_n.make_jobs_number_limit or PARAM.ncpu
+        if n > l then
+            n = l
         end
         return n
     end

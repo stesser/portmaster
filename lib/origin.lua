@@ -364,6 +364,7 @@ local __port_vars_table = {
     "IS_INTERACTIVE",
     "NO_BUILD",
     "MAKE_JOBS_UNSAFE",
+    "DISABLE_MAKE_JOBS",
     "LICENSE",
     "ALL_OPTIONS",
     "NEW_OPTIONS",
@@ -438,7 +439,10 @@ local function __port_vars(origin, k, recursive)
         origin.distinfo_file = t.DISTINFO_FILE
         set_bool(origin, "is_interactive", t.IS_INTERACTIVE)
         set_bool(origin, "no_build", t.NO_BUILD)
+        origin.make_jobs_number = t.MAKE_JOBS_NUMBER
+        origin.make_jobs_number_limit = t.MAKE_JOBS_NUMBER_LIMIT
         set_bool(origin, "make_jobs_unsafe", t.MAKE_JOBS_UNSAFE)
+        set_bool(origin, "disable_make_jobs", t.DISABLE_MAKE_JOBS)
         set_table(origin, "license", t.LICENSE)
         set_table(origin, "all_options", t.ALL_OPTIONS)
         set_table(origin, "new_options", t.NEW_OPTIONS)

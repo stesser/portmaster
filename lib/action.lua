@@ -746,6 +746,12 @@ local function perform_install_or_upgrade(action)
             step(action)
         end
     end
+    local function build_done(step)
+        if not failed(action) then
+            action.buildstate[step] = true
+            TRACE("BUILDSTATE", action.pkg_new.name, step)
+        end
+    end
 
     TRACE("P", p_n.name, p_n)
     -- has a package been identified to be used instead of building the port?
@@ -792,6 +798,7 @@ local function perform_install_or_upgrade(action)
         RunnableLock:release(build_dep_pkgs)
         -- <<<< Packagelock(build_dep_pkgs, SHARED)
         build_step(create_package)
+        build_done("package")
     end
     -- install build depends immediately but optionally delay installation of other ports
     if not skip_install then
@@ -821,6 +828,10 @@ local function perform_install_or_upgrade(action)
         -- <<<< RunnableLock(p_n.name)
         --build_step(fetch_pkg_message)
         build_step(post_install_fixup)
+        build_done("provide")
+        if not Options.jailed then
+            build_done("install")
+        end
     end
     if buildrequired then
         -- preserve file names and hashes of distfiles from new port
@@ -1596,6 +1607,9 @@ local function __index(action, k)
         end
         return n
     end
+    local function __empty_table(action, k)
+        return {}
+    end
     local dispatch = {
         pkg_old = determine_pkg_old,
         pkg_new = determine_pkg_new,
@@ -1607,7 +1621,8 @@ local function __index(action, k)
         action = determine_action,
         short_name = __short_name,
         startno = __startno,
-        jobs = __jobs
+        jobs = __jobs,
+        buildstate = __empty_table,
     }
 
     TRACE("INDEX(a)", k)

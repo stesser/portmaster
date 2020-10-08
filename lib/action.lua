@@ -30,7 +30,7 @@ local Options = require("portmaster.options")
 local PkgDb = require("portmaster.pkgdb")
 local Msg = require("portmaster.msg")
 local Exec = require("portmaster.exec")
-local Lock = require("portmaster.locks")
+local Lock = require("portmaster.lock")
 
 -------------------------------------------------------------------------------------
 local P = require("posix")

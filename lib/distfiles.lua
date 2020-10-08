@@ -27,7 +27,7 @@ SUCH DAMAGE.
 
 -------------------------------------------------------------------------------------
 local Exec = require("portmaster.exec")
-local Lock = require("portmaster.locks")
+local Lock = require("portmaster.lock")
 
 -------------------------------------------------------------------------------------
 local DISTINFO_CACHE = {}

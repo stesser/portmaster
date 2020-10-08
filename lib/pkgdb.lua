@@ -27,6 +27,26 @@ SUCH DAMAGE.
 
 -------------------------------------------------------------------------------------
 local Exec = require("portmaster.exec")
+local Lock = require("portmaster.locks")
+local PkgDbLock
+
+-------------------------------------------------------------------------------------
+local function lock(shared)
+    PkgDbLock = PkgDbLock or Lock.new("PkgDbLock")
+    PkgDbLock:acquire{weight = 1, shared = shared}
+end
+
+local function unlock(shared)
+    PkgDbLock:release{weight = 1, shared = shared}
+end
+
+local function pkg(args)
+    local shared = args.safe
+    lock(shared)
+    local result = Exec.pkg(args)
+    unlock(shared)
+    return result
+end
 
 -------------------------------------------------------------------------------------
 -- query package DB for passed origin (with optional flavor) or passed package name
@@ -45,12 +65,12 @@ local function query(args)
     end
     table.insert(args, 1, "query")
     args.safe = true
-    return Exec.pkg(args)
+    return pkg(args)
 end
 
 -- get package information from pkgdb
 local function info(...)
-    return Exec.pkg{
+    return pkg{
         safe = true,
         table = true,
         "info", "-q", ...
@@ -59,7 +79,7 @@ end
 
 -- set package attribute for specified ports and/or packages
 local function set(...)
-    return Exec.pkg{
+    return pkg{
         as_root = true,
         log = true,
         "set", "-y", ...
@@ -69,7 +89,7 @@ end
 -- get the annotation value (e.g. flavor), if any
 local function annotate_get(var, name)
     assert(var, "no var passed")
-    return Exec.pkg{
+    return pkg{
         safe = true,
         "annotate", "-Sq", name, var
     }
@@ -78,7 +98,7 @@ end
 -- set the annotation value, or delete it if "$value" is empty
 local function annotate_set(var, name, value)
     local opt = value and #value > 0 and "-M" or "-D"
-    return Exec.pkg{
+    return pkg{
         as_root = true,
         log = true,
         "annotate", "-qy", opt, name, var, value
@@ -87,18 +107,18 @@ end
 
 -- check package dependency information in the pkg db
 local function check_depends()
-    Exec.run{
+    pkg{
         as_root = true,
         to_tty = true,
-        CMD.pkg, "check", "-dn"
+        "check", "-dn"
     }
 end
 
 -- return system ABI
 local function system_abi()
-    local abi = chomp(Exec.run{
+    local abi = chomp(pkg{
         safe = true,
-        CMD.pkg, "config", "abi"
+        "config", "abi"
     })
     local abi_noarch = string.match(abi, "^[%a]+:[%d]+:") .. "*"
     TRACE("SYSTEM_ABI", abi, abi_noarch)
@@ -152,7 +172,7 @@ end
 
 -- update repository database after creation of new packages
 local function update_repo() -- move to Package module XXX
-    Exec.pkg {
+    pkg {
         as_root = true,
         "repo", PATH.packages .. "All"
     }
@@ -170,4 +190,6 @@ return {
     update_origin = update_origin,
     update_pkgname = update_pkgname,
     update_repo = update_repo,
+    lock = lock,
+    unlock = unlock,
 }

@@ -491,7 +491,7 @@ local function perform_install_or_upgrade(action)
                         target
                     }
                     if exitcode ~= 0 then
-                        fail(action, "Failed to provide special dependency " .. origin_target .. ":", out)
+                        fail(action, "Failed to provide special dependency " .. origin_target, out)
                     end
                 end
             end
@@ -532,7 +532,7 @@ local function perform_install_or_upgrade(action)
             "extract"
         }
         if exitcode ~= 0 then
-            fail(action, "Build failed in extract phase:", out)
+            fail(action, "Build failed in extract phase", out)
         end
     end
     local function patch()
@@ -549,7 +549,7 @@ local function perform_install_or_upgrade(action)
             "patch"
         }
         if exitcode ~= 0 then
-            fail(action, "Build failed in patch phase:", out)
+            fail(action, "Build failed in patch phase", out)
         end
     end
     --[[
@@ -584,7 +584,7 @@ local function perform_install_or_upgrade(action)
             "build"
         }
         if exitcode ~= 0 then
-            fail(action, "Build failed in build phase:", out)
+            fail(action, "Build failed in build phase", out)
         end
     end
     local function stage()
@@ -601,7 +601,7 @@ local function perform_install_or_upgrade(action)
             "stage"
         }
         if exitcode ~= 0 then
-            fail(action, "Build failed in stage phase:", out)
+            fail(action, "Build failed in stage phase", out)
         end
     end
     local function check_build_deps()
@@ -609,7 +609,7 @@ local function perform_install_or_upgrade(action)
             TRACE("FAILED?", p)
             local a = get(p)
             if not a or failed(a) then
-                return fail(action, "Skipped because of failed dependency: " .. p)
+                return fail(action, "Skipped because of failed dependency " .. p)
             end
         end
     end
@@ -714,7 +714,7 @@ local function perform_install_or_upgrade(action)
                     return fail(action, "Could not re-install previously installed version after failed installation", err)
                 end
             end
-            fail(action, "Failed to install port", portname .. ":", err)
+            fail(action, "Failed to install port", portname, err)
         end
     end
     -- perform actual installation from a port or package
@@ -847,7 +847,7 @@ local function perform_install_or_upgrade(action)
     if not Options.dry_run then
         local failed_msg, failed_log = failed(action)
         if failed_msg then
-            action:log {describe(action), "failed:", failed_msg}
+            action:log {describe(action), "failed:", failed_msg .. (failed_log and ":" or "")}
             if failed_log then
                 Msg.show {verbatim = true, failed_log, "\n"}
             end
@@ -881,7 +881,7 @@ local function perform_deinstall(action)
     end
     local out, err, exitcode = p_o:deinstall()
     if exitcode ~= 0 then
-        return fail(action, "Failed to deinstall package " .. p_o.name .. ": ", err)
+        return fail(action, "Failed to deinstall package " .. p_o.name, err)
     end
     action.done = true
     return true
@@ -917,7 +917,7 @@ local function perform_pkg_rename(action)
     action:log {"Rename package", p_o.name, "to", p_n.name}
     local out, err, exitcode = PkgDb.update_pkgname(p_o, p_n)
     if exitcode ~= 0 then
-        return fail(action, "Rename package " .. p_o.name .. " to " .. p_n.name .. " failed:", err)
+        return fail(action, "Rename package " .. p_o.name .. " to " .. p_n.name .. " failed", err)
     end
     pkgfiles_rename(action)
     action.done = true

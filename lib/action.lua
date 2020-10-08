@@ -814,16 +814,15 @@ local function perform_install_or_upgrade(action)
                 build_step(recover_precious)
             end
         end
-        PkgDbLock = PkgDbLock or Lock.new("PkgDbLock", 1)
-        -- >>>> PkgDbLock(1)
-        PkgDbLock:acquire {weight = 1} -- only one installation at a time due to exclusive lock on pkgdb
+        -- >>>> PkgDbLock(weight = 1)
+        PkgDb.lock() -- only one installation at a time due to exclusive lock on pkgdb
         if buildrequired then
             build_step(install_from_stage_area)
         else
             build_step(install_from_package)
         end
-        PkgDbLock:release {weight = 1}
-        -- <<<< PkgDbLock(1)
+        PkgDb.unlock()
+        -- <<<< PkgDbLock(weight = 1)
         RunnableLock:release(p_n.name)
         -- <<<< RunnableLock(p_n.name)
         --build_step(fetch_pkg_message)
@@ -980,6 +979,7 @@ local function perform_upgrades(action_list)
             return false
         end
     end
+    Exec.finish_spawned(nil, "WAIT")
     return true
 end
 

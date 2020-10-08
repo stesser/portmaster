@@ -57,6 +57,27 @@ local function title_set(...)
 end
 
 --
+local function split_lines_at(str, maxcolumns)
+    local result = {}
+    for line in string.gmatch(str, "([^\n]*)\n?") do
+        if maxcolumns and maxcolumns > 0 then
+            while string.len(line) > maxcolumns do
+                local subline = string.sub(line, 1, maxcolumns)
+                local left, right, pos = string.match(subline, "(.*)%s%s*(%S*)")
+                if left then
+                    table.insert(result, left)
+                end
+                line = right .. string.sub(line, maxcolumns + 1)
+            end
+        end
+        table.insert(result, line)
+    end
+    return result
+end
+
+--
+local columns
+
 local function show(args)
     -- TRACE ("MSG_SHOW", table.unpack (table.keys (args)), table.unpack (args))
     local function empty_line()
@@ -92,7 +113,8 @@ local function show(args)
             else
                 text = table.concat(args, " ")
             end
-            local lines = split_lines(text)
+            columns = columns or PARAM.columns or 79
+            local lines = split_lines_at(text, columns - 8)
             if lines then
                 -- extra blank line if not a continuation and not following a blank line anyway
                 if State.at_start then

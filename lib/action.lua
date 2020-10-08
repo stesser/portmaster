@@ -700,12 +700,13 @@ local function perform_install_or_upgrade(action)
     local function install_from_stage_area()
         -- try to install new port
         TRACE("PERFORM_INSTALLATION/PORT", portname)
+        -- >>>> PkgDbLock(weight = 1)
+        PkgDb.lock() -- only one installation at a time due to exclusive lock on pkgdb
         action:log {"Install", pkgname_new, "built from", portname, "on base system"}
-        -- <se> DEAL WITH CONFLICTS ONLY DETECTED BY PLIST CHECK DURING PKG REGISTRATION!!!
-        local out, err, exitcode = o_n:install()
-        --InstalledLock:release(pkgname_new)
+        local out, err, exitcode = o_n:install() -- <se> DEAL WITH CONFLICTS ONLY DETECTED BY PLIST CHECK DURING PKG REGISTRATION!!!
+        PkgDb.unlock()
+        -- <<<< PkgDbLock(weight = 1)
         if exitcode ~= 0 then
-            -- OUTPUT
             deinstall_failed(action)
             if p_o then
                 local out, err, exitcode = p_o:recover()
@@ -814,15 +815,11 @@ local function perform_install_or_upgrade(action)
                 build_step(recover_precious)
             end
         end
-        -- >>>> PkgDbLock(weight = 1)
-        PkgDb.lock() -- only one installation at a time due to exclusive lock on pkgdb
         if buildrequired then
             build_step(install_from_stage_area)
         else
             build_step(install_from_package)
         end
-        PkgDb.unlock()
-        -- <<<< PkgDbLock(weight = 1)
         RunnableLock:release(p_n.name)
         -- <<<< RunnableLock(p_n.name)
         --build_step(fetch_pkg_message)
@@ -979,7 +976,7 @@ local function perform_upgrades(action_list)
             return false
         end
     end
-    Exec.finish_spawned(nil, "WAIT")
+    Exec.finish_spawned()
     return true
 end
 

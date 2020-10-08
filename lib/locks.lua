@@ -132,26 +132,25 @@ local count = 0
 
 local function acquire(lock, items)
     local state = lock.state
-    local function lockitems_enqueue(key)
+    local function lockitems_enqueue(co)
         local shared = items.shared
         for _, item in ipairs(items) do
             TRACE("L", state[item])
             local lockitem = state[item] or {acquired = 0, sharedqueue = {}, exclusivequeue = {}}
             if shared then
-                lockitem.sharedqueue[key] = true
+                lockitem.sharedqueue[co] = true
             else
-                lockitem.exclusivequeue[key] = true
+                lockitem.exclusivequeue[co] = true
             end
             state[item] = lockitem
             tracelockstate(lock)
         end
         lock.blocked = lock.blocked + 1 -- XXX required ???
     end
-    local function locktable_insert(key)
+    local function locktable_insert(co)
         TRACE("LOCK.ACQUIRE_ENQUEUE", lock.name, items)
-        local co = coroutine.running()
         local locktable = BlockedTasks[lock]
-        locktable[key] = {co = co, items = items}
+        locktable[co] = items
         tasks_blocked = tasks_blocked + 1
         TRACE("BlockedTasks:", BlockedTasks)
     end
@@ -159,10 +158,9 @@ local function acquire(lock, items)
     TRACE("LOCK.ACQUIRE", lock.name, items)
     if not tryacquire(lock, items) then
         count = count + 1
-        local key = {items.tag or "<" .. count .. ">"} -- XXX tag or anonymous table {}
-        items.tag = nil
-        lockitems_enqueue(key)
-        locktable_insert(key)
+        local co = coroutine.running()
+        lockitems_enqueue(co)
+        locktable_insert(co)
         coroutine.yield()
     end
     TRACE("LOCK.ACQUIRE->", lock.name, items)
@@ -205,9 +203,9 @@ local function release(lock, items)
                 local listitem = state[item]
                 if listitem and listitem.acquired == 0 then
                     local queue = shared and listitem.sharedqueue or listitem.exclusivequeue
-                    for key, _ in pairs(queue) do
-                        TRACE("LOCK.SET_RELEASED", key)
-                        result[key] = true
+                    for co, _ in pairs(queue) do
+                        TRACE("LOCK.SET_RELEASED", co)
+                        result[co] = true
                     end
                     state[item] = (next(listitem.sharedqueue) or next(listitem.exclusivequeue)) and listitem or nil
                 end
@@ -216,14 +214,14 @@ local function release(lock, items)
         TRACE("LOCK.RELEASE_LIST", result)
         return result
     end
-    local function lockitems_dequeue(key, queueitems)
-        TRACE("LOCK.WAITDONE", lock.name, key, queueitems)
+    local function lockitems_dequeue(co, queueitems)
+        TRACE("LOCK.WAITDONE", lock.name, co, queueitems)
         for _, item in ipairs(queueitems) do
             local listitem = state[item]
             if queueitems.shared then
-                listitem.sharedqueue[key] = nil
+                listitem.sharedqueue[co] = nil
             else
-                listitem.exclusivequeue[key] = nil
+                listitem.exclusivequeue[co] = nil
             end
         end
         lock.blocked = lock.blocked - 1
@@ -233,19 +231,18 @@ local function release(lock, items)
         TRACE("RESUME_UNLOCKED", lock.name, resume_list)
         local locktable = BlockedTasks[lock]
         assert(locktable, "No BlockedTasks table named " .. lock.name)
-        for key, _ in pairs(resume_list) do
-            local lockstate = locktable[key]
-            TRACE("LOCK.WAITTEST", lock.name, key, lockstate)
-            if lockstate then
-                if tryacquire(lock, lockstate.items) then
-                    lockitems_dequeue(key, lockstate.items)
-                    local co = lockstate.co
+        for co, _ in pairs(resume_list) do
+            local queueitems = locktable[co]
+            TRACE("LOCK.WAITTEST", lock.name, co, queueitems)
+            if queueitems then
+                if tryacquire(lock, queueitems) then
+                    lockitems_dequeue(co, queueitems)
                     tasks_blocked = tasks_blocked - 1
-                    locktable[key] = nil
+                    locktable[co] = nil
                     coroutine.resume(co)
                 end
             else
-                TRACE("LOCK.CLEAR_STALE(2)", lock.name, key, items)
+                TRACE("LOCK.CLEAR_STALE(2)", lock.name, co, queueitems)
             end
         end
     end

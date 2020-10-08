@@ -91,6 +91,9 @@ setenv("LOCK_RETRIES", "120")
 -------------------------------------------------------------------------------------
 -- clean up when script execution ends
 local function exit_cleanup(exitcode)
+    if CMD.stty then
+        Exec.run(CMD.stty, "sane")
+    end
     exitcode = exitcode or 0
     Progress.clear()
     Distfile.fetch_finish()
@@ -406,6 +409,7 @@ local function init_globals()
     CMD.mktemp = "/usr/bin/mktemp"
     CMD.grep = "/usr/bin/grep"
     CMD.pkg_bootstrap = "/usr/sbin/pkg"
+    CMD.stty = "/bin/stty"
 
     local t = Origin.port_var(nil, {
         table = true,
@@ -451,10 +455,22 @@ local function init_globals()
 
     -- Bootstrap pkg if not yet installed
     if not access(CMD.pkg, "x") then
-        Exec.run{
+        local out, err, exitcode = Exec.run{
+            env = { ASSUME_ALWAYS_YES = "yes" },
             as_root = true,
             CMD.pkg_bootstrap, "bootstrap"
         }
+        assert (exitcode == 0, "Failed to bootstrap the pkg command")
+    end
+
+    --
+    if ttyname(0) then
+        local size = Exec.run(CMD.stty, "size")
+        local lines, columns = string.match(size, "(%d%d*) (%d%d*)")
+        if columns then
+            PARAM.columns = tonumber(columns)
+            TRACE("COLUMNS", columns)
+        end
     end
 
     --

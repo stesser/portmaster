@@ -310,6 +310,22 @@ local function perform_actions(action_list)
     return true
 end
 
+--
+local function report_results(action_list)
+    local function reportline(action, cond, msg)
+        if cond(action) then
+            Msg.show{action.short_name, msg}
+        end
+    end
+    TRACE("REPORT_RESULTS")
+    Msg.show{start = true, "Build results:"}
+    for _, a in ipairs(action_list) do
+        TRACE("REPORT_RESULT", a)
+        reportline(a, function(action) return rawget(action, "failed_msg") end, "FAILED: " .. (rawget(a, "failed_msg") or ""))
+    end
+end
+
+--
 local function execute()
     -- wait for all spawned tasks to complete
     Exec.finish_spawned(Action.new)
@@ -333,6 +349,8 @@ local function execute()
     PARAM.phase = "build"
 
     perform_actions(action_list)
+
+    report_results(action_list)
 end
 
 return {

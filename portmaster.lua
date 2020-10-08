@@ -92,7 +92,7 @@ setenv("LOCK_RETRIES", "120")
 -- clean up when script execution ends
 local function exit_cleanup(exitcode)
     if CMD.stty then
-        Exec.run(CMD.stty, "sane")
+        Exec.run{CMD.stty, "sane"}
     end
     exitcode = exitcode or 0
     Progress.clear()
@@ -465,7 +465,7 @@ local function init_globals()
 
     --
     if ttyname(0) then
-        local size = Exec.run(CMD.stty, "size")
+        local size = Exec.run{CMD.stty, "size"}
         local lines, columns = string.match(size, "(%d%d*) (%d%d*)")
         if columns then
             PARAM.columns = tonumber(columns)

@@ -75,6 +75,9 @@ local Distfile = require("portmaster.distfiles")
 local Exec = require("portmaster.exec")
 local PkgDb = require("portmaster.pkgdb")
 local Strategy = require("portmaster.strategy")
+local CMD = require("portmaster.cmd")
+local PARAM = require("portmaster.param")
+local PATH = require("portmaster.path")
 
 -------------------------------------------------------------------------------------
 stdin = io.stdin
@@ -374,85 +377,12 @@ local function init_global_cmd(...)
     error("Cannot find required system program " .. table.concat({...}, " "))
 end
 
--- global tables for full paths of used Unix commands and relevant directories
-CMD = {}
-PATH = {}
-PARAM = {}
-
 -- initialize global variables after reading configuration files
 -- return first existing directory with a trailing "/" appended
 local function init_globals()
     chdir("/")
 
-    -- important commands
-    CMD.chroot = init_global_cmd("/usr/sbin/chroot")
-    CMD.chown = init_global_cmd("/usr/sbin/chown")
-    CMD.ldconfig = init_global_cmd("/sbin/ldconfig")
-    CMD.make = init_global_cmd("/usr/bin/make")
-    CMD.sysctl = "/sbin/sysctl"
-    CMD.mv = "/bin/mv"
-    CMD.unlink = "/bin/unlink"
-    CMD.df = "/bin/df"
-    CMD.umount = "/sbin/umount"
-    CMD.mdconfig = "/sbin/mdconfig"
-    CMD.realpath = "/bin/realpath"
-    CMD.mkdir = "/bin/mkdir"
-    CMD.rmdir = "/bin/rmdir"
-    CMD.cp = "/bin/cp"
-    CMD.pwd_mkdb = "/usr/sbin/pwd_mkdb"
-    CMD.rm = "/bin/rm"
-    CMD.ln = "/bin/ln"
-    CMD.pkg_b = "/usr/sbin/pkg" -- pkg dummy in base system used for pkg bootstrap
-    CMD.env = "/usr/bin/env"
-    CMD.sh = "/bin/sh"
-    CMD.ktrace = "/usr/bin/ktrace" -- testing only
-    CMD.mktemp = "/usr/bin/mktemp"
-    CMD.grep = "/usr/bin/grep"
-    CMD.pkg_bootstrap = "/usr/sbin/pkg"
-    CMD.stty = "/bin/stty"
-
-    local t = Origin.port_var(nil, {
-        table = true,
-        "LOCALBASE",
-        "PORTSDIR",
-        "DISTDIR",
-        "PACKAGES",
-        "PKG_DBDIR",
-        "PORT_DBDIR",
-        "WRKDIRPREFIX",
-        "DISABLE_LICENSES",
-    })
-
-    PATH.localbase = init_global_path(t.LOCALBASE, "/usr/local")
-    PATH.local_lib = init_global_path(path_concat(PATH.localbase, "lib"))
-    PATH.local_lib_compat = init_global_path(path_concat(PATH.local_lib, "compat/pkg"))
-
-    -- port infrastructure paths, may be modified by user
-    PATH.portsdir = init_global_path(t.PORTSDIR, "/usr/ports")
-    PATH.distdir = init_global_path(t.DISTDIR, path_concat(PATH.portsdir, "distfiles"))
-    PARAM.distdir_ro = not access(PATH.distdir, "rw") -- need sudo to fetch or purge distfiles
-
-    PATH.packages = init_global_path(Options.local_packagedir,
-                                     t.PACKAGES,
-                                     path_concat(PATH.portsdir, "packages"),
-                                     "/usr/packages")
-    PATH.packages_backup = init_global_path(PATH.packages .. "portmaster-backup")
-    PARAM.packages_ro = not access(PATH.packages, "rw") -- need sudo to create or delete package files
-
-    PATH.pkg_dbdir = init_global_path(t.PKG_DBDIR, "/var/db/pkg") -- no value returned for make -DBEFOREPORTMK
-    PARAM.pkg_dbdir_ro = not access(PATH.pkg_dbdir, "rw") -- need sudo to update the package database
-
-    PATH.port_dbdir = init_global_path(t.PORT_DBDIR, "/var/db/ports")
-    PARAM.port_dbdir_ro = not access(PATH.port_dbdir, "rw") -- need sudo to record port options
-
-    PATH.wrkdirprefix = init_global_path(t.WRKDIRPREFIX, "/")
-    PARAM.wrkdir_ro = not access(path_concat(PATH.wrkdirprefix, PATH.portsdir), "rw") -- need sudo to build ports
-
-    PATH.tmpdir = init_global_path(os.getenv("TMPDIR"), "/tmp")
-
-    CMD.pkg = init_global_cmd(path_concat(PATH.localbase, "sbin/pkg-static"))
-    CMD.sudo = init_global_cmd(path_concat(PATH.localbase, "bin/sudo"))
-
+    --[[
     -- Bootstrap pkg if not yet installed
     if not access(CMD.pkg, "x") then
         local out, err, exitcode = Exec.run{
@@ -462,43 +392,7 @@ local function init_globals()
         }
         assert (exitcode == 0, "Failed to bootstrap the pkg command")
     end
-
-    --
-    if ttyname(0) then
-        local size = Exec.run{CMD.stty, "size"}
-        local lines, columns = string.match(size, "(%d%d*) (%d%d*)")
-        if columns then
-            PARAM.columns = tonumber(columns)
-            TRACE("COLUMNS", columns)
-        end
-    end
-
-    --
-    PARAM.uid = geteuid() -- getuid() ???
-    local pw_entry = getpwuid(PARAM.uid)
-    PARAM.user = pw_entry.pw_name
-    PARAM.home = pw_entry.pw_dir
-    TRACE("PW_ENTRY", PARAM.uid, PARAM.user, PARAM.home)
-
-    -- set package formats unless already specified by user
-    PARAM.package_format = Options.package_format or "txz"
-    PARAM.backup_format = Options.backup_format or "txz"
-
-    -- some important global variables
-    PARAM.abi, PARAM.abi_noarch = PkgDb.system_abi()
-
-    -- determine number of CPUs (threads)
-    PARAM.ncpu = tonumber (Exec.run{
-        safe = true,
-        CMD.sysctl, "-n", "hw.ncpu"
-    })
-
-    -- global variables for use by the distinfo cache and distfile names file (for ports to be built)
-    -- PARAM.distfiles_perport = PATH.distdir .. "DISTFILES.perport" -- port names and names of distfiles required by the latest port version
-    -- PARAM.distfiles_list = PATH.distdir .. "DISTFILES.list" -- current distfile names of all ports
-
-    -- has license framework been disabled by the user
-    PARAM.disable_licenses = t.DISABLE_LICENSES
+    --]]
 end
 
 -------------------------------------------------------------------------------------

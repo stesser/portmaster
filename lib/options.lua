@@ -28,13 +28,16 @@ SUCH DAMAGE.
 -------------------------------------------------------------------------------------
 local Excludes = require("portmaster.excludes")
 local Msg = require("portmaster.msg")
+--local CMD = require("portmaster.cmd")
+local PARAM = require("portmaster.param")
+--local PATH = require("portmaster.path")
 
 -------------------------------------------------------------------------------------
 local P = require "posix"
 local getopt = P.getopt
 
 local P_US = require("posix.unistd")
-local access = P_US.access
+--local access = P_US.access
 local getpid = P_US.getpid
 local ttyname = P_US.ttyname
 

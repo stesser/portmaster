@@ -36,6 +36,9 @@ local Progress = require("portmaster.progress")
 local Distfile = require("portmaster.distfiles")
 local Exec = require("portmaster.exec")
 local PkgDb = require("portmaster.pkgdb")
+--local CMD = require("portmaster.cmd")
+local PARAM = require("portmaster.param")
+local PATH = require("portmaster.path")
 
 -------------------------------------------------------------------------------------
 local P_US = require("posix.unistd")

@@ -31,6 +31,9 @@ local PkgDb = require("portmaster.pkgdb")
 local Msg = require("portmaster.msg")
 local Exec = require("portmaster.exec")
 local Lock = require("portmaster.lock")
+local CMD = require("portmaster.cmd")
+local PARAM = require("portmaster.param")
+local PATH = require("portmaster.path")
 
 -------------------------------------------------------------------------------------
 local P = require("posix")

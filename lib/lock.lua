@@ -26,6 +26,10 @@ SUCH DAMAGE.
 --]]
 -------------------------------------------------------------------------------
 
+--local CMD = require("portmaster.cmd")
+--local PARAM = require("portmaster.param")
+--local PATH = require("portmaster.path")
+
 local Lock = {} -- Lock module
 local LocksTable = {} -- table containing all created lock tables
 

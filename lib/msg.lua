@@ -25,6 +25,10 @@ OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 SUCH DAMAGE.
 --]]
 
+--local CMD = require("portmaster.cmd")
+local PARAM = require("portmaster.param")
+--local PATH = require("portmaster.path")
+
 -------------------------------------------------------------------------------------
 local stdout = io.stdout
 local stderr = io.stderr

@@ -56,6 +56,9 @@ Concept for background execution of functions:
 local Options = require("portmaster.options")
 local Msg = require("portmaster.msg")
 local Lock = require("portmaster.lock")
+local CMD = require("portmaster.cmd")
+local PARAM = require("portmaster.param")
+--local PATH = require("portmaster.path")
 
 -------------------------------------------------------------------------------------
 local P = require("posix")

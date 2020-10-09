@@ -28,6 +28,9 @@ SUCH DAMAGE.
 -------------------------------------------------------------------------------------
 local Options = require("portmaster.options")
 local Exec = require("portmaster.exec")
+local CMD = require("portmaster.cmd")
+local PARAM = require("portmaster.param")
+local PATH = require("portmaster.path")
 
 -------------------------------------------------------------------------------------
 local P_US = require("posix.unistd")

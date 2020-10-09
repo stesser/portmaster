@@ -31,8 +31,11 @@ local Excludes = require("portmaster.excludes")
 local Options = require("portmaster.options")
 local PkgDb = require("portmaster.pkgdb")
 local Msg = require("portmaster.msg")
-local Progress = require("portmaster.progress")
+--local Progress = require("portmaster.progress")
 local Exec = require("portmaster.exec")
+local CMD = require("portmaster.cmd")
+local PARAM = require("portmaster.param")
+local PATH = require("portmaster.path")
 
 -------------------------------------------------------------------------------------
 local P = require("posix")

@@ -33,6 +33,7 @@ local Exec = require("portmaster.exec")
 local Lock = require("portmaster.lock")
 local CMD = require("portmaster.cmd")
 local Param = require("portmaster.param")
+local Moved = require("portmaster.moved")
 
 -------------------------------------------------------------------------------------
 local P = require("posix")
@@ -1133,7 +1134,7 @@ end
 local function determine_o_n(action, k)
     local o = action.pkg_old and action.pkg_old.origin
     if o then
-        local mo = Origin.lookup_moved_origin(o)
+        local mo = Moved.new_origin(o)
         if mo and mo.reason or verify_origin(mo) then
             return mo
         end

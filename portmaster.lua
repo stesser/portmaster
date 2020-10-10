@@ -77,6 +77,7 @@ local PkgDb = require("portmaster.pkgdb")
 local Strategy = require("portmaster.strategy")
 local CMD = require("portmaster.cmd")
 local Param = require("portmaster.param")
+local Moved = require("portmaster.moved")
 
 -------------------------------------------------------------------------------------
 stdin = io.stdin
@@ -661,7 +662,7 @@ local function list_ports(mode)
         local pkgname_new = pkg_new and pkg_new.name
         local reason
         if not pkgname_new then
-            local o_n = o_o:lookup_moved_origin()
+            local o_n = Moved.new_origin(o_o)
             reason = o_o.reason
             TRACE("MOVED??", reason)
             if o_n and o_n ~= o_o then

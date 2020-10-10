@@ -46,6 +46,7 @@ local VERSION = "4.0.0a1" -- GLOBAL
 -- options and rc file processing
 local Options = {}
 local LONGOPT = {}
+local VALID_OPTS = {}
 
 -- print the long options ordered by associated short option followed by sorted list of longopts without short option
 local function print_longopts()
@@ -208,11 +209,11 @@ local function rcfile_tryload(filename)
 end
 
 -- set package format option with check for supported values
-local VALID_FORMATS = {tar = true, tgz = true, tbz = true, txz = true}
+local VALID_FORMATS = {tar = true, tgz = true, tbz = true, txz = true, zstd = true}
 
 local function set_package_format(var, fmt)
     assert(VALID_FORMATS[fmt], "invalid package format '" .. fmt .. "'")
-    Options[var] = fmt
+    Param[var] = fmt
 end
 
 -- set option (or clear, if value is nil)

@@ -102,14 +102,15 @@ local function __systemabi(param, k)
     pipe:close()
     param.abi_noarch = string.match(abi, "^[%a]+:[%d]+:") .. "*"
     param.abi = abi
-    TRACE("SYSTEM_ABI", param.abi, param.abi_noarch)
     return param[k]
 end
 
 local function __package_fmt(param, k)
-    param.package_fmt = Options.package_fmt
-    param.backup_fmt = Options.backup_fmt
-    return param[k]
+    return "tbz" -- only used as fallback
+end
+
+local function __backup_fmt(param, k)
+    return "tbz" -- only used as fallback
 end
 
 local function __tty_columns(param, k)
@@ -118,7 +119,6 @@ local function __tty_columns(param, k)
 	local lines = pipe:read("*n")
 	local columns = pipe:read("*n")
 	pipe:close()
-	TRACE("L/C", lines, columns)
 	return columns
     end
 end
@@ -127,7 +127,6 @@ local function __ncpu(param, k)
     local pipe = io.popen(CMD.sysctl .. " -n hw.ncpu") -- do not rely on Exec.pkg!!!
     local ncpu = pipe:read("*n")
     pipe:close()
-    TRACE("NCPU", ncpu)
     return ncpu
 end
 
@@ -146,7 +145,7 @@ local function __index(param, k)
     local dispatch = {
         abi = __systemabi,
         abi_noarch = __systemabi,
-        backup_format = __package_fmt,
+        backup_format = __backup_fmt,
         columns = __tty_columns,
         disable_licenses = __globalmakevars,
         distdir_ro = __distdir_ro,

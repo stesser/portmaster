@@ -28,16 +28,13 @@ SUCH DAMAGE.
 -------------------------------------------------------------------------------------
 local Excludes = require("portmaster.excludes")
 local Msg = require("portmaster.msg")
---local CMD = require("portmaster.cmd")
-local PARAM = require("portmaster.param")
---local PATH = require("portmaster.path")
+local Param = require("portmaster.param")
 
 -------------------------------------------------------------------------------------
 local P = require "posix"
 local getopt = P.getopt
 
 local P_US = require("posix.unistd")
---local access = P_US.access
 local getpid = P_US.getpid
 local ttyname = P_US.ttyname
 
@@ -821,7 +818,7 @@ do return end
         -- print (string.format (format, ...))
     end
 
-    if PARAM.phase == "" then
+    if Param.phase == "" then
         return
     end
     local tasks = tasks_count()
@@ -835,7 +832,7 @@ do return end
     local tmp_filename = tempfile_create("RESTART")
     tmpf = io.open(tmp_filename, "w+")
 
-    if PARAM.phase == "scan" then
+    if Param.phase == "scan" then
         for _, v in ipairs(Excludes.list()) do
             w("EXCLUDE=%s", v)
         end

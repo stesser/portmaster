@@ -76,8 +76,7 @@ local Exec = require("portmaster.exec")
 local PkgDb = require("portmaster.pkgdb")
 local Strategy = require("portmaster.strategy")
 local CMD = require("portmaster.cmd")
-local PARAM = require("portmaster.param")
-local PATH = require("portmaster.path")
+local Param = require("portmaster.param")
 
 -------------------------------------------------------------------------------------
 stdin = io.stdin
@@ -399,9 +398,9 @@ end
 -- set sane defaults and cache some buildvariables in the environment
 -- <se> ToDo convert to sub-shell and "export -p | egrep '^(VAR1|VAR2)'" ???
 local function init_environment()
-    -- reset PATH to a sane default
-    setenv("PATH", "/bin:/sbin:/usr/bin:/usr/sbin:" .. PATH.localbase .. "bin:" .. PATH.localbase .. "sbin")
-    local portsdir = PATH.portsdir
+    -- reset Param to a sane default
+    setenv("Param", "/bin:/sbin:/usr/bin:/usr/sbin:" .. Param.localbase .. "bin:" .. Param.localbase .. "sbin")
+    local portsdir = Param.portsdir
     local scriptsdir = path_concat(portsdir, "Mk/Scripts")
     local cmdenv = {SCRIPTSDIR = scriptsdir, PORTSDIR = portsdir, MAKE = "make"}
     local env_lines = Exec.run{
@@ -486,7 +485,7 @@ end
 local function clean_stale_package_files() -- move to new PackageFile module ???
     error("NYI") -- WIP
     Package.packages_cache_load() -- fetch if not already cached
-    chdir(PATH.packages)
+    chdir(Param.packages)
     local files = scan_files("")
     local bak_files = {}
     local pkg_files = {}
@@ -527,7 +526,7 @@ local function clean_stale_distfiles ()
         Exec.spawn (fetch_distinfo, pkg)
     end
     Exec.finish_spawned(fetch_distinfo)
-    chdir(PATH.distdir)
+    chdir(Param.distdir)
     local distfiles = scan_files("")
     local unused = {}
     for _, f in ipairs(distfiles) do
@@ -539,8 +538,8 @@ local function clean_stale_distfiles ()
         Msg.show {"No stale distfiles found"}
     else
         local selected = Msg.ask_to_delete ("stale file", unused)
-        batch_delete(selected, PARAM.distdir_ro)
-        delete_empty_directories(PATH.distdir, PARAM.distdir_ro)
+        batch_delete(selected, Param.distdir_ro)
+        delete_empty_directories(Param.distdir, Param.distdir_ro)
     end
 end
 
@@ -560,7 +559,7 @@ local function list_stale_libraries()
         CMD.ldconfig, "-r"
     }
     for _, line in ipairs(ldconfig_lines) do
-        local lib = line:match(" => " .. path_concat (PATH.local_lib_compat, "(.*)"))
+        local lib = line:match(" => " .. path_concat (Param.local_lib_compat, "(.*)"))
         if lib and not activelibs[lib] then
             compatlibs[lib] = true
         end
@@ -573,7 +572,7 @@ local function clean_stale_libraries()
     Msg.show {start = true, "Scanning for stale shared library backups ..."}
     local stale_compat_libs = list_stale_libraries()
     if #stale_compat_libs > 0 then
-        chdir(PATH.local_lib_compat)
+        chdir(Param.local_lib_compat)
         table.sort(stale_compat_libs)
         local selected = Msg.ask_to_delete("stale shared library backup", stale_compat_libs, false, true)
         batch_delete(selected, true)
@@ -585,14 +584,14 @@ end
 -------------------------------------------------------------------------------------
 -- delete stale options files
 local function portdb_purge()
-    Msg.show {start = true, "Scanning", PATH.port_dbdir, "for stale cached options:"}
+    Msg.show {start = true, "Scanning", Param.port_dbdir, "for stale cached options:"}
     local origins = {}
     local origin_list = PkgDb.query {table = true, "%o"}
     for _, origin in ipairs(origin_list) do
         local subdir = origin:gsub("/", "_")
         origins[subdir] = origin
     end
-    assert(chdir(PATH.port_dbdir), "cannot access directory " .. PATH.port_dbdir)
+    assert(chdir(Param.port_dbdir), "cannot access directory " .. Param.port_dbdir)
     local stale_origins = {}
     for _, dir in ipairs(glob("*")) do
         if not origins[dir] then
@@ -601,9 +600,9 @@ local function portdb_purge()
     end
     if #stale_origins then
         local selected = Msg.ask_to_delete("stale port options file for", stale_origins)
-        batch_delete(selected, PARAM.port_dbdir_ro)
+        batch_delete(selected, Param.port_dbdir_ro)
     else
-        Msg.show {"No stale entries found in", PATH.port_dbdir}
+        Msg.show {"No stale entries found in", Param.port_dbdir}
     end
     chdir("/")
 end
@@ -754,7 +753,7 @@ local function main()
 
     -------------------------------------------------------------------------------------
     -- plan tasks based on parameters passed on the command line
-    PARAM.phase = "scan"
+    Param.phase = "scan"
 
     if Options.replace_origin then
         if #args ~= 1 then

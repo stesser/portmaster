@@ -31,11 +31,9 @@ local Excludes = require("portmaster.excludes")
 local Options = require("portmaster.options")
 local PkgDb = require("portmaster.pkgdb")
 local Msg = require("portmaster.msg")
---local Progress = require("portmaster.progress")
 local Exec = require("portmaster.exec")
 local CMD = require("portmaster.cmd")
-local PARAM = require("portmaster.param")
-local PATH = require("portmaster.path")
+local Param = require("portmaster.param")
 
 -------------------------------------------------------------------------------------
 local P = require("posix")
@@ -57,9 +55,9 @@ local access = P_US.access
 local function filename(args)
     local pkg = args[1]
     local pkgname = pkg.name
-    local base = args.base or PATH.packages
+    local base = args.base or Param.packages
     local subdir = args.subdir or "All"
-    local extension = args.ext or PARAM.package_format
+    local extension = args.ext or Param.package_format
     if string.sub(extension, 1, 1) ~= "." then
         extension = "." .. extension
     end
@@ -73,10 +71,10 @@ local function file_get_abi(filename)
     return PkgDb.query {pkgfile = filename, "%q"} -- <se> %q vs. %Q ???
 end
 
--- check whether ABI of package file matches current system PARAM.abi
+-- check whether ABI of package file matches current system Param.abi
 local function file_valid_abi(file)
     local abi = file_get_abi(file)
-    return abi == PARAM.abi or abi == PARAM.abi_noarch
+    return abi == Param.abi or abi == Param.abi_noarch
 end
 
 -- return package version
@@ -112,7 +110,7 @@ local function shlibs_backup(pkg)
             CMD.ldconfig, "-r"
         }
         for _, line in ipairs(ldconfig_lines) do
-            local libpath, lib = string.match(line, " => (" .. PATH.local_lib .. "*(lib.*%.so%..*))")
+            local libpath, lib = string.match(line, " => (" .. Param.local_lib .. "*(lib.*%.so%..*))")
             if lib then
                 local stat = lstat(libpath)
                 local mode = stat and stat.st_mode
@@ -121,7 +119,7 @@ local function shlibs_backup(pkg)
                     if stat_isreg(mode) then
                         for _, l in ipairs(pkg_libs) do
                             if l == lib then
-                                local backup_lib = PATH.local_lib_compat .. lib
+                                local backup_lib = Param.local_lib_compat .. lib
                                 if access(backup_lib, "r") then
                                     Exec.run{
                                         as_root = true,
@@ -157,7 +155,7 @@ local function shlibs_backup_remove_stale(pkg)
     if pkg_libs then
         local deletes = {}
         for _, lib in ipairs(pkg_libs) do
-            local backup_lib = PATH.local_lib_compat .. lib
+            local backup_lib = Param.local_lib_compat .. lib
             if access(backup_lib, "r") then
                 table.insert(deletes, backup_lib)
             end
@@ -182,15 +180,15 @@ end
 local function backup_old_package(package)
     local pkgname = package.name
     return Exec.pkg{
-        as_root = PARAM.packages_ro,
-        "create", "-q", "-o", PATH.packages_backup, "-f", PARAM.backup_format, pkgname
+        as_root = Param.packages_ro,
+        "create", "-q", "-o", Param.packages_backup, "-f", Param.backup_format, pkgname
     }
 end
 
 --
 local function deinstall(package)
     local pkgname = package.name
-    local from_jail = Options.jailed and PARAM.phase ~= "install"
+    local from_jail = Options.jailed and Param.phase ~= "install"
     return Exec.pkg{
         log = true,
         jailed = from_jail,
@@ -202,7 +200,7 @@ end
 -------------------------------------------------------------------------------------
 -- get package message in case of an installation to the base system
 local function message(pkg)
-    if not Options.dry_run and (not Options.jailed or PARAM.phase == "install") then
+    if not Options.dry_run and (not Options.jailed or Param.phase == "install") then
         local msg = PkgDb.query {"%M", pkg.name}
         if type(msg) == "string" then
             return msg
@@ -214,7 +212,7 @@ end
 -- install package from passed pkg
 local function install(pkg, abi)
     local pkgfile = pkg.pkg_filename
-    local jailed = Options.jailed and PARAM.phase == "build"
+    local jailed = Options.jailed and Param.phase == "build"
     local env = {IGNORE_OSVERSION = "yes"}
     TRACE("INSTALL", abi, pkgfile)
     if string.match(pkgfile, ".*/pkg-[^/]+$") then -- pkg command itself
@@ -246,14 +244,14 @@ end
 
 -- create category links and a lastest link
 local function category_links_create(pkg_new, categories)
-    local extension = PARAM.package_format
+    local extension = Param.package_format
     local source = filename {base = "..", ext = extension, pkg_new}
     table.insert(categories, "Latest")
     for _, category in ipairs(categories) do
-        local destination = path_concat (PATH.packages, category)
+        local destination = path_concat (Param.packages, category)
         if not is_dir(destination) then
             Exec.run{
-                as_root = PARAM.packages_ro,
+                as_root = Param.packages_ro,
                 log = true,
                 CMD.mkdir, "-p", destination
             }
@@ -262,7 +260,7 @@ local function category_links_create(pkg_new, categories)
             destination = path_concat (destination, pkg_new.name_base .. "." .. extension)
         end
         Exec.run{
-            as_root = PARAM.packages_ro,
+            as_root = Param.packages_ro,
             log = true,
             CMD.ln, "-sf", source, destination
         }
@@ -279,7 +277,7 @@ local function recover(pkg)
         pkgfile = Exec.run{
             table = true,
             safe = true,
-            CMD.ls, "-1t", filename{base = PATH.packages_backup, subdir = "", ext = ".*", pkg}}[1] -- XXX replace with glob and sort by modification time ==> pkg.bakfile
+            CMD.ls, "-1t", filename{base = Param.packages_backup, subdir = "", ext = ".*", pkg}}[1] -- XXX replace with glob and sort by modification time ==> pkg.bakfile
     end
     if pkgfile and access(pkgfile, "r") then
         Msg.show {"Re-installing previous version", pkgname}
@@ -291,7 +289,7 @@ local function recover(pkg)
             --[[ Exec.run{ -- required ???
                 as_root = true,
                 log = true,
-                CMD.unlink, PATH.packages_backup .. pkgname .. ".t?*"
+                CMD.unlink, Param.packages_backup .. pkgname .. ".t?*"
             }--]]
             return true
         end
@@ -334,7 +332,7 @@ end
 local function backup_delete(pkg)
     local g = filename {subdir = "portmaster-backup", ext = ".t?*", pkg}
     for _, backupfile in pairs(glob(g) or {}) do
-        TRACE("BACKUP_DELETE", backupfile, PATH.packages .. "portmaster-backup/")
+        TRACE("BACKUP_DELETE", backupfile, Param.packages .. "portmaster-backup/")
         Exec.run{
             as_root = true,
             log = true,
@@ -665,7 +663,7 @@ local function __index(pkg, k)
             return filename {subdir = "All", pkg}
         end,
         bak_filename = function(pkg, k)
-            return filename {subdir = "portmaster-backup", ext = PARAM.backup_format, pkg}
+            return filename {subdir = "portmaster-backup", ext = Param.backup_format, pkg}
         end,
         --[[
         origin = function (pkg, k)

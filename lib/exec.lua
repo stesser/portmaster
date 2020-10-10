@@ -57,8 +57,7 @@ local Options = require("portmaster.options")
 local Msg = require("portmaster.msg")
 local Lock = require("portmaster.lock")
 local CMD = require("portmaster.cmd")
-local PARAM = require("portmaster.param")
---local PATH = require("portmaster.path")
+local Param = require("portmaster.param")
 
 -------------------------------------------------------------------------------------
 local P = require("posix")
@@ -67,7 +66,6 @@ local poll = P.poll
 local read = P.read
 
 local P_IO = require("posix.stdio")
---local fdopen = P_IO.fdopen
 local fileno = P_IO.fileno
 
 local P_SL = require("posix.stdlib")
@@ -83,18 +81,14 @@ local dup2 = P_US.dup2
 local exec = P_US.exec
 local fork = P_US.fork
 local pipe = P_US.pipe
---local sleep = P_US.sleep
 
 -------------------------------------------------------------------------------------
 -- indexed by fd:
 local pollfds = {} -- file descriptors for poll
 local fdstat = {} -- result, pid
---local result = {} -- table of tables with output received from file descriptor
---local fdpid = {} -- table mapping file descriptors to pids
+
 -- indexed by pid:
 local pidstat = {} -- fds, numfds
---local numpidfds = {} -- number of open file descriptors for given pid
---local pidfd = {} -- file descriptors (stdout, stderr) for this pid
 
 local function add_poll_fds(pid, fd1, fd2, to_tty)
     TRACE("ADDPOLL", pid, fd1, fd2)
@@ -133,7 +127,6 @@ local co_table = {} -- mapping from pid to coroutine
 local tasks_spawned = 0 -- number of currently existing coroutines
 local tasks_spawned_with = {} -- mapping of function used to start coroutine to count of active coroutines
 local tasks_forked = 0 -- number of forked processes
---local task_wait_func = {} -- table of check functions for blocked tasks
 
 --
 local task_results -- results of non-spawned function
@@ -181,7 +174,7 @@ local function tasks_poll(timeout)
         end
     end
     local function pollms()
-        max_tasks = max_tasks or PARAM.ncpu
+        max_tasks = max_tasks or Param.ncpu
         local n = tasks_spawned - (max_tasks or 4)
         return n <= 0 and 0 or (20 * n)
     end
@@ -356,16 +349,16 @@ end
 -- execute command according to passed flags argument
 local function run(args)
     TRACE("run", "[" .. table.concat(table.keys(args), ",") .. "]", table.unpack(args))
-    if PARAM.jailbase and args.jailed then
+    if Param.jailbase and args.jailed then
         table.insert(args, 1, CMD.chroot)
-        table.insert(args, 2, PARAM.jailbase)
-        if not args.as_root and PARAM.uid ~= 0 then -- chroot needs root but can then switch back to user
+        table.insert(args, 2, Param.jailbase)
+        if not args.as_root and Param.uid ~= 0 then -- chroot needs root but can then switch back to user
             args.as_root = true
             table.insert(args, 2, "-u")
-            table.insert(args, 3, PARAM.user)
+            table.insert(args, 3, Param.user)
         end
     end
-    if args.as_root and PARAM.uid ~= 0 then
+    if args.as_root and Param.uid ~= 0 then
         table.insert(args, 1, CMD.sudo)
         args.as_root = nil
         if args.env then -- does not work with doas as CMD.sudo !!!
@@ -446,9 +439,9 @@ end
 -- execute and log a package command that does not modify any state (JAILED)
 local function pkg(args)
     if args.jailed then
-        if PARAM.jailbase then
+        if Param.jailbase then
             table.insert(args, 1, "-c")
-            table.insert(args, 2, PARAM.jailbase)
+            table.insert(args, 2, Param.jailbase)
         end
         args.jailed = nil
     end

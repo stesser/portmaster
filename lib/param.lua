@@ -26,9 +26,6 @@ SUCH DAMAGE.
 --]]
 
 -------------------------------------------------------------------------------------
--- local Origin = require ("portmaster.origin")
---local Options = require("portmaster.options")
-local PATH = require("portmaster.path")
 local CMD = require("portmaster.cmd")
 local P = require("posix")
 
@@ -37,40 +34,67 @@ local getpwuid = P.getpwuid
 local access = P.access
 local ttyname = P.ttyname
 
---[[
-TRACE = print
+local Param = {}
 
-function table:keys()
-    local result = {}
-    for k, _ in pairs(self) do
-        if type(k) ~= "number" then
-            table.insert(result, k)
-        end
+local globalmakevars = {
+        "LOCALBASE",
+        "PORTSDIR",
+        "DISTDIR",
+        "PACKAGES",
+        "PKG_DBDIR",
+        "PORT_DBDIR",
+        "WRKDIRPREFIX",
+        "DISABLE_LICENSES",
+}
+
+local function __globalmakevars(param, k)
+    local pipe = io.popen(CMD.make .. " -f /usr/share/mk/bsd.port.mk -V " .. table.concat(globalmakevars, " -V "))
+    for _, v in ipairs(globalmakevars) do
+        Param[string.lower(v)] = pipe:read("*l")
     end
-    return result
+    pipe:close()
+    return Param[k]
 end
 
-local PATH = {
-    distdir = "/usr/ports/distfiles",
-    jailbase = "/tmp/PMJAIL",
-    local_lib = "/usr/local/lib",
-    local_lib_compat = "/usr/local/lib/compat/pkg",
-    localbase = "/usr/local",
-    packages = "/usr/packages",
-    packages_backup = "/usr/packages/portmaster-backup",
-    pkg_dbdir = "/var/db/pkg",
-    port_dbdir = "/var/db/port",
-    portsdir = "/usr/ports",
-    tmpdir = "/tmp",
-    wrkdirprefix = "/usr/work",
-}
+local function __local_lib(param, k)
+   return path_concat(Param.localbase, "lib")
+end
 
-CMD = {
-    pkg = "/usr/local/sbin/pkg-static",
-    stty = "/bin/stty",
-    sysctl = "/sbin/sysctl"
-}
---]]
+local function __local_lib_compat(param, k)
+   return path_concat(Param.local_lib, "compat/pkg")
+end
+
+local function __jailbase(param, k)
+   return -- "/tmp/PMJAIL"
+end
+
+local function __packages_backup(param, k)
+   return "/usr/packages/portmaster-backup"
+end
+
+local function __tmpdir(param, k)
+   return os.getenv("TMPDIR") or "/tmp"
+end
+
+local function __distdir_ro(param, k)
+   return not access(Param.distdir, "rw")
+end
+
+local function __packages_ro(param, k)
+   return not access(Param.packages, "rw")
+end
+
+local function __pkg_dbdir_ro(param, k)
+   return not access(Param.port_dbdir, "rw")
+end
+
+local function __port_dbdir_ro(param, k)
+   return not access(Param.pkg_dbdir, "rw")
+end
+
+local function __wrkdir_ro(param, k)
+   return not access(Param.pkg_wrkdir, "rw")
+end
 
 local function __systemabi(param, k)
     local pipe = io.popen(CMD.pkg .. " config abi") -- do not rely on Exec.pkg!!!
@@ -99,35 +123,12 @@ local function __tty_columns(param, k)
     end
 end
 
-local function __disable_licenses(param, k)
-    local pipe = io.popen(CMD.make .. " -f /usr/share/mk/bsd.port.mk -V DISABLE_LICENSES") -- do not rely on Exec.pkg!!!
-    local disable_licenses = pipe:read("*l")
-    pipe:close()
-    return disable_licenses
-end
-
-local function __distdir_ro(param, k)
-   return not access(PATH.distdir, "rw")
-end
-
 local function __ncpu(param, k)
     local pipe = io.popen(CMD.sysctl .. " -n hw.ncpu") -- do not rely on Exec.pkg!!!
     local ncpu = pipe:read("*n")
     pipe:close()
     TRACE("NCPU", ncpu)
     return ncpu
-end
-
-local function __packages_ro(param, k)
-   return not access(PATH.packages, "rw")
-end
-
-local function __pkg_dbdir_ro(param, k)
-   return not access(PATH.port_dbdir, "rw")
-end
-
-local function __port_dbdir_ro(param, k)
-   return not access(PATH.pkg_dbdir, "rw")
 end
 
 local function __uid(param, k)
@@ -141,32 +142,35 @@ local function __user(param, k)
     return param[k]
 end
 
-local function __wrkdir_ro(param, k)
-   return not access(PATH.pkg_wrkdir, "rw")
-end
-
-local function __jailbase(param, k)
-    return -- "/tmp/PM_JAIL"
-end
-
 local function __index(param, k)
     local dispatch = {
-	abi = __systemabi,
-	abi_noarch = __systemabi,
-	backup_format = __package_fmt,
-	columns = __tty_columns,
-	disable_licenses = __disable_licenses,
-	distdir_ro = __distdir_ro,
-	home = __user,
-	jailbase = __jailbase,
-	ncpu = __ncpu,
-	package_format = __package_fmt,
-	packages_ro = __packages_ro,
-	pkg_dbdir_ro = __pkg_dbdir_ro,
-	port_dbdir_ro = __port_dbdir_ro,
-	uid = __uid,
-	user = __user,
-	wrkdir_ro = __wrkdir_ro,
+        abi = __systemabi,
+        abi_noarch = __systemabi,
+        backup_format = __package_fmt,
+        columns = __tty_columns,
+        disable_licenses = __globalmakevars,
+        distdir_ro = __distdir_ro,
+        home = __user,
+        ncpu = __ncpu,
+        package_format = __package_fmt,
+        packages_ro = __packages_ro,
+        pkg_dbdir_ro = __pkg_dbdir_ro,
+        port_dbdir_ro = __port_dbdir_ro,
+        uid = __uid,
+        user = __user,
+        wrkdir_ro = __wrkdir_ro,
+        distdir = __globalmakevars,
+        jailbase = __jailbase,
+        local_lib = __local_lib,
+        local_lib_compat = __local_lib_compat,
+        localbase = __globalmakevars,
+        packages = __globalmakevars,
+        packages_backup = __packages_backup,
+        pkg_dbdir = __globalmakevars,
+        port_dbdir = __globalmakevars,
+        portsdir = __globalmakevars,
+        tmpdir = __tmpdir,
+        wrkdirprefix = __globalmakevars,
     }
 
     TRACE("INDEX(param)", param, k)
@@ -181,7 +185,7 @@ local function __index(param, k)
             else
                 w = false
             end
-        else
+        --else
             -- error("illegal field requested: Package." .. k)
         end
         TRACE("INDEX(param)->", param, k, w)
@@ -191,16 +195,6 @@ local function __index(param, k)
     return w
 end
 
-local Param = {}
 setmetatable(Param, {__index = __index})
 
 return Param
-
---[[
-PARAM = Param
-
-print (Param.user, Param.home, Param.distdir_ro)
-print (Param.abi, Param.abi_noarch)
-print (Param.columns)
-print (Param.ncpu)
---]]

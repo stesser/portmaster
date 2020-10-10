@@ -28,9 +28,7 @@ SUCH DAMAGE.
 -------------------------------------------------------------------------------------
 local Exec = require("portmaster.exec")
 local Lock = require("portmaster.lock")
---local CMD = require("portmaster.cmd")
-local PARAM = require("portmaster.param")
---local PATH = require("portmaster.path")
+local Param = require("portmaster.param")
 
 -------------------------------------------------------------------------------------
 local DISTINFO_CACHE = {}
@@ -116,7 +114,6 @@ local function dist_fetch(origin)
    TRACE("DIST_FETCH", origin and origin.name or "<nil>", origin and origin.distinfo_file or "<nil>")
    local port = origin.port
    local success = true
-   --local distinfo = parse_distinfo(origin)
    local distinfo = generate_distinfo(origin)
    update_distinfo_cache(distinfo)
    local distfiles = table.keys(distinfo) -- or {} ???
@@ -132,7 +129,7 @@ local function dist_fetch(origin)
          setall(distinfo, "fetching", true)
          TRACE("FETCH_MISSING", really_unchecked)
          local lines, err, exitcode = origin:port_make{
-            as_root = PARAM.distdir_ro,
+            as_root = Param.distdir_ro,
             table = true,
             "FETCH_BEFORE_ARGS=-v",
             "NO_DEPENDS=1",

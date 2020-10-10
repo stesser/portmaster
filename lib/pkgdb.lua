@@ -28,9 +28,7 @@ SUCH DAMAGE.
 -------------------------------------------------------------------------------------
 local Exec = require("portmaster.exec")
 local Lock = require("portmaster.lock")
---local CMD = require("portmaster.cmd")
---local PARAM = require("portmaster.param")
-local PATH = require("portmaster.path")
+local Param = require("portmaster.param")
 
 local PkgDbLock
 
@@ -178,7 +176,7 @@ end
 local function update_repo() -- move to Package module XXX
     pkg {
         as_root = true,
-        "repo", PATH.packages .. "All"
+        "repo", Param.packages .. "All"
     }
 end
 

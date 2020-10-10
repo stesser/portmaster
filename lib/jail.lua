@@ -29,8 +29,7 @@ SUCH DAMAGE.
 local Options = require("portmaster.options")
 local Exec = require("portmaster.exec")
 local CMD = require("portmaster.cmd")
-local PARAM = require("portmaster.param")
-local PATH = require("portmaster.path")
+local Param = require("portmaster.param")
 
 -------------------------------------------------------------------------------------
 local P_US = require("posix.unistd")
@@ -89,7 +88,7 @@ local JAIL_FS = {
 -- ---------------------------------------------------------------------------
 local function unmount_all(jaildir)
     TRACE("UNMOUNT_ALL", jaildir)
-    assert(jaildir and jaildir == PARAM.jailbase, "invalid jail directory " .. jaildir .. " passed")
+    assert(jaildir and jaildir == Param.jailbase, "invalid jail directory " .. jaildir .. " passed")
     local mnt_dev, mnt_point, md_unit
     local df_lines = Exec.run{
         table = true,
@@ -279,7 +278,7 @@ local function setup_etc(jaildir)
     outf1:close()
     -- further required files are copied unmodified
     provide_file(jaildir, "/etc/shells", "/etc/rc.subr", "/etc/make.conf", "/etc/src.conf", "/etc/rc.d", "/etc/defaults")
-    provide_file(jaildir, PATH.localbase .. "/etc/pkg.conf", PATH.localbase .. "/etc/pkg", "/var/log/utx.log")
+    provide_file(jaildir, Param.localbase .. "/etc/pkg.conf", Param.localbase .. "/etc/pkg", "/var/log/utx.log")
 end
 
 local function setup_var_run(jaildir)
@@ -287,18 +286,18 @@ local function setup_var_run(jaildir)
         as_root = true,
         jailed = true,
         log = true,
-        CMD.ldconfig, "/lib", "/usr/lib", PATH.localbase .. "/lib"
+        CMD.ldconfig, "/lib", "/usr/lib", Param.localbase .. "/lib"
     }
     Exec.run{
         as_root = true,
         jailed = true,
         log = true,
-        CMD.ldconfig, "-32", "/usr/lib32", PATH.localbase .. "/lib32"
+        CMD.ldconfig, "-32", "/usr/lib32", Param.localbase .. "/lib32"
     }
 end
 
 local function setup_usr_local(jaildir)
-    provide_file(jaildir, PATH.localbase .. "/etc/portmaster.rc")
+    provide_file(jaildir, Param.localbase .. "/etc/portmaster.rc")
 end
 
 -- ---------------------------------------------------------------------------
@@ -306,21 +305,21 @@ local JAILROOT = "/tmp"
 
 local function create()
     if not Options.dry_run then
-        PARAM.jailbase = JAILROOT .. "/TEST" -- NYI use individual jail names
+        Param.jailbase = JAILROOT .. "/TEST" -- NYI use individual jail names
 
-        unmount_all(PARAM.jailbase)
-        mount_all(PARAM.jailbase)
-        setup_etc(PARAM.jailbase)
-        setup_var_run(PARAM.jailbase)
-        setup_usr_local(PARAM.jailbase)
+        unmount_all(Param.jailbase)
+        mount_all(Param.jailbase)
+        setup_etc(Param.jailbase)
+        setup_var_run(Param.jailbase)
+        setup_usr_local(Param.jailbase)
     end
 end
 
 local function destroy()
     if not Options.dry_run then
-        unmount_all(PARAM.jailbase)
+        unmount_all(Param.jailbase)
     end
-    PARAM.jailbase = nil
+    Param.jailbase = nil
 end
 
 return {create = create, destroy = destroy}

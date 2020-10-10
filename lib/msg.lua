@@ -25,9 +25,7 @@ OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 SUCH DAMAGE.
 --]]
 
---local CMD = require("portmaster.cmd")
-local PARAM = require("portmaster.param")
---local PATH = require("portmaster.path")
+local Param = require("portmaster.param")
 
 -------------------------------------------------------------------------------------
 local stdout = io.stdout
@@ -117,7 +115,7 @@ local function show(args)
             else
                 text = table.concat(args, " ")
             end
-            columns = columns or PARAM.columns or 79
+            columns = columns or Param.columns or 79
             local lines = split_lines_at(text, columns - 8)
             if lines then
                 -- extra blank line if not a continuation and not following a blank line anyway

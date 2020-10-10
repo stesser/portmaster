@@ -36,9 +36,7 @@ local Progress = require("portmaster.progress")
 local Distfile = require("portmaster.distfiles")
 local Exec = require("portmaster.exec")
 local PkgDb = require("portmaster.pkgdb")
---local CMD = require("portmaster.cmd")
-local PARAM = require("portmaster.param")
-local PATH = require("portmaster.path")
+local Param = require("portmaster.param")
 
 -------------------------------------------------------------------------------------
 local P_US = require("posix.unistd")
@@ -192,7 +190,7 @@ local function add_multiple(args)
     TRACE("PORTS_ADD_MULTIPLE->", pattern_table)
     ports_update {filter_match}
     for _, v in ipairs(args) do
-        if string.match(v, "/") and access(path_concat(PATH.portsdir, v, "Makefile"), "r") then
+        if string.match(v, "/") and access(path_concat(Param.portsdir, v, "Makefile"), "r") then
             local o = Origin:new(v)
             local p = o.pkg_new
             Action:new{build_type = "user", dep_type = "run", force = Options.force, o_n = o, pkg_new = p}
@@ -200,7 +198,7 @@ local function add_multiple(args)
     end
     --[[
    for i, name_glob in ipairs (args) do
-      local filenames = glob (path_concat (PATH.portsdir, name_glob, "Makefile"))
+      local filenames = glob (path_concat (Param.portsdir, name_glob, "Makefile"))
       if filenames then
 	 for j, filename in ipairs (filenames) do
 	    if access (filename, "r") then
@@ -228,7 +226,7 @@ local function add_all_outdated()
     end
     -- filter return values are: match, force
     local function filter_old_abi(pkg)
-        return pkg.abi ~= PARAM.abi and pkg.abi ~= PARAM.abi_noarch, false -- true XXX
+        return pkg.abi ~= Param.abi and pkg.abi ~= Param.abi_noarch, false -- true XXX
     end
     local current_libs
     local function filter_old_shared_libs(pkg)
@@ -297,7 +295,7 @@ local function perform_actions(action_list)
                     -- or just a plain install from package???)
                     --[[
                     if #DELAYED_INSTALL_LIST > 0 then -- NYI to be implemented in a different way
-                        PARAM.phase = "install"
+                        Param.phase = "install"
                         perform_delayed_installations()
                     end
                     --]]
@@ -307,7 +305,7 @@ local function perform_actions(action_list)
                 Msg.show {start = true, "All requested actions have been completed"}
             end
             Progress.clear()
-            PARAM.phase = ""
+            Param.phase = ""
         end
     end
     return true
@@ -349,7 +347,7 @@ local function execute()
     --]]
 
     -- end of scan phase, all required actions are known at this point, builds may start
-    PARAM.phase = "build"
+    Param.phase = "build"
 
     perform_actions(action_list)
 

@@ -26,10 +26,6 @@ SUCH DAMAGE.
 --]]
 -------------------------------------------------------------------------------
 
---local CMD = require("portmaster.cmd")
---local PARAM = require("portmaster.param")
---local PATH = require("portmaster.path")
-
 local Lock = {} -- Lock module
 local LocksTable = {} -- table containing all created lock tables
 
@@ -84,14 +80,14 @@ local function tryacquire(lock, items)
     local state = lock.state
     local function islocked()
         if avail and avail < (items.weight or 1) then
-            TRACE("TRYACQUIRE-", lock.name, avail, items.weight or 1)
+            --TRACE("TRYACQUIRE-", lock.name, avail, items.weight or 1)
             return true
         end
         if shared then
             for _, item in ipairs(items) do
                 local listitem = state[item]
                 if listitem and listitem.acquired < 0 then
-                    TRACE("TRYACQUIRE_SHARED-", lock.name, item, listitem)
+                    --TRACE("TRYACQUIRE_SHARED-", lock.name, item, listitem)
                     return true
                 end
             end
@@ -99,7 +95,7 @@ local function tryacquire(lock, items)
             for _, item in ipairs(items) do
                 local listitem = state[item]
                 if listitem and listitem.acquired ~= 0 then
-                    TRACE("TRYACQUIRE_EXCLUSIVE-", lock.name, item, listitem)
+                    --TRACE("TRYACQUIRE_EXCLUSIVE-", lock.name, item, listitem)
                     return true
                 end
             end
@@ -147,16 +143,16 @@ local function acquire(lock, items)
                 lockitem.exclusivequeue[co] = true
             end
             state[item] = lockitem
-            tracelockstate(lock)
+            --tracelockstate(lock)
         end
         lock.blocked = lock.blocked + 1 -- XXX required ???
     end
     local function locktable_insert(co)
-        TRACE("LOCK.ACQUIRE_ENQUEUE", lock.name, items)
+        --TRACE("LOCK.ACQUIRE_ENQUEUE", lock.name, items)
         local locktable = BlockedTasks[lock]
         locktable[co] = items
         tasks_blocked = tasks_blocked + 1
-        TRACE("BlockedTasks:", BlockedTasks)
+        --TRACE("BlockedTasks:", BlockedTasks)
     end
 
     TRACE("LOCK.ACQUIRE", lock.name, items)
@@ -168,8 +164,8 @@ local function acquire(lock, items)
         coroutine.yield()
     end
     TRACE("LOCK.ACQUIRE->", lock.name, items)
-    TRACE("BlockedTasks:", BlockedTasks)
-    tracelockstate(lock)
+    --TRACE("BlockedTasks:", BlockedTasks)
+    --tracelockstate(lock)
     TRACE("---")
 end
 
@@ -211,11 +207,13 @@ local function release(lock, items)
                         TRACE("LOCK.SET_RELEASED", co)
                         result[co] = true
                     end
-                    state[item] = (next(listitem.sharedqueue) or next(listitem.exclusivequeue)) and listitem or nil
+                    if not (next(listitem.sharedqueue) or next(listitem.exclusivequeue)) then
+                        state[item] = nil
+                    end
                 end
             end
         end
-        TRACE("LOCK.RELEASE_LIST", result)
+        --TRACE("LOCK.RELEASE_LIST", result)
         return result
     end
     local function lockitems_dequeue(co, queueitems)
@@ -231,13 +229,13 @@ local function release(lock, items)
         lock.blocked = lock.blocked - 1
     end
     local function resume_unlocked(resume_list)
-        TRACE("BlockedTasks:", BlockedTasks)
-        TRACE("RESUME_UNLOCKED", lock.name, resume_list)
+        --TRACE("BlockedTasks:", BlockedTasks)
+        --TRACE("RESUME_UNLOCKED", lock.name, resume_list)
         local locktable = BlockedTasks[lock]
-        assert(locktable, "No BlockedTasks table named " .. lock.name)
+        assert(locktable, "No BlockedTasks sub-table named " .. lock.name)
         for co, _ in pairs(resume_list) do
             local queueitems = locktable[co]
-            TRACE("LOCK.WAITTEST", lock.name, co, queueitems)
+            --TRACE("LOCK.WAITTEST", lock.name, co, queueitems)
             if queueitems then
                 if tryacquire(lock, queueitems) then
                     lockitems_dequeue(co, queueitems)
@@ -251,12 +249,12 @@ local function release(lock, items)
         end
     end
 
-    TRACE("LOCK.RELEASE", lock.name, items)
+    --TRACE("LOCK.RELEASE", lock.name, items)
     release_items()
     resume_unlocked(released(true)) -- shared == true
     resume_unlocked(released(false))-- shared == false
-    TRACE("BlockedTasks:", BlockedTasks)
-    tracelockstate(lock)
+    --TRACE("BlockedTasks:", BlockedTasks)
+    --tracelockstate(lock)
     TRACE("---")
 end
 
@@ -283,34 +281,6 @@ local function destroy(lock)
     assert(lock.blocked == 0)
 end
 
---[[
-local TestLock = new ("TestLock", 2)
-
-local function T (delay, items)
-    print ("-----------------", items.tag)
-    print ("--(1)-- " .. delay)
-    acquire(TestLock, items)
-    print ("--(2)-- " .. delay)
-    --Exec.run{"/bin/sh", "-c", "sleep " .. delay .. "; echo DONE " .. delay}
-    Exec.run{"/bin/sleep" , delay}
-    print ("--(3)-- " .. delay)
-    release(TestLock, items)
-    print ("--(4)-- " .. delay)
-end
-
-Exec.spawn(T, 4, {shared = false, tag="A", "a", "b"})
---[=[
-Exec.spawn(T, 3, {shared = true,  tag="B", "a", "c"})
-Exec.spawn(T, 2, {shared = true,  tag="C", "a", "c"})
-Exec.spawn(T, 1, {shared = true,  tag="D", "a", "c"})
-Exec.spawn(T, 1, {shared = false, tag="E", "a", "b"})
---]=]
-
-Exec.finish_spawned()
-
-destroy(TestLock)
-
---]]
 -- module interface
 Lock.new = new
 Lock.destroy = destroy
@@ -321,24 +291,3 @@ Lock.blocked_tasks = blocked_tasks
 Lock.trace_locked = trace_locked
 
 return Lock
-
---[[
-
-further required locking primitives:
-
-references:
-    -- e.g. to prevent premature deletion of some actively used resource
-    reference_acqire
-    reference_release
-    reference_wait_done
-    --> could also be implemented as "read lock" (shared lock)
-
-semaphores:
-    -- can be initialized to
-    -- 0: blocking until first released
-    -- n > 0: can be acquired n times before next attempt leads to blocking
-    -- n < 0: must be released n times before it can be successfully acquired (useful???)
-    semaphore_acquire
-    semaphore_release
-
---]]

@@ -32,8 +32,7 @@ local Msg = require("portmaster.msg")
 local Exec = require("portmaster.exec")
 local Lock = require("portmaster.lock")
 local CMD = require("portmaster.cmd")
-local PARAM = require("portmaster.param")
-local PATH = require("portmaster.path")
+local Param = require("portmaster.param")
 
 -------------------------------------------------------------------------------------
 local P = require("posix")
@@ -138,7 +137,7 @@ local previous_action_co
 
 local function log(action, args)
     TRACE("LOG", args, action)
-    if PARAM.phase ~= "scan" then
+    if Param.phase ~= "scan" then
         if not rawget(action, "startno_string") then
             action.startno_string = "[" .. tostring(action.startno) .. "/" .. tostring(#ACTION_LIST) .. "]"
             action:log {describe(action)}
@@ -186,7 +185,7 @@ local function pkgfiles_rename(action) -- UNTESTED !!!
     local pkgfiles = glob(file_pattern)
     if pkgfiles then
         for _, pkgfile_old in ipairs(pkgfiles) do
-            if access(pkgfile_old, "r") and not strpfx(pkgfile_old, PATH.packages_backup) then
+            if access(pkgfile_old, "r") and not strpfx(pkgfile_old, Param.packages_backup) then
                 local pkgfile_new = path_concat(dirname(pkgfile_old), p_n.name .. pkgfile_old:gsub(".*(%.%w+)", "%1"))
                 local _, err, exitcode =
                     Exec.run {
@@ -254,16 +253,16 @@ end
 local function package_create(action)
     local o_n = action.o_n
     local pkgname = action.pkg_new.name
-    local pkgfile = action.pkg_new.pkg_filename -- (PATH.packages .. "All", pkgname, PARAM.package_format)
+    local pkgfile = action.pkg_new.pkg_filename -- (Param.packages .. "All", pkgname, Param.package_format)
     TRACE("PACKAGE_CREATE", o_n, pkgname, pkgfile)
     if Options.skip_recreate_pkg and access(pkgfile, "r") then
         action:log {"The existing package file will not be overwritten"}
     else
         action:log {"Create a package from staging area of port", o_n.name}
         local jailed = Options.jailed
-        local as_root = PARAM.packages_ro
-        local base = (as_root or jailed) and PATH.tmpdir or PATH.packages -- use random tempdir !!!
-        local sufx = "." .. PARAM.package_format
+        local as_root = Param.packages_ro
+        local base = (as_root or jailed) and Param.tmpdir or Param.packages -- use random tempdir !!!
+        local sufx = "." .. Param.package_format
         local _, err, exitcode =
             o_n:port_make {
             log = true,
@@ -277,7 +276,7 @@ local function package_create(action)
             if as_root or jailed then
                 local tmpfile = path_concat(base, "All", pkgname .. sufx)
                 if jailed then
-                    tmpfile = path_concat(PARAM.jailbase, tmpfile)
+                    tmpfile = path_concat(Param.jailbase, tmpfile)
                 end
                 if as_root then
                     Exec.run {
@@ -426,7 +425,7 @@ local function perform_install_or_upgrade(action)
     end
     local function check_license()
         -- may depend on OPTIONS set by make configure
-        if not PARAM.disable_licenses then
+        if not Param.disable_licenses then
             if not o_n:check_license() then
                 return fail(action, "License check failed")
             end
@@ -519,7 +518,7 @@ local function perform_install_or_upgrade(action)
             Exec.run {
                 as_root = true,
                 CMD.chown,
-                PARAM.uid,
+                Param.uid,
                 wrkdir_parent
             }
         end
@@ -780,8 +779,8 @@ local function perform_install_or_upgrade(action)
         build_dep_pkgs.tag = pkgname_new
         RunnableLock:acquire(build_dep_pkgs) -- acquire shared lock to wait for build deps to become runnable
         build_step(check_build_deps)
-        JobsLock = JobsLock or Lock.new("JobsLock", PARAM.ncpu) -- limit number of processes to one per (virtual) core
-        -- XXX action.jobs = action.jobs or 4 -- PARAM.ncpu -- number of processes this build might spawn -- to be set in strategy module
+        JobsLock = JobsLock or Lock.new("JobsLock", Param.ncpu) -- limit number of processes to one per (virtual) core
+        -- XXX action.jobs = action.jobs or 4 -- Param.ncpu -- number of processes this build might spawn -- to be set in strategy module
         local jobslockitems = {weight = action.jobs}
         -- >>>> JobsLock(jobslockitems)
         JobsLock:acquire(jobslockitems)
@@ -810,7 +809,7 @@ local function perform_install_or_upgrade(action)
         -- prepare installation, if this is an upgrade (and not a fresh install)
         if pkgname_old then
             TRACE("PERFORM_INSTALLATION/REMOVE_OLD_PKG", pkgname_old)
-            if not Options.jailed or PARAM.phase == "install" then
+            if not Options.jailed or Param.phase == "install" then
                 build_step(create_backup_package)
                 build_step(preserve_old_shared_libraries)
                 build_step(preserve_precious)
@@ -1125,7 +1124,7 @@ end
 local function verify_origin(o)
     if o and o.name and o.name ~= "" then
         local n = o.path .. "/Makefile"
-        -- print ("PATH", n)
+        -- print ("Param", n)
         return access(n, "r")
     end
 end
@@ -1337,7 +1336,7 @@ local function check_config_allow(action, recursive)
         local target = force and "config" or "config-conditional"
         return origin:port_make {
             to_tty = true,
-            as_root = PARAM.port_dbdir_ro,
+            as_root = Param.port_dbdir_ro,
             "-DNO_DEPENDS",
             "-DDISABLE_CONFLICTS",
             target
@@ -1600,8 +1599,8 @@ local function __index(action, k)
         if p_n.no_build or p_n.make_jobs_unsafe or p_n.disable_make_jobs then
             return 1
         end
-        local n = p_n.make_jobs_number or (PARAM.ncpu // 2)
-        local l = p_n.make_jobs_number_limit or PARAM.ncpu
+        local n = p_n.make_jobs_number or (Param.ncpu // 2)
+        local l = p_n.make_jobs_number_limit or Param.ncpu
         if n > l then
             n = l
         end

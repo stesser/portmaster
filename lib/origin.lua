@@ -31,9 +31,7 @@ local Options = require("portmaster.options")
 local Msg = require("portmaster.msg")
 local Distfile = require("portmaster.distfiles")
 local Exec = require("portmaster.exec")
---local CMD = require("portmaster.cmd")
---local PARAM = require("portmaster.param")
-local PATH = require("portmaster.path")
+local Param = require("portmaster.param")
 
 -------------------------------------------------------------------------------------
 local P_US = require("posix.unistd")
@@ -48,7 +46,7 @@ end
 
 -- return full path to the port directory
 local function path(origin)
-    return path_concat(PATH.portsdir, port(origin))
+    return path_concat(Param.portsdir, port(origin))
 end
 
 --
@@ -70,7 +68,7 @@ end
 -- return path to the portdb directory (contains cached port options)
 local function portdb_path(origin)
     local dir = port(origin)
-    return PATH.port_dbdir .. dir:gsub("/", "_")
+    return Param.port_dbdir .. dir:gsub("/", "_")
 end
 
 -- call make for origin with arguments used e.g. for variable queries (no state change)
@@ -83,8 +81,8 @@ local function port_make(origin, args)
         end
         --[[
         -- only valid for port_var, not generic port_make !!!
-        if args.jailed and PARAM.jailbase then
-            dir = PARAM.jailbase .. dir
+        if args.jailed and Param.jailbase then
+            dir = Param.jailbase .. dir
             args.jailed = false
         end
         --]]
@@ -247,7 +245,7 @@ local function moved_cache_load()
     if not MOVED_CACHE then
         MOVED_CACHE = {}
         MOVED_CACHE_REV = {}
-        local filename = PATH.portsdir .. "MOVED" -- allow override with configuration parameter ???
+        local filename = Param.portsdir .. "MOVED" -- allow override with configuration parameter ???
         Msg.show {level = 2, start = true, "Load list of renamed or removed ports from", filename}
         local movedfile = io.open(filename, "r")
         if movedfile then
@@ -284,7 +282,7 @@ local function lookup_moved_origin(origin)
                 local f = f ~= o_f and f or n_f
                 local r = reason .. " on " .. date
                 TRACE("MOVED->", o(p, f), r)
-                if not p or access(PATH.portsdir .. p .. "/Makefile", "r") then
+                if not p or access(Param.portsdir .. p .. "/Makefile", "r") then
                     return p, f, r
                 end
                 return locate_move(p, f, i + 1)

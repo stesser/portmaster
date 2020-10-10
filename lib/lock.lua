@@ -83,24 +83,14 @@ local function tryacquire(lock, items)
             --TRACE("TRYACQUIRE-", lock.name, avail, items.weight or 1)
             return true
         end
-        if shared then
-            for _, item in ipairs(items) do
-                local listitem = state[item]
-                if listitem and listitem.acquired < 0 then
-                    --TRACE("TRYACQUIRE_SHARED-", lock.name, item, listitem)
-                    return true
-                end
-            end
-        else
-            for _, item in ipairs(items) do
-                local listitem = state[item]
-                if listitem and listitem.acquired ~= 0 then
-                    --TRACE("TRYACQUIRE_EXCLUSIVE-", lock.name, item, listitem)
+        for _, item in ipairs(items) do
+            local listitem = state[item]
+            if listitem then
+                if shared and (listitem.acquired < 0) or (listitem.acquired ~= 0) then
                     return true
                 end
             end
         end
-        return false
     end
     local function lockitems_register()
         TRACE("LOCK.ACQUIRE_REGISTER", lock.name, items)

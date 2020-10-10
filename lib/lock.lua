@@ -86,8 +86,14 @@ local function tryacquire(lock, items)
         for _, item in ipairs(items) do
             local listitem = state[item]
             if listitem then
-                if shared and (listitem.acquired < 0) or (listitem.acquired ~= 0) then
-                    return true
+                if shared then
+                    if listitem.acquired < 0 then
+                        return true
+                    end
+                else
+                    if listitem.acquired ~= 0 then
+                        return true
+                    end
                 end
             end
         end

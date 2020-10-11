@@ -25,13 +25,13 @@ OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 SUCH DAMAGE.
 --]]
 
+-------------------------------------------------------------------------------------
 local Param = require("portmaster.param")
 
 -------------------------------------------------------------------------------------
 local stdout = io.stdout
 local stderr = io.stderr
 
--------------------------------------------------------------------------------------
 local State = {
     level = 0,
     at_start = true,
@@ -134,10 +134,9 @@ local function show(args)
                                 -- no newline after final line of prompt message
                                 nl = ""
                             end
-                        else
-                            State.sep = State.sep2
                         end
                         stdout:write(State.sep, line, nl)
+                        State.sep = State.sep2
                     end
                     State.at_start = false
                 end

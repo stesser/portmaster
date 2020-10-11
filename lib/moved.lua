@@ -25,15 +25,16 @@ OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 SUCH DAMAGE.
 --]]
 
+-------------------------------------------------------------------------------------
 local Msg = require("portmaster.msg")
 local Param = require("portmaster.param")
 local Posix = require("posix")
+local Origin = require("portmaster.origin")
 
--- -------------------------
-local MOVED_CACHE -- table indexed by old origin (as text) and giving struct with new origin (as text), date and reason for move
-local MOVED_CACHE_REV -- table indexed by new origin (as text) giving previous origin (as text)
+-------------------------------------------------------------------------------------
+local MOVED_CACHE  -- table indexed by old origin (as text) and giving struct with new origin (as text), date and reason for move
+local MOVED_CACHE_REV  -- table indexed by new origin (as text) giving previous origin (as text)
 
---
 --[[
 Cases:
    1) no flavor -> no flavor (non-flavored port)
@@ -44,31 +45,35 @@ Cases:
 Cases 1, 2 and 3 can easily be dealt with by comparing the
 full origin with column 1 (table lookup using full origin).
 
-Case 4 cannot be assumed from the origin having or not having
+Case 4 cannot be guessed from the origin having or not having
 a flavor - and it looks identical to case 1 in the MOVED file.
 
-If the passed in origin contains a flavor, then entries before
+If the passed-in origin contains a flavor, then entries before
 the addition of flavors should be ignored, but there is no way
-to reliably get the date when flavors were added from the MOVED
-file.
+to reliably determjne the date when flavors were from the data
+in the MOVED file.
 --]]
-
 local function moved_cache_load()
     local function register_moved(old, new, date, reason)
         if old then
-            local o_p, o_f = string.match(old, "([^@]+)@?([%S]*)")
-            local n_p, n_f = string.match(new, "([^@]+)@?([%S]*)")
+            local o_p, o_f = string.match(old, "^([^@]+)@?([^:%%]*)")
+            --TRACE("REGISTER_MOVED(old)", old, o_p, o_f)
+            local n_p, n_f = string.match(new, "^([^@]+)@?([^:%%]*)")
+            --TRACE("REGISTER_MOVED(new)", new, n_p, n_f)
             o_f = o_f ~= "" and o_f or nil
             n_f = n_f ~= "" and n_f or nil
+            local record = {o_p, o_f, n_p, n_f, date, reason}
             if not MOVED_CACHE[o_p] then
-                MOVED_CACHE[o_p] = {}
+                MOVED_CACHE[o_p] = {record}
+            else
+                table.insert(MOVED_CACHE[o_p], record)
             end
-            table.insert(MOVED_CACHE[o_p], {o_p, o_f, n_p, n_f, date, reason})
             if n_p then
                 if not MOVED_CACHE_REV[n_p] then
-                    MOVED_CACHE_REV[n_p] = {}
+                    MOVED_CACHE_REV[n_p] = {record}
+                else
+                    table.insert(MOVED_CACHE_REV[n_p], record)
                 end
-                table.insert(MOVED_CACHE_REV[n_p], {o_p, o_f, n_p, n_f, date, reason})
             end
         end
     end
@@ -92,44 +97,42 @@ end
 
 -- try to find origin in list of moved or deleted ports, returns new origin or nil if found, false if not found, followed by reason text
 local function lookup_moved_origin(origin)
-    local function o(p, f)
-        if p and f then
-            p = p .. "@" .. f
+    local function o(port, flavor)
+        if port and flavor then
+            port = port .. "@" .. flavor
         end
-        return p
+        return port
     end
-    local function locate_move(p, f, min_i)
-        local m = MOVED_CACHE[p]
-        if not m then
-            return p, f, nil
+    local function locate_move(port, flavor, min_i)
+        local movedrec = MOVED_CACHE[port]
+        if not movedrec then
+            return port, flavor, nil
         end
-        local max_i = #m
-        local i = max_i
-        TRACE("MOVED?", o(p, f), p, f)
-        repeat
-            local o_p, o_f, n_p, n_f, date, reason = table.unpack(m[i])
-            if p == o_p and (not f or not o_f or f == o_f) then
-                local p = n_p
-                local f = f ~= o_f and f or n_f
+        local max_i = #movedrec
+        TRACE("MOVED?", o(port, flavor), port, flavor, min_i, max_i)
+        for i = max_i, min_i, -1 do
+            local o_p, o_f, n_p, n_f, date, reason = table.unpack(movedrec[i])
+            if port == o_p and (not flavor or not o_f or flavor == o_f) then
+                local port = n_p
+                local flavor = flavor ~= o_f and flavor or n_f
                 local r = reason .. " on " .. date
-                TRACE("MOVED->", o(p, f), r)
-                if not p or Posix.access(Param.portsdir .. p .. "/Makefile", "r") then
-                    return p, f, r
+                TRACE("MOVED->", o(port, flavor), r)
+                if not port or Posix.access(Param.portsdir .. port .. "/Makefile", "r") then
+                    return port, flavor, r
                 end
-                return locate_move(p, f, i + 1)
+                return locate_move(port, flavor, i + 1)
             end
-            i = i - 1
-        until i < min_i
-        return p, f, nil
+        end
+        return port, flavor, nil
     end
 
     if not MOVED_CACHE then
         moved_cache_load()
     end
-    local p, f, r = locate_move(origin.port, origin.flavor, 1)
+    local port, flavor, r = locate_move(origin.port, origin.flavor, 1)
     if r then
-        if p then
-            origin = Origin:new(o(p, f))
+        if port then
+            origin = Origin:new(o(port, flavor))
         end
         origin.reason = r -- XXX reason might be set on wrong port (old vs. new???)
         return origin
@@ -137,5 +140,5 @@ local function lookup_moved_origin(origin)
 end
 
 return {
-    new_origin = lookup_moved_origin,
+    new_origin = lookup_moved_origin
 }

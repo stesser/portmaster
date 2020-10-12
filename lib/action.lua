@@ -1589,7 +1589,11 @@ local function __index(action, k)
         end
     end
     local function __short_name(action, k)
-        return action.pkg_new and action.pkg_new.name or action.pkg_old and action.pkg_old.name or action.o_n and action.o_n.name or action.o_o and action.o_o.name or "<unknown>"
+        return action.pkg_new and action.pkg_new.name
+            or action.pkg_old and action.pkg_old.name
+            or action.o_n and action.o_n.name
+            or action.o_o and action.o_o.name
+            or "<unknown>"
     end
     local function __startno(action, k)
         actions_started = actions_started + 1

@@ -1169,7 +1169,6 @@ local function determine_action(action, k)
         if not p_o or not p_n or p_o.version ~= p_n.version then -- XXX compare full package names instead of versions ???
 	 return true
       end
-      --]]
     end
     local function excluded()
         if p_o and rawget(p_o, "is_locked") or p_n and rawget(p_n, "is_locked") then

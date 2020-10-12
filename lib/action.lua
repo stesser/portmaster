@@ -1160,23 +1160,13 @@ local function determine_action(action, k)
     local o_o = action.o_o
     local p_n = action.pkg_new
     local function need_upgrade()
-        if Options.force or action.build_type == "provide" or action.build_type == "checkabi" or rawget(action, "force") then
-            return true -- add further checks, e.g. changed dependencies ???
+        if action.build_type == "provide" or action.build_type == "checkabi" or rawget(action, "force") then
+            return true -- XXX add further checks, e.g. changed dependencies ???
         end
         if not o_o or o_o.flavor ~= o_n.flavor then
             return true
         end
-        if p_o == p_n then
-            return false
-        end
-        if not p_o or not p_n or p_o.version ~= p_n.version then
-            return true
-        end
-        --[[
-      local pfx_o = string.match (p_o.name, "^([^-]+)-[^-]+-%S+")
-      local pfx_n = string.match (p_n.name, "^([^-]+)-[^-]+-%S+")
-      if pfx_o ~= pfx_n then
-	 --print ("PREFIX MISMATCH:", pfx_o, pfx_n)
+        if not p_o or not p_n or p_o.version ~= p_n.version then -- XXX compare full package names instead of versions ???
 	 return true
       end
       --]]

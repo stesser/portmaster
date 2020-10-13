@@ -78,18 +78,11 @@ local Strategy = require("portmaster.strategy")
 local CMD = require("portmaster.cmd")
 local Param = require("portmaster.param")
 local Moved = require("portmaster.moved")
+local Environment = require("portmaster.environment")
 
 -------------------------------------------------------------------------------------
 stdin = io.stdin
 tracefd = nil
-
--------------------------------------------------------------------------------------
-setenv("PID", getpid())
-setenv("LANG", "C")
-setenv("LC_CTYPE", "C")
-setenv("CASE_SENSITIVE_MATCH", "yes")
-setenv("LOCK_RETRIES", "120")
--- setenv ("WRKDIRPREFIX", "/usr/work") -- ports_var ???
 
 -------------------------------------------------------------------------------------
 -- clean up when script execution ends
@@ -393,33 +386,6 @@ local function init_globals()
         assert (exitcode == 0, "Failed to bootstrap the pkg command")
     end
     --]]
-end
-
--------------------------------------------------------------------------------------
--- set sane defaults and cache some buildvariables in the environment
--- <se> ToDo convert to sub-shell and "export -p | egrep '^(VAR1|VAR2)'" ???
-local function init_environment()
-    -- reset Param to a sane default
-    setenv("Param", "/bin:/sbin:/usr/bin:/usr/sbin:" .. Param.localbase .. "bin:" .. Param.localbase .. "sbin")
-    local portsdir = Param.portsdir
-    local scriptsdir = path_concat(portsdir, "Mk/Scripts")
-    local cmdenv = {SCRIPTSDIR = scriptsdir, PORTSDIR = portsdir, MAKE = "make"}
-    local env_lines = Exec.run{
-        table = true,
-        safe = true,
-        env = cmdenv,
-        CMD.sh, path_concat(scriptsdir, "ports_env.sh")
-    }
-    for _, line in ipairs(env_lines) do
-        local var, value = line:match("^export ([%w_]+)=(.+)")
-        if string.sub(value, 1, 1) == '"' and string.sub(value, -1) == '"' then
-            value = string.sub(value, 2, -2)
-        end
-        TRACE("SETENV", var, value)
-        setenv(var, value)
-    end
-    -- prevent delays for messages that are not displayed, anyway
-    setenv("DEV_WARNING_WAIT", "0")
 end
 
 --[[
@@ -750,7 +716,7 @@ local function main()
     end
 
     -- initialize environment variables based on globals set in prior functions
-    init_environment()
+    Environment.init()
 
     -------------------------------------------------------------------------------------
     -- plan tasks based on parameters passed on the command line

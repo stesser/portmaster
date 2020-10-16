@@ -119,4 +119,11 @@ local function list()
 end
 
 -- module interface
-return {add = add, add_pkg = add_pkg, add_port = add_port, check_pkg = check_pkg, check_port = check_port, list = list}
+return {
+    add = add,
+    add_pkg = add_pkg,
+    add_port = add_port,
+    check_pkg = check_pkg,
+    check_port = check_port,
+    list = list,
+}

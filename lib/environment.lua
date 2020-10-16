@@ -33,7 +33,6 @@ local P_US = require("posix.unistd")
 local getpid = P_US.getpid
 
 local Param = require("portmaster.param")
-local Exec = require("portmaster.exec")
 local CMD = require("portmaster.cmd")
 
 -------------------------------------------------------------------------------------
@@ -45,26 +44,21 @@ local function init()
     setenv("LC_CTYPE", "C")
     setenv("CASE_SENSITIVE_MATCH", "yes")
     setenv("LOCK_RETRIES", "120")
+    setenv("DEV_WARNING_WAIT", "0") -- prevent delays for messages that are not displayed, anyway
     local portsdir = Param.portsdir
     local scriptsdir = path_concat(portsdir, "Mk/Scripts")
-    local cmdenv = {SCRIPTSDIR = scriptsdir, PORTSDIR = portsdir, MAKE = CMD.make}
-    local env_lines =
-	Exec.run {
-	table = true,
-	safe = true,
-	env = cmdenv,
-	CMD.sh, path_concat(scriptsdir, "ports_env.sh")
-    }
-    for _, line in ipairs(env_lines) do
-	local var, value = line:match("^export ([%w_]+)=(.+)")
-	if string.sub(value, 1, 1) == '"' and string.sub(value, -1) == '"' then
-	    value = string.sub(value, 2, -2)
-	end
-	TRACE("SETENV", var, value)
-	setenv(var, value)
+    local envvars = "SCRIPTSDIR='" .. scriptsdir .. "' PORTSDIR='" .. portsdir .. "' MAKE='" .. CMD.make .. "'"
+    local cmdline = table.concat({CMD.env, envvars, CMD.sh, path_concat(scriptsdir, "ports_env.sh")}, " ")
+    local pipe = io.popen(cmdline)
+    for line in pipe:lines() do
+        local var, value = line:match("^export ([%w_]+)=(.+)")
+        if string.sub(value, 1, 1) == '"' and string.sub(value, -1) == '"' then
+            value = string.sub(value, 2, -2)
+        end
+        TRACE("SETENV", var, value)
+        setenv(var, value)
     end
-    -- prevent delays for messages that are not displayed, anyway
-    setenv("DEV_WARNING_WAIT", "0")
+    pipe:close()
 end
 
 return {

@@ -45,6 +45,8 @@ local globalmakevars = {
         "PORT_DBDIR",
         "WRKDIRPREFIX",
         "DISABLE_LICENSES",
+        "TRY_BROKEN",
+        "DISABLE_MAKE_JOBS",
 }
 
 local function __globalmakevars(param, k)
@@ -124,10 +126,12 @@ local function __tty_columns(param, k)
 end
 
 local function __ncpu(param, k)
+    --[[
     local pipe = io.popen(CMD.sysctl .. " -n hw.ncpu") -- do not rely on Exec.pkg!!!
     local ncpu = pipe:read("*n")
     pipe:close()
-    return ncpu
+    --]]
+    return tonumber(os.getenv("_SMP_CPUS"))
 end
 
 local function __uid(param, k)

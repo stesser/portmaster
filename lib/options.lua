@@ -222,6 +222,12 @@ local function opt_set(opt, value)
     Options[opt] = value
 end
 
+-- set option (or clear, if value is nil)
+local function opt_incr(opt, value)
+    local v = rawget(Options, opt) or 0
+    Options[opt] = v + 1
+end
+
 -- append passed value to option string
 local function opt_add(opt, value)
     local t = Options[opt] or {}
@@ -576,12 +582,21 @@ VALID_OPTS = {
             opt_clear("no_scrub_distfiles", o)
         end,
     },
-    -- expunge = { "e", "package", "delete one port passed as argument and its distfiles", function (o, v) opt_add (o, v) end },
+    --[[
+     expunge = {
+        letter = "e",
+        param = "package",
+        descr = "delete one port passed as argument and its distfiles",
+        func = function (o, v)
+            opt_add (o, v)
+        end
+    },
+    --]]
     force = {
         letter = "f",
         descr = "force action",
         func = function(o, v)
-            opt_set(o, v)
+            opt_incr(o, v)
         end,
     },
     create_package = {
@@ -714,7 +729,7 @@ local function init()
     rcfile_tryload("/usr/local/etc/portmaster.rc")
 
     -- Read a local one next, and allow the command line to override later
-    rcfile_tryload(path_concat(os.getenv("HOME"), "/.portmasterrc"))
+    rcfile_tryload(path_concat(Param.home, "/.portmasterrc"))
 
     -- options processing
     local longopt_i = 0

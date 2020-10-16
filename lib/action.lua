@@ -88,23 +88,23 @@ local function describe(action)
     local p_n = action.pkg_new
     TRACE("DESCRIBE", action.action, o_o, o_n, p_o, p_n)
     if action_is(action, "delete") then
-        return string.format("De-install %s built from %s", p_o.name, o_o.name)
+        return string.format("De-install %s built from %s", p_o.name, o_o.short_name)
     elseif action_is(action, "change") then
         if p_o ~= p_n then
-            local prev_origin = o_o and o_o ~= o_n and " (was " .. o_o.name .. ")" or ""
+            local prev_origin = o_o and o_o ~= o_n and " (was " .. o_o.short_name .. ")" or ""
             return string.format("Change package name from %s to %s for port %s%s",
-                                    p_o.name, p_n.name, o_n.name, prev_origin)
+                                    p_o.name, p_n.name, o_n.short_name, prev_origin)
         else
-            return string.format("Change origin of port %s to %s for package %s", o_o.name, o_n.name, p_n.name)
+            return string.format("Change origin of port %s to %s for package %s", o_o.short_name, o_n.short_name, p_n.name)
         end
     elseif action_is(action, "exclude") then
-        return string.format("Skip excluded package %s installed from %s", p_o.name, o_o.name)
+        return string.format("Skip excluded package %s installed from %s", p_o.name, o_o.short_name)
     elseif action_is(action, "upgrade") then
         local from
         if p_n and p_n.pkgfile then
             from = "from " .. p_n.pkgfile
         else
-            from = "using " .. o_n.name .. (origin_changed(o_o, o_n) and " (was " .. o_o.name .. ")" or "")
+            from = "using " .. o_n.short_name .. (origin_changed(o_o, o_n) and " (was " .. o_o.short_name .. ")" or "")
         end
         local prev_pkg = ""
         local verb

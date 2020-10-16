@@ -410,6 +410,17 @@ local function __port_conflicts(origin, k)
     return table.keys(ut)
 end
 
+-- strip any implicit default flavor -- XXX any strip pseudo-flavor too ???
+local function __short_name(origin)
+    local f = origin.flavor
+    if f then
+        if f == origin.flavors[1] then
+            return origin.port
+        end
+    end
+    return origin.name
+end
+
 -------------------------------------------------------------------------------------
 --
 local __index_dispatch = {
@@ -453,6 +464,7 @@ local __index_dispatch = {
     wrkdir = __port_vars,
     build_conflicts = __port_conflicts,
     install_conflicts = __port_conflicts,
+    short_name = __short_name,
 }
 
 local function __index(origin, k)

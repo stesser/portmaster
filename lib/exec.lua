@@ -389,17 +389,8 @@ local function run(args)
             table.remove(args)
         end
         table.insert(args, "/bin/sleep")
-        table.insert(args, "1")
---        args.safe = true
+        table.insert(args, "0.01") -- minimal sleep to trigger coroutine switch
         args.to_tty = nil
-        --[[
-        -- dummy return values for --dry-run
-        if args.table then
-            return {}, "", 0
-        else
-            return "", "", 0
-        end
-        --]]
     end
     tasks_poll(0)
     tasks_forked = tasks_forked + 1

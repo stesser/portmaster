@@ -36,19 +36,19 @@ local function tracelockstate(lock)
     TRACE("LocksTable(" .. lock.name .. ")", lock)
 end
 
-local mt = {
-    __index = Lock,
-    __tostring = function(self)
-        return self.name
-    end
-}
 --!
 -- allocate and initialize lock state structure
 --
 -- @param name name of the lock for identification in trace and debug messages
 -- @param avail optional limit on the number of exclusive locks to grant for different items using this lock structure
 -- @retval lock the initialized lock structure
-local function new(name, avail)
+local function new(Lock, name, avail)
+    local mt = {
+        __index = Lock,
+        __tostring = function(self)
+            return self.name
+        end
+    }
     if name then
         local L = LocksTable[name]
         if not L then
@@ -278,12 +278,12 @@ local function destroy(lock)
 end
 
 -- module interface
-Lock.new = new
-Lock.destroy = destroy
-Lock.acquire = acquire
-Lock.release = release
-Lock.tryacquire = tryacquire
-Lock.blocked_tasks = blocked_tasks
-Lock.trace_locked = trace_locked
-
-return Lock
+return {
+    new = new,
+    destroy = destroy,
+    acquire = acquire,
+    release = release,
+    tryacquire = tryacquire,
+    blocked_tasks = blocked_tasks,
+    trace_locked = trace_locked,
+}

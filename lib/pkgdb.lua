@@ -34,7 +34,7 @@ local PkgDbLock
 
 -------------------------------------------------------------------------------------
 local function lock(shared)
-    PkgDbLock = PkgDbLock or Lock.new("PkgDbLock")
+    PkgDbLock = PkgDbLock or Lock:new("PkgDbLock")
     PkgDbLock:acquire{weight = 1, shared = shared}
 end
 

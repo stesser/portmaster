@@ -343,11 +343,14 @@ local function report_results(action_list)
             Msg.show{action.short_name, msg}
         end
     end
-    TRACE("REPORT_RESULTS")
+    local function failed_filter(action)
+        return rawget(action, "failed_msg")
+    end
+    --TRACE("REPORT_RESULTS")
     Msg.show{start = true, "Build results:"}
     for _, a in ipairs(action_list) do
-        TRACE("REPORT_RESULT", a)
-        reportline(a, function(action) return rawget(action, "failed_msg") end, "FAILED: " .. (rawget(a, "failed_msg") or ""))
+        --TRACE("REPORT_RESULT", a)
+        reportline(a, failed_filter, "FAILED: " .. (rawget(a, "failed_msg") or ""))
     end
 end
 

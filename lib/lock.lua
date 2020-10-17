@@ -26,9 +26,7 @@ SUCH DAMAGE.
 --]]
 -------------------------------------------------------------------------------
 
-local Lock = {} -- Lock module
 local LocksTable = {} -- table containing all created lock tables
-
 local tasks_blocked = 0 -- number of coroutines blocked by wait_cond
 local BlockedTasks = {} -- table of all currently blocked lock requests
 

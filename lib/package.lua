@@ -214,7 +214,7 @@ local function install(pkg, abi)
     local pkgfile = pkg.pkg_filename
     local jailed = Options.jailed and Param.phase == "build"
     local env = {IGNORE_OSVERSION = "yes"}
-    --TRACE("INSTALL", abi, pkgfile)
+    TRACE("INSTALL", abi, pkgfile)
     if string.match(pkgfile, ".*/pkg-[^/]+$") then -- pkg command itself
         if not access(CMD.pkg, "x") then
             env.ASSUME_ALWAYS_YES = "yes"
@@ -223,7 +223,7 @@ local function install(pkg, abi)
                 jailed = jailed, -- ???
                 log = true,
                 env = env,
-                CMD.pkg_b, "-v"
+                CMD.pkg_bootstrap, "bootstrap"
             }
             if exitcode ~= 0 then
                 return out, err, exitcode

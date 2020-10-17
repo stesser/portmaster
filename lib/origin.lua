@@ -28,7 +28,6 @@ SUCH DAMAGE.
 -------------------------------------------------------------------------------------
 local Excludes = require("portmaster.excludes")
 local Options = require("portmaster.options")
---local Msg = require("portmaster.msg")
 local Distfile = require("portmaster.distfiles")
 local Exec = require("portmaster.exec")
 local Param = require("portmaster.param")
@@ -36,7 +35,6 @@ local Param = require("portmaster.param")
 -------------------------------------------------------------------------------------
 local P_US = require("posix.unistd")
 local access = P_US.access
---local sleep = P_US.sleep
 
 -------------------------------------------------------------------------------------
 -- return port name without flavor
@@ -366,12 +364,25 @@ end
 local function __port_depends(origin, k)
     local depends_table = {
         build_depends = {
-            "extract_depends_var", "patch_depends_var", "fetch_depends_var", "build_depends_var", "lib_depends_var",
-            "pkg_depends_var",
+            "extract_depends_var",
+            "patch_depends_var",
+            "fetch_depends_var",
+            "build_depends_var",
+            "lib_depends_var"
         },
-        run_depends = {"lib_depends_var", "run_depends_var"},
-        test_depends = {"test_depends_var"},
-        special_depends = {"build_depends_var"},
+        pkg_depends = {
+            "pkg_depends_var"
+        },
+        run_depends = {
+            "lib_depends_var",
+            "run_depends_var"
+        },
+        test_depends = {
+            "test_depends_var"
+        },
+        special_depends = {
+            "build_depends_var"
+        },
     }
     local t = depends_table[k]
     assert(t, "non-existing dependency " .. k or "<nil>" .. " requested")

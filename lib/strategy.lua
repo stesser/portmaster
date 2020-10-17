@@ -320,10 +320,22 @@ end
 
 --
 local function report_results(action_list)
-    local function reportline(action, cond, msg)
-        if cond(action) then
-            Msg.show{action.short_name, msg}
+    local function reportlines(cond, msg, field)
+        for _, action in ipairs(action_list) do
+            if cond(action) then
+                if msg then
+                    Msg.show{start = true, msg}
+                    msg = nil
+                end
+                Msg.show{action.short_name .. ": ".. action[field] or ""}
+            end
         end
+    end
+    local function installed_filter(action)
+        return rawget(action, "buildstate") and rawget(action.buildstate, "installed")
+    end
+    local function packaged_filter(action)
+        return rawget(action, "buildstate") and rawget(action.buildstate, "packaged")
     end
     local function ignored_filter(action)
         return rawget(action, "is_ignored")
@@ -333,13 +345,11 @@ local function report_results(action_list)
     end
     --TRACE("REPORT_RESULTS")
     Msg.show{start = true, "Build results:"}
-    for _, a in ipairs(action_list) do
-        --TRACE("REPORT_RESULT", a)
-        reportline(a, failed_filter, "FAILED: " .. (rawget(a, "failed_msg") or ""))
-    end
-    for _, a in ipairs(action_list) do
-        reportline(a, ignored_filter, "IGNORED: " .. (rawget(a, "failed_msg") or ""))
-    end
+    --TRACE("REPORT_RESULT", a)
+    reportlines(failed_filter, "Build failures", "failed_msg")
+    reportlines(ignored_filter, "Ignored packages", "failed_msg")
+    reportlines(packaged_filter, "Packages created", "describe")
+    reportlines(installed_filter, "Packages installed", "describe")
 end
 
 --

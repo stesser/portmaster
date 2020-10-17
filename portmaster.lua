@@ -28,21 +28,12 @@ SUCH DAMAGE.
 --]]
 
 -------------------------------------------------------------------------------------
-package.path = "/home/se/src/GIT/portmaster/lib/?.lua;" .. package.path
-
 --local dbg = require("debugger")
 
 local P = require("posix")
 local glob = P.glob
 
-local P_PW = require("posix.pwd")
-local getpwuid = P_PW.getpwuid
-
-local P_SL = require("posix.stdlib")
-local setenv = P_SL.setenv
-
 local P_SS = require("posix.sys.stat")
-local stat = P_SS.stat
 local lstat = P_SS.lstat
 local stat_isdir = P_SS.S_ISDIR
 -- local stat_isreg = P_SS.S_ISREG
@@ -50,8 +41,6 @@ local stat_isdir = P_SS.S_ISDIR
 local P_US = require("posix.unistd")
 local access = P_US.access
 local chdir = P_US.chdir
-local geteuid = P_US.geteuid
-local getpid = P_US.getpid
 local ttyname = P_US.ttyname
 
 --[[
@@ -201,23 +190,6 @@ function split_lines(str)
     return result
 end
 
---[[
--- split line at blanks into parts at most columns long and return as table
-function split_at(line, columns)
-    local result = {}
-    while #line > columns do
-        local l0 = string.sub(line, 1, columns)
-        local l1, l2 = string.match(l0, "([%S ]+) (.*)")
-        line = l2 .. string.sub(line, columns + 1)
-        table.insert(result, l1)
-    end
-    if #line > 0 then
-        table.insert(result, line)
-    end
-    return result
-end
---]]
-
 --
 function set_str(self, field, v)
     self[field] = v ~= "" and v or false
@@ -256,8 +228,6 @@ function target_part(dep)
 end
 
 -------------------------------------------------------------------------------------
--- local table_mt = getmetatable(table)
-
 -- return list of all keys of a table -- UTIL
 function table:keys()
     local result = {}
@@ -347,48 +317,6 @@ local function scan_dirs(dir)
     return result
 end
 
--- set global variable to first parameter that is a directory
-local function init_global_path(...)
-    for _, dir in pairs({...}) do
-        if is_dir(path_concat(dir, ".")) then
-            if string.sub(dir, -1) ~= "/" then
-                dir = dir .. "/"
-            end
-            return dir
-        end
-    end
-    error("init_global_path")
-end
-
--- return first parameter that is an existing executable
-local function init_global_cmd(...)
-    for _, n in ipairs({...}) do
-        if access(n, "x") then
-            return n
-        end
-    end
-    error("Cannot find required system program " .. table.concat({...}, " "))
-end
-
--- initialize global variables after reading configuration files
--- return first existing directory with a trailing "/" appended
-local function init_globals()
-    chdir("/")
-
-    --[[
-    -- Bootstrap pkg if not yet installed
-    if not access(CMD.pkg, "x") then
-        local out, err, exitcode = Exec.run{
-            env = { ASSUME_ALWAYS_YES = "yes" },
-            as_root = true,
-            CMD.pkg_bootstrap, "bootstrap"
-        }
-        assert (exitcode == 0, "Failed to bootstrap the pkg command")
-    end
-    --]]
-end
-
---[[
 -- replace passed package or port with one built from the new origin
 local function ports_add_changed_origin(build_type, name, o_n) -- 3rd arg is NOT optional
     if Options.force then build_type = "force" end
@@ -698,9 +626,6 @@ local function main()
     if Options.developer_mode then
         tracefd = io.open("/tmp/pm.log", "w")
     end
-
-    -- initialise global variables based on default values and rc file settings
-    init_globals()
 
     -- do not ask for confirmation if not connected to a terminal
     if not ttyname(0) then

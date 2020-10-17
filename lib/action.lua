@@ -424,6 +424,7 @@ local function perform_install_or_upgrade(action)
     local o_n = action.o_n
     local portname = o_n.name -- o_n.port ???
     local build_depends = o_n.build_depends
+    local pkg_depends = o_n.pkg_depends
     local special_depends = o_n.special_depends -- check for special license and ask user to accept it (may require make extract/patch)
     local build_dep_pkgs
 
@@ -765,17 +766,13 @@ local function perform_install_or_upgrade(action)
 
     TRACE("P", p_n.name, p_n)
     -- has a package been identified to be used instead of building the port?
-    local buildrequired = not p_n.pkgfile or rawget(action, "force") or not (Options.packages or Options.packages_build and not p_n.is_run_dep)
-    TRACE("BUILDREQUIRED", buildrequired, rawget(action, "force"), Options.packages)
+    local buildrequired = not p_n.pkgfile or action.force or not (Options.packages or Options.packages_build and not p_n.is_run_dep)
     local skip_install = (Options.skip_install or Options.jailed) and not p_n.is_build_dep -- NYI: and BUILDDEP[o_n]
-    if not skip_install then -- XXX test whether this specific package is actually to be installed !!!
-        RunnableLock = RunnableLock or Lock.new("RunnableLock")
-        -- >>>> RunnableLock(p_n.name)
-        RunnableLock:acquire(p_n.name) -- acquire exclusive lock until package is runnable
-    end
+    local pkg_dep_pkgs = pkgs_from_origin_tables(pkg_depends)
+    pkg_dep_pkgs.shared = true
     if buildrequired then
         -- if not installing from a package file ...
-        WorkDirLock = WorkDirLock or Lock.new("WorkDirLock")
+        WorkDirLock = WorkDirLock or Lock:new("WorkDirLock")
         -- >>>> WorkDirLock(o_n.wrkdir)
         WorkDirLock:acquire {tag = p_n.name, o_n.wrkdir}
         TRACE("perform_portbuild", portname, pkgname_new, special_depends)
@@ -786,7 +783,7 @@ local function perform_install_or_upgrade(action)
         build_dep_pkgs.tag = pkgname_new
         RunnableLock:acquire(build_dep_pkgs) -- acquire shared lock to wait for build deps to become runnable
         build_step(check_build_deps)
-        JobsLock = JobsLock or Lock.new("JobsLock", Param.ncpu) -- limit number of processes to one per (virtual) core
+        JobsLock = JobsLock or Lock:new("JobsLock", Param.ncpu) -- limit number of processes to one per (virtual) core
         -- XXX action.jobs = action.jobs or 4 -- Param.ncpu -- number of processes this build might spawn -- to be set in strategy module
         local jobslockitems = {weight = action.jobs}
         -- >>>> JobsLock(jobslockitems)
@@ -807,12 +804,17 @@ local function perform_install_or_upgrade(action)
         build_dep_pkgs.shared = true
         RunnableLock:release(build_dep_pkgs)
         -- <<<< Packagelock(build_dep_pkgs, SHARED)
+        -- >>>> RunnableLock(pkg_dep_pkgs)
+        RunnableLock:acquire(pkg_dep_pkgs)
         build_step(create_package)
         build_done("package")
+        RunnableLock:release(pkg_dep_pkgs)
+        -- <<<< RunnableLock(pkg_dep_pkgs)
     end
     -- install build depends immediately but optionally delay installation of other ports
     if not skip_install then
-        TRACE("PKGFILE2", buildrequired, pkgfile)
+        -- >>>> RunnableLock(pkg_dep_pkgs)
+        RunnableLock:acquire(pkg_dep_pkgs)
         -- prepare installation, if this is an upgrade (and not a fresh install)
         if pkgname_old then
             TRACE("PERFORM_INSTALLATION/REMOVE_OLD_PKG", pkgname_old)
@@ -829,7 +831,9 @@ local function perform_install_or_upgrade(action)
         else
             build_step(install_from_package)
         end
-        RunnableLock:release(p_n.name)
+        RunnableLock:release(pkg_dep_pkgs)
+        -- <<<< RunnableLock(pkg_dep_pkgs)
+        RunnableLock:release{p_n.name}
         -- <<<< RunnableLock(p_n.name)
         --build_step(fetch_pkg_message)
         build_step(post_install_fixup)
@@ -1166,7 +1170,7 @@ local function determine_action(action, k)
     local o_o = action.o_o
     local p_n = action.pkg_new
     local function need_upgrade()
-        if action.build_type == "provide" or action.build_type == "checkabi" or rawget(action, "force") then
+        if action.force then -- XXX action.build_type == "provide" or action.build_type == "checkabi"
             return true -- XXX add further checks, e.g. changed dependencies ???
         end
         if not o_o or o_o.flavor ~= o_n.flavor then
@@ -1197,6 +1201,7 @@ local function determine_action(action, k)
     return action.action
 end
 
+--[=[
 --
 local function clear_cached_action(action)
     local pkg_old = action.pkg_old
@@ -1288,30 +1293,6 @@ local function fixup_conflict(action1, action2)
     end
     --error("Duplicate actions for " .. pkgname .. ":\n#	1) " .. (action1 and describe(action1) or "") .. "\n#	2) " ..
     --          (action2 and describe(action2) or ""))
-end
-
--- object that controls the upgrading and other changes
-local function cache_add(action)
-    local pkgname = get_pkgname(action)
-    local action0 = ACTION_CACHE[pkgname]
-    if action0 and action0 ~= action then
-        clear_cached_action(action)
-        clear_cached_action(action0)
-        fixup_conflict(action, action0) -- re-register in ACTION_CACHE after fixup???
-        --error("Duplicate actions resolved for " .. pkgname .. ":\n#	1) " .. (action and describe(action) or "") .. "\n#	2) " ..
-        --          (action0 and describe(action0) or ""))
-        set_cached_action(action0)
-    end
-    return set_cached_action(action)
-end
-
---
-local function lookup_cached_action(args) -- args.pkg_new is a string not an object!!
-    local p_o = rawget(args, "pkg_old")
-    local p_n = rawget(args, "pkg_new") or rawget(args, "o_n") and args.o_n.pkg_new
-    local action = p_n and ACTION_CACHE[p_n.name] or p_o and ACTION_CACHE[p_o.name]
-    TRACE("CACHED_ACTION", args.pkg_new, args.pkg_old, action and action.pkg_new and action.pkg_new.name, action and action.pkg_old and action.pkg_old.name, "END")
-    return action
 end
 
 --
@@ -1498,6 +1479,7 @@ local function action_enrich(action)
    --]]
     return action -- NYI
 end
+--]=]
 
 --
 local function check_licenses()
@@ -1701,7 +1683,7 @@ local mt = {
     __tostring = describe
 }
 
---
+--[[
 local function new(Action, args)
     if args then
         local action
@@ -1759,6 +1741,144 @@ local function new(Action, args)
             end
         end
         return cache_add(action)
+    else
+        error("Action:new() called with nil argument")
+    end
+end
+--]]
+
+--[[
+    -- user flag is implied by missing auto flag
+    user/run = user requested installation on base system
+    user/build = -- illegal --
+    auto/run = run time dependency to be installed on base system
+    auto/build = build dependency to be provided in build environment (jail or base)
+    build/build = build dependency of build dependency
+    build/run = run dependency of build dependency
+--]]
+
+--
+local function lookup_cached_action(args) -- args.pkg_new is a string not an object!!
+    local p_o = rawget(args, "pkg_old")
+    local p_n = rawget(args, "pkg_new") or rawget(args, "o_n") and args.o_n.pkg_new
+    local action = p_n and ACTION_CACHE[p_n.name] or p_o and ACTION_CACHE[p_o.name]
+    --TRACE("CACHED_ACTION", args.pkg_new, args.pkg_old, action and action.pkg_new and action.pkg_new.name, action and action.pkg_old and action.pkg_old.name)
+    return action
+end
+
+local function merge_action(a1, a2)
+    --TRACE("MERGE_ACTION", a1, a2)
+    for k, v1 in pairs(a2) do
+        local v2 = rawget(a1, k)
+        if v2 then
+            if type(v2) == "table" then
+                --a1[k] = merge_action(v1, v2)
+            else
+                --TRACE("MERGE_FIELD", v1, v2)
+                a1[k] = v2
+            end
+        end
+    end
+    return a1
+end
+
+-- object that controls the upgrading and other changes
+local function cache_add(action)
+    local p_n = action.pkg_new
+    local action_new = p_n and ACTION_CACHE[p_n.name]
+    local p_o = action.pkg_old
+    local action_old = p_o and ACTION_CACHE[p_o.name]
+    if action_old then
+        action = merge_action(action, action_old)
+        ACTION_CACHE[p_o.name] = nil
+    end
+    if action_new then
+        action = merge_action(action, action_new)
+    end
+    --TRACE("CACHE_ADD", p_o and p_o.name, p_n and p_n.name, action)
+    if p_n then
+        ACTION_CACHE[p_n.name] = action
+    end
+    if p_o then
+        ACTION_CACHE[p_o.name] = action
+    end
+end
+
+local function action_list_add(action)
+    --TRACE("LIST_ADD_ACTION", action)
+    local p_o = action.pkg_old
+    local p_n = action.pkg_new
+    if p_n or p_o then
+        TRACE("IGNORE", action.short_name, action.ignore)
+        if not action.ignore then
+            if action.force or action.vers_cmp ~= 0 then
+                if not rawget(action, "listpos") then
+                    local listpos = #ACTION_LIST + 1
+                    action.listpos = listpos
+                    ACTION_LIST[listpos] = action
+                    Msg.show {listpos .. ".", describe(action)}
+                    if p_n then
+                        RunnableLock = RunnableLock or Lock:new("RunnableLock")
+                        -- >>>> RunnableLock(p_n.name)
+                        RunnableLock:acquire{p_n.name} -- acquire exclusive lock until package is runnable
+                    end
+                end
+            end
+        end
+    end
+end
+
+--
+local function merge_origin(action, args, field)
+    local argf = rawget(args, field)
+    if argf then
+        local actf = rawget(action, field)
+        if actf then
+            assert(actf.name == argf.name, (action.short_name or "<unknown>") .. ": Mismatch: " .. actf.name .. " / " .. argf.name)
+        else
+            action[field] = Origin:new(argf)
+        end
+    end
+end
+
+--
+local function merge_pkg(action, args, field)
+    local argf = rawget(args, field)
+    if argf then
+        local actf = rawget(action, field)
+        if actf then
+            assert(actf.name == argf.name, (action.short_name or "?") .. ": Mismatch: " .. actf.name .. " / " .. argf.name)
+        else
+            action[field] = Package:new(argf)
+        end
+    end
+end
+
+--
+local function new(Action, args)
+    local function merge_flag(action, field, value)
+        rawset(action, field, not not value)
+    end
+    if args then
+        TRACE("ACTION", args)
+        local action = lookup_cached_action(args)
+        if not action then
+            action = args
+            action.__class = Action
+        end
+        merge_flag (action, "is_build_dep", args.is_build_dep)
+        merge_flag (action, "is_run_dep", args.is_run_dep)
+        merge_flag (action, "is_auto", args.is_auto)
+        merge_flag (action, "is_user", args.is_user)
+        merge_flag (action, "force", rawget(args, "force"))
+        merge_origin(action, args, "origin_old")
+        merge_origin(action, args, "origin_new")
+        merge_pkg(action, args, "pkg_old")
+        merge_pkg(action, args, "pkg_new")
+        setmetatable(action, mt)
+        TRACE("ACTION(new)->", action)
+        cache_add(action)
+        action_list_add(action)
     else
         error("Action:new() called with nil argument")
     end

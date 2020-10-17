@@ -396,6 +396,7 @@ local function run(args)
     tasks_forked = tasks_forked + 1
     --TRACE("NUM_TASKS+", tasks_spawned, tasks_forked, Lock.blocked_tasks())
     local exitcode, stdout, stderr = shell(args)
+    --TRACE("EXEC->", exitcode, stdout, stderr, args)
     tasks_forked = tasks_forked - 1
     --TRACE("NUM_TASKS-", tasks_spawned, tasks_forked, Lock.blocked_tasks())
     if args.to_tty then

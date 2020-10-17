@@ -255,13 +255,13 @@ end
 
 -- concatenate file path, first element must not be empty
 function path_concat(result, ...)
-    TRACE("PATH_CONCAT", result, ...)
+    --TRACE("PATH_CONCAT", result, ...)
     if result ~= "" then
         for _, v in ipairs({...}) do
             local sep = string.sub(result, -1) ~= "/" and string.sub(v, 1, 1) ~= "/" and "/" or ""
             result = result .. sep .. v
         end
-        TRACE("PATH_CONCAT->", result)
+        --TRACE("PATH_CONCAT->", result)
         return result
     end
 end
@@ -270,9 +270,9 @@ end
 function is_dir(path)
     if path then
         local st, err = lstat(path)
-        TRACE("IS_DIR?", st, err)
+        --TRACE("IS_DIR?", st, err)
         if st and access(path, "x") then
-            TRACE("IS_DIR", path, stat_isdir(st.st_mode))
+            --TRACE("IS_DIR", path, stat_isdir(st.st_mode))
             return stat_isdir(st.st_mode) ~= 0
         end
     end
@@ -280,7 +280,7 @@ end
 
 --
 local function scan_files(dir)
-    TRACE("SCANFILES", dir)
+    --TRACE("SCANFILES", dir)
     local result = {}
     assert(dir, "empty directory argument")
     local files = glob(path_concat(dir, "*"))
@@ -300,7 +300,7 @@ end
 
 --
 local function scan_dirs(dir)
-    TRACE("SCANDIRS", dir)
+    --TRACE("SCANDIRS", dir)
     local result = {}
     assert(dir, "empty directory argument")
     local files = glob(path_concat(dir, "*"))
@@ -549,7 +549,7 @@ local function list_ports(mode)
     }
     local listdata = {}
     local function check_version(pkg_old)
-        TRACE("CHECK_VERSION_SPAWNED", pkg_old.name)
+        --TRACE("CHECK_VERSION_SPAWNED", pkg_old.name)
         local o_o = pkg_old.origin
         assert(o_o, "no origin for package " .. pkg_old.name)
         local pkg_new = o_o.pkg_new
@@ -558,7 +558,7 @@ local function list_ports(mode)
         if not pkgname_new then
             local o_n = Moved.new_origin(o_o)
             reason = o_o.reason
-            TRACE("MOVED??", reason)
+            --TRACE("MOVED??", reason)
             if o_n and o_n ~= o_o then
                 pkg_new = o_n.pkg_new
                 pkgname_new = pkg_new and pkg_new.name
@@ -604,10 +604,10 @@ local function list_ports(mode)
             end
             Exec.finish_spawned()
             local pkgnames = table.keys(listdata)
-            TRACE("PKGNAMES", #pkgnames)
+            --TRACE("PKGNAMES", #pkgnames)
             table.sort(pkgnames)
             for _, pkg_old in ipairs(pkgnames) do
-                TRACE("LIST", pkg_old)
+                --TRACE("LIST", pkg_old)
                 Msg.show{pkg_old, listdata[pkg_old]}
             end
             pkg_list = rest

@@ -91,7 +91,7 @@ local fdstat = {} -- result, pid
 local pidstat = {} -- fds, numfds
 
 local function add_poll_fds(pid, fd1, fd2, to_tty)
-    TRACE("ADDPOLL", pid, fd1, fd2)
+    --TRACE("ADDPOLL", pid, fd1, fd2)
     pidstat[pid] = {fds = {fd1, fd2}, numfds = 2}
     fdstat[fd1] = {pid = pid, result = {}}
     fdstat[fd2] = {pid = pid, result = {}}
@@ -104,14 +104,14 @@ local function rm_poll_fd(fd)
     fdstat[fd].pid = nil
     pollfds[fd] = nil
     local numfds = pidstat[pid].numfds - 1
-    TRACE("RMPOLL", pid, fd, numfds)
+    --TRACE("RMPOLL", pid, fd, numfds)
     --[[
     if fd == pidstat[pid].fds[1] then
-        TRACE("RMPOLLFD", pid, fd, "STDOUT")
+        --TRACE("RMPOLLFD", pid, fd, "STDOUT")
     elseif fd == pidstat[pid].fds[2] then
-        TRACE("RMPOLLFD", pid, fd, "STDERR")
+        --TRACE("RMPOLLFD", pid, fd, "STDERR")
     else
-        TRACE("RMPOLLFD", pid, fd, "???")
+        --TRACE("RMPOLLFD", pid, fd, "???")
     end
     --]]
     if numfds > 0 then
@@ -132,10 +132,10 @@ local tasks_forked = 0 -- number of forked processes
 local task_results -- results of non-spawned function
 
 local function task_result()
-    TRACE("TASK_RESULT")
+    --TRACE("TASK_RESULT")
     local exitcode, stdout, stderr = table.unpack(task_results)
     task_results = nil
-    TRACE ("EXIT(return)", exitcode, stdout, stderr)
+    --TRACE ("EXIT(return)", exitcode, stdout, stderr)
     return exitcode, stdout, stderr
 end
 
@@ -165,10 +165,10 @@ local function tasks_poll(timeout)
         local co = co_table[pid]
         co_table[pid] = nil
         if co then
-            TRACE ("EXIT(resume)", co, exitcode, stdout, stderr)
+            --TRACE ("EXIT(resume)", co, exitcode, stdout, stderr)
             coroutine.resume(co, exitcode, stdout, stderr)
         else
-            TRACE("STORE_RESULTS", pid, exitcode)
+            --TRACE("STORE_RESULTS", pid, exitcode)
             task_results = {exitcode, stdout, stderr}
             return true
         end
@@ -181,7 +181,7 @@ local function tasks_poll(timeout)
     local idle
     if timeout or next(pollfds) then
         timeout = timeout or pollms()
-        TRACE("POLL", timeout)
+        --TRACE("POLL", timeout)
         local task_done
         while not idle and poll(pollfds, timeout) > 0 do -- XXX add test for "terminated" variable set by fail et. al.
             idle = true
@@ -206,7 +206,7 @@ local function tasks_poll(timeout)
                 end
             end
         end
-        TRACE("TASKS_POLL->task_done", task_done)
+        --TRACE("TASKS_POLL->task_done", task_done)
         return task_done or task_results
     end
 end
@@ -228,7 +228,7 @@ local function finish_spawned (f, msg) -- if f is provided then only spawns of t
         end
         local pid = tasks_poll(Lock.blocked_tasks() > 0 and 100 or -1)
         if pid then
-            TRACE("FINISH_SPAWNED->", pid)
+            --TRACE("FINISH_SPAWNED->", pid)
             task_result(pid)
         end
         counter = counter + 1
@@ -270,9 +270,9 @@ local function task_create (args)
         if type(cmd) == "function" then
             _exit(cmd(table.unpack(args)) and 0 or 1)
         else
-            TRACE("EXEC(Child)")
+            --TRACE("EXEC(Child)")
             local exitcode, errmsg = exec (cmd, args)
-            TRACE("FAILED-EXEC(Child)->", exitcode, errmsg)
+            --TRACE("FAILED-EXEC(Child)->", exitcode, errmsg)
             assert (exitcode, errmsg)
         end
         _exit (1) -- not reached ???
@@ -282,7 +282,7 @@ local function task_create (args)
             tasks_poll(1000)
             local _, status, exitcode = wait(pid, WNOHANG)
             if exitcode then
-                TRACE("EXEC(Parent)->", exitcode, status)
+                --TRACE("EXEC(Parent)->", exitcode, status)
                 return exitcode
             end
         end
@@ -291,7 +291,7 @@ local function task_create (args)
         close(fd2w)
     end
     add_poll_fds(pid, fd1r, fd2r)
-    TRACE("TASK_CREATE", pid, coroutine.running())
+    --TRACE("TASK_CREATE", pid, coroutine.running())
     return pid
 end
 
@@ -309,7 +309,7 @@ local function spawn(f, ...)
         tasks_spawned_with[f] = tasks_spawned_with[f] - 1
     end
     tasks_poll()
-    TRACE ("SPAWN", f, ...)
+    --TRACE ("SPAWN", f, ...)
     local co = coroutine.create(wrapper)
     coroutine.resume(co, f, ...)
 end
@@ -326,17 +326,17 @@ local function shell(args)
         co_table[pid] = false
         local exitcode, stdout, stderr
         while exitcode == nil do
-            TRACE("WAIT FOR DATA - PID=", pid)
+            --TRACE("WAIT FOR DATA - PID=", pid)
             local task_done
             repeat
                 task_done = tasks_poll(-1)
             until task_done
             exitcode, stdout, stderr = task_result(pid)
-            TRACE("EXITCODE", exitcode)
+            --TRACE("EXITCODE", exitcode)
         end
-        TRACE("SHELL(stdout)", stdout)
-        TRACE("SHELL(stderr)", stderr)
-        TRACE("SHELL(exitcode)", exitcode)
+        --TRACE("SHELL(stdout)", stdout)
+        --TRACE("SHELL(stderr)", stderr)
+        --TRACE("SHELL(exitcode)", exitcode)
         co_table[pid] = nil
         return exitcode, stdout, stderr
     else
@@ -363,12 +363,12 @@ local function run(args)
         args.as_root = nil
         if args.env then -- does not work with doas as CMD.sudo !!!
             for k, v in pairs(args.env) do
-                TRACE("SETENV(Sudo)", k, v)
+                --TRACE("SETENV(Sudo)", k, v)
                 table.insert(args, 2, k .. "=" .. v)
             end
         end
         args.env = {SUDO_PROMPT = "#  >>>\tEnter password of user %p: "}
-        TRACE("SUDO", args)
+        --TRACE("SUDO", args)
     end
     if args.log then
         if Options.dry_run or Options.show_work then
@@ -394,14 +394,14 @@ local function run(args)
     end
     tasks_poll(0)
     tasks_forked = tasks_forked + 1
-    TRACE("NUM_TASKS+", tasks_spawned, tasks_forked, Lock.blocked_tasks())
+    --TRACE("NUM_TASKS+", tasks_spawned, tasks_forked, Lock.blocked_tasks())
     local exitcode, stdout, stderr = shell(args)
     tasks_forked = tasks_forked - 1
-    TRACE("NUM_TASKS-", tasks_spawned, tasks_forked, Lock.blocked_tasks())
+    --TRACE("NUM_TASKS-", tasks_spawned, tasks_forked, Lock.blocked_tasks())
     if args.to_tty then
         return exitcode == 0, "", exitcode
     else
-        TRACE("EXEC:STDOUT", tostring(stdout))
+        --TRACE("EXEC:STDOUT", tostring(stdout))
         if stdout == nil and exitcode == 0 then
             stdout = task_result
         elseif stdout then
@@ -423,7 +423,7 @@ local function make(args)
         table.insert(args, 2, "-dia")
     end
     local stdout, stderr, exitcode = run(args)
-    TRACE ("MAKE->", args, exitcode, stdout, stderr)
+    --TRACE ("MAKE->", args, exitcode, stdout, stderr)
     return stdout, stderr, exitcode
 end
 
@@ -444,15 +444,15 @@ local function pkg(args)
     local out, err, exitcode
     table.insert(args, 1, CMD.pkg)
     for i = 1, 10 do
-        TRACE("PKG<-", args)
+        --TRACE("PKG<-", args)
         out, err, exitcode = run(args) -- XXX retry if exitcode indicates lock timeout occurred
-        TRACE("PKG->", args, exitcode, out, err)
+        --TRACE("PKG->", args, exitcode, out, err)
         if exitcode == 0 then
             return (out or args.table and {} or ""), err, 0
         elseif exitcode ~= 75 then
             break
         end
-        TRACE("PKG!", args)
+        --TRACE("PKG!", args)
         run{log=true, "/usr/bin/pgrep", "-lf", "/usr/local/sbin/pkg"} -- XXX debugging only
         tasks_poll(1000)
     end

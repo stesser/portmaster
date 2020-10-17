@@ -42,7 +42,7 @@ local glob = P.glob
 local P_SS = require("posix.sys.stat")
 local stat = P_SS.stat
 local lstat = P_SS.lstat
-local stat_isdir = P_SS.S_ISDIR
+--local stat_isdir = P_SS.S_ISDIR
 local stat_isreg = P_SS.S_ISREG
 
 local P_US = require("posix.unistd")
@@ -62,7 +62,7 @@ local function filename(args)
         extension = "." .. extension
     end
     local result = path_concat(base, subdir, pkgname .. extension)
-    TRACE("FILENAME->", result, base, subdir, pkgname, extension)
+    --TRACE("FILENAME->", result, base, subdir, pkgname, extension)
     return result
 end
 
@@ -80,7 +80,7 @@ end
 -- return package version
 local function pkg_version(pkg)
     local v = (string.match(pkg.name, ".*-([^-]+)"))
-    TRACE("VERSION", pkg.name, v)
+    --TRACE("VERSION", pkg.name, v)
     return v
 end
 
@@ -93,7 +93,7 @@ end
 local function pkg_strip_minor(pkg)
     local major = string.match(pkg_version(pkg), "([^.]+)%.%S+")
     local result = pkg_basename(pkg) .. "-" .. (major or "")
-    TRACE("STRIP_MINOR", pkg.name, result)
+    --TRACE("STRIP_MINOR", pkg.name, result)
     return result
 end
 
@@ -102,7 +102,7 @@ end
 -- preserve currently installed shared libraries // <se> check name of control variable
 local function shlibs_backup(pkg)
     local pkg_libs = pkg.shared_libs
-    TRACE("SHLIBS_BACKUP", pkg.name, pkg_libs, pkg)
+    --TRACE("SHLIBS_BACKUP", pkg.name, pkg_libs, pkg)
     if pkg_libs then
         local ldconfig_lines = Exec.run{ -- "RT?" ??? CACHE LDCONFIG OUTPUT???
             table = true,
@@ -115,7 +115,7 @@ local function shlibs_backup(pkg)
                 local stat = lstat(libpath)
                 local mode = stat and stat.st_mode
                 if mode then
-                    TRACE("SHLIBS_BACKUP+", libpath, lib, stat, mode)
+                    --TRACE("SHLIBS_BACKUP+", libpath, lib, stat, mode)
                     if stat_isreg(mode) then
                         for _, l in ipairs(pkg_libs) do
                             if l == lib then
@@ -132,7 +132,7 @@ local function shlibs_backup(pkg)
                                     log = true,
                                     CMD.cp, libpath, backup_lib
                                 }
-                                TRACE("SHLIBS_BACKUP", tostring(out), err)
+                                --TRACE("SHLIBS_BACKUP", tostring(out), err)
                                 if exitcode ~= 0 then
                                     return out, err
                                 end
@@ -140,7 +140,7 @@ local function shlibs_backup(pkg)
                         end
                     end
                 else
-                    TRACE("SHLIBS_BACKUP-", libpath, lib, stat, mode)
+                    --TRACE("SHLIBS_BACKUP-", libpath, lib, stat, mode)
                 end
             end
         end
@@ -151,7 +151,7 @@ end
 -- remove from shlib backup directory all shared libraries replaced by new versions
 local function shlibs_backup_remove_stale(pkg)
     local pkg_libs = pkg.shared_libs
-    TRACE("BACKUP_REMOVE_SHARED", pkg_libs, pkg)
+    --TRACE("BACKUP_REMOVE_SHARED", pkg_libs, pkg)
     if pkg_libs then
         local deletes = {}
         for _, lib in ipairs(pkg_libs) do
@@ -214,7 +214,7 @@ local function install(pkg, abi)
     local pkgfile = pkg.pkg_filename
     local jailed = Options.jailed and Param.phase == "build"
     local env = {IGNORE_OSVERSION = "yes"}
-    TRACE("INSTALL", abi, pkgfile)
+    --TRACE("INSTALL", abi, pkgfile)
     if string.match(pkgfile, ".*/pkg-[^/]+$") then -- pkg command itself
         if not access(CMD.pkg, "x") then
             env.ASSUME_ALWAYS_YES = "yes"
@@ -332,7 +332,7 @@ end
 local function backup_delete(pkg)
     local g = filename {subdir = "portmaster-backup", ext = ".t?*", pkg}
     for _, backupfile in pairs(glob(g) or {}) do
-        TRACE("BACKUP_DELETE", backupfile, Param.packages .. "portmaster-backup/")
+        --TRACE("BACKUP_DELETE", backupfile, Param.packages .. "portmaster-backup/")
         Exec.run{
             as_root = true,
             log = true,
@@ -345,9 +345,9 @@ end
 local function delete_old(pkg)
     local bakfile = pkg.bak_file
     local g = filename {subdir = "*", ext = "t?*", pkg}
-    TRACE("DELETE_OLD", pkg.name, g)
+    --TRACE("DELETE_OLD", pkg.name, g)
     for _, pkgfile in pairs(glob(g) or {}) do
-        TRACE("CHECK_BACKUP", pkgfile, bakfile)
+        --TRACE("CHECK_BACKUP", pkgfile, bakfile)
         if pkgfile ~= bakfile then
             Exec.run{
                 as_root = true,
@@ -362,7 +362,7 @@ end
 -- return true (exit code 0) if named package is locked
 -- set package to auto-installed if automatic == 1, user-installed else
 local function automatic_set(pkg, automatic)
-    TRACE("AUTOMATIC_SET", pkg, automatic)
+    --TRACE("AUTOMATIC_SET", pkg, automatic)
     local value = automatic and "1" or "0"
     PkgDb.set("-A", value, pkg.name)
 end
@@ -387,13 +387,13 @@ local function check_default_version(origin_name, pkgname)
         ruby = "^ruby(%d)(%d)-",
         tcltk = "^t[ck]l?(%d)(%d)-",
     }
-    TRACE("DEFAULT_VERSION", origin_name, pkgname)
+    --TRACE("DEFAULT_VERSION", origin_name, pkgname)
     for prog, pattern in pairs(T) do
         local major, minor = string.match(pkgname, pattern)
         if major then
             local default_version = prog .. "=" .. (minor and major .. "." .. minor or major)
             origin_name = origin_name .. "%" .. default_version
-            TRACE("DEFAULT_VERSION->", origin_name, pkgname)
+            --TRACE("DEFAULT_VERSION->", origin_name, pkgname)
         end
     end
     return origin_name
@@ -521,13 +521,13 @@ local function split_version_string(pkgname)
     local result = {}
     local function store_results(n1, a1, n2)
         local rn = #result
-        TRACE("SPLIT_VERSION-STORE_RESULTS", n1, a1, n2)
+        --TRACE("SPLIT_VERSION-STORE_RESULTS", n1, a1, n2)
         result[rn+1] = n1 ~= "" and tonumber(n1) or -1
         result[rn+2] = alpha_tonumber(a1)
         result[rn+3] = n2 ~= "" and tonumber(n2) or 0
     end
     local version = string.match(pkgname, "[%a%d%._,]*%*?$")
-    TRACE("SPLIT_VERSION_STRING", pkgname, version)
+    --TRACE("SPLIT_VERSION_STRING", pkgname, version)
     local s, revision, epoch = string.match (version, "([^_,]*)_?([^,]*),?(.*)")
     version = s or version
     for n1, a1, n2 in string.gmatch(version, "(%d*)([%a%*]*)(%d*)") do
@@ -539,7 +539,7 @@ local function split_version_string(pkgname)
     end
     result.epoch = tonumber(epoch) or 0
     result.revision = tonumber(revision) or 0
-    TRACE("SPLIT_VERSION_STRING->", result)
+    --TRACE("SPLIT_VERSION_STRING->", result)
     return result
 end
 
@@ -557,7 +557,7 @@ local function compare_versions(p1, p2)
         end
         return 0
     end
-    TRACE("COMPARE_VERSIONS", p1 and p1.name, p2 and p2.name)
+    --TRACE("COMPARE_VERSIONS", p1 and p1.name, p2 and p2.name)
     if p1 and p2 then
         local result = 0
         local vs1 = p1.version
@@ -573,7 +573,7 @@ local function compare_versions(p1, p2)
                 end
             end
         end
-        TRACE("COMPARE_VERSIONS->", p1 and p1.name, p2 and p2.name, result)
+        --TRACE("COMPARE_VERSIONS->", p1 and p1.name, p2 and p2.name, result)
         return result
     end
 end
@@ -597,7 +597,7 @@ end
 
 --
 local function __newindex(pkg, n, v)
-    TRACE("SET(p)", pkg.name, n, v)
+    --TRACE("SET(p)", pkg.name, n, v)
     rawset(pkg, n, v)
 end
 
@@ -668,7 +668,7 @@ local function __index(pkg, k)
         --[[
         origin = function (pkg, k)
             error ("should be cached")
-            TRACE ("Looking up origin for", pkg.name)
+            --TRACE ("Looking up origin for", pkg.name)
             local port = PkgDb.query {"%o", pkg.name}
             if port ~= "" then
                 local flavor = pkg.flavor
@@ -679,7 +679,7 @@ local function __index(pkg, k)
         --]]
     }
 
-    TRACE("INDEX(p)", pkg, k)
+    --TRACE("INDEX(p)", pkg, k)
     local w = rawget(pkg.__class, k)
     if w == nil then
         rawset(pkg, k, false)
@@ -694,9 +694,9 @@ local function __index(pkg, k)
         else
             -- error("illegal field requested: Package." .. k)
         end
-        TRACE("INDEX(p)->", pkg, k, w)
+        --TRACE("INDEX(p)->", pkg, k, w)
     else
-        TRACE("INDEX(p)->", pkg, k, w, "(cached)")
+        --TRACE("INDEX(p)->", pkg, k, w, "(cached)")
     end
     return w
 end
@@ -705,7 +705,7 @@ end
 local function dump_cache()
     local t = PACKAGES_CACHE
     for _, v in ipairs(table.keys(t)) do
-        TRACE("PACKAGES_CACHE", v, t[v])
+        --TRACE("PACKAGES_CACHE", v, t[v])
     end
 end
 
@@ -728,9 +728,9 @@ local function new(Package, name)
             P.__class = Package
             setmetatable(P, mt)
             PACKAGES_CACHE[name] = P
-            TRACE("NEW Package", name)
+            --TRACE("NEW Package", name)
         else
-            TRACE("NEW Package", name, "(cached)")
+            --TRACE("NEW Package", name, "(cached)")
         end
         return P
     end

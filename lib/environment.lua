@@ -55,7 +55,7 @@ local function init()
         if string.sub(value, 1, 1) == '"' and string.sub(value, -1) == '"' then
             value = string.sub(value, 2, -2)
         end
-        TRACE("SETENV", var, value)
+        --TRACE("SETENV", var, value)
         setenv(var, value)
     end
     pipe:close()

@@ -46,7 +46,7 @@ local access = P_US.access
 local function add_action(args)
     --Action:new(args)
     Exec.spawn(Action.new, Action, args)
-    TRACE ("ADD_ACTION_SPAWNED", table.keys(args))
+    --TRACE ("ADD_ACTION_SPAWNED", table.keys(args))
 end
 
 --
@@ -57,7 +57,7 @@ local function add_missing_deps(action_list) -- XXX need to also add special dep
         local last_elem = #action_list
         for i = start_elem, last_elem do
             local a = action_list[i]
-            TRACE("ADD_MISSING_DEPS", i, #action_list)
+            --TRACE("ADD_MISSING_DEPS", i, #action_list)
             if a.pkg_new and rawget(a.pkg_new, "is_installed") and not Options.force then
                 -- print (a, "is already installed")
             else
@@ -66,7 +66,7 @@ local function add_missing_deps(action_list) -- XXX need to also add special dep
                 for _, dep in ipairs(deps) do
                     local o = Origin:new(dep)
                     local p = o.pkg_new
-                    TRACE("ADD_MISSING_DEPS(build)", dep, o, p)
+                    --TRACE("ADD_MISSING_DEPS(build)", dep, o, p)
                     if p and not p.is_installed then
                         if not Action.get(p.name) and not dep_ports[dep] then
                             if add_dep_hdr then
@@ -83,7 +83,7 @@ local function add_missing_deps(action_list) -- XXX need to also add special dep
                             p.is_build_dep = true
                         end
                     else
-                        TRACE("ADD_BUILD_DEP-", dep, "cannot be found")
+                        --TRACE("ADD_BUILD_DEP-", dep, "cannot be found")
                     end
                 end
                 add_dep_hdr = "Add run dependencies of " .. a.short_name
@@ -91,7 +91,7 @@ local function add_missing_deps(action_list) -- XXX need to also add special dep
                 for _, dep in ipairs(deps) do
                     local o = Origin:new(dep)
                     local p = o.pkg_new
-                    TRACE("ADD_MISSING_DEPS(run)", dep, o, p)
+                    --TRACE("ADD_MISSING_DEPS(run)", dep, o, p)
                     if p and not p.is_installed then
                         if not Action.get(p.name) and not dep_ports[dep] then
                             if add_dep_hdr then
@@ -107,7 +107,7 @@ local function add_missing_deps(action_list) -- XXX need to also add special dep
                             }
                             p.is_run_dep = true
                         else
-                            TRACE("ADD_RUN_DEP-", dep, "cannot be found")
+                            --TRACE("ADD_RUN_DEP-", dep, "cannot be found")
                         end
                     end
                 end
@@ -131,8 +131,7 @@ local function sort_list(action_list)
                     local pkg_new = origin.pkg_new
                     if pkg_new then
                         local a = Action.get(pkg_new.name)
-                        TRACE("ADD_DEPS", type, a and rawget(a, "action"), origin.name, origin.pkg_new,
-                            origin.pkg_new and rawget(origin.pkg_new, "is_installed"))
+                        --TRACE("ADD_DEPS", type, a and rawget(a, "action"), origin.name, origin.pkg_new, origin.pkg_new and rawget(origin.pkg_new, "is_installed"))
                         -- if a and not rawget (a, "planned") then
                         if a and not rawget(a, "planned") and not rawget(origin.pkg_new, "is_installed") then
                             add_deps(a)
@@ -258,9 +257,9 @@ local function add_all_outdated()
         if pkg.shared_libs then
             current_libs = current_libs or load_current_libs()
             for i, lib in pairs(pkg.shared_libs) do
-                TRACE("CHECK_CURRENT_LIBS", lib, current_libs[lib])
+                --TRACE("CHECK_CURRENT_LIBS", lib, current_libs[lib])
                 if not current_libs[lib] then
-                    TRACE("OLD_LIB", lib)
+                    --TRACE("OLD_LIB", lib)
                     return true, true
                 end
             end
@@ -361,6 +360,8 @@ local function execute()
 
     -- cache local reference to ACTION_LIST
     local action_list = Action.list()
+    --TRACE("ACTION_LIST", action_list)
+    --Origin.dump_cache()
 
     -- add missing dependencies
     add_missing_deps(action_list)

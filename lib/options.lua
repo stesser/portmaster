@@ -125,7 +125,7 @@ end
 
 -- process long option of type "--longopt=param" with optional param
 local function longopt_action(opt, arg)
-    TRACE("LONGOPT_ACTION", opt, arg)
+    --TRACE("LONGOPT_ACTION", opt, arg)
     local opt_rec = VALID_OPTS[opt]
     if not opt_rec then
         opt_err(opt)
@@ -178,7 +178,7 @@ local OLD_RC_COMPAT = {
 --
 local function rcfile_tryload(filename)
     local inp = io.open(filename, "r")
-    TRACE("RCFILE_TRYLOAD", filename, inp)
+    --TRACE("RCFILE_TRYLOAD", filename, inp)
     if not inp then
         return
     end
@@ -218,7 +218,7 @@ end
 
 -- set option (or clear, if value is nil)
 local function opt_set(opt, value)
-    TRACE("OPT_SET", opt, value)
+    --TRACE("OPT_SET", opt, value)
     Options[opt] = value
 end
 

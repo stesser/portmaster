@@ -123,7 +123,7 @@ local function system_abi()
         "config", "abi"
     })
     local abi_noarch = string.match(abi, "^[%a]+:[%d]+:") .. "*"
-    TRACE("SYSTEM_ABI", abi, abi_noarch)
+    --TRACE("SYSTEM_ABI", abi, abi_noarch)
     return abi, abi_noarch
 end
 

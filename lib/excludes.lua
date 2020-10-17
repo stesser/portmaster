@@ -34,7 +34,7 @@ local EXCLUDED_PORT_PREFIX = {}
 
 --
 local function add_pkg(pkg)
-    TRACE("EXCLUDES_ADD_PKG", pkg)
+    --TRACE("EXCLUDES_ADD_PKG", pkg)
     if (string.match(pkg, "%*$")) then
         table.insert(EXCLUDED_PKG_PREFIX, string.sub(pkg, 1, -2))
     else
@@ -44,7 +44,7 @@ end
 
 --
 local function add_port(port)
-    TRACE("EXCLUDES_ADD_PORT", port)
+    --TRACE("EXCLUDES_ADD_PORT", port)
     if (string.match(port, "%*$")) then
         table.insert(EXCLUDED_PORT_PREFIX, string.sub(port, 1, -2))
     else
@@ -54,7 +54,7 @@ end
 
 --
 local function add(port_or_pkg)
-    TRACE("EXCLUDES_ADD", port_or_pkg)
+    --TRACE("EXCLUDES_ADD", port_or_pkg)
     if string.match(port_or_pkg, "/") then
         add_port(port_or_pkg)
     else
@@ -64,19 +64,19 @@ end
 
 --
 local function check_pkg(pkg)
-    TRACE("EXCLUDES_CHK_PKG", pkg.name)
+    --TRACE("EXCLUDES_CHK_PKG", pkg.name)
     local basename = pkg.name_base
     for i, v in ipairs(EXCLUDED_PKG) do
-        TRACE("EXCLUDE_CHK", v, pkg.name)
+        --TRACE("EXCLUDE_CHK", v, pkg.name)
         if basename == v then
-            TRACE("EXCLUDED", v, pkg.name)
+            --TRACE("EXCLUDED", v, pkg.name)
             return true
         end
     end
     for i, v in ipairs(EXCLUDED_PKG_PREFIX) do
-        TRACE("EXCLUDE_CHK", v, pkg.name)
+        --TRACE("EXCLUDE_CHK", v, pkg.name)
         if string.sub(pkg.name, 1, #v) == v then
-            TRACE("EXCLUDED", v, pkg.name)
+            --TRACE("EXCLUDED", v, pkg.name)
             return true
         end
     end
@@ -84,18 +84,18 @@ end
 
 --
 local function check_port(port)
-    TRACE("EXCLUDES_CHK_PORT", port.name)
+    --TRACE("EXCLUDES_CHK_PORT", port.name)
     for i, v in ipairs(EXCLUDED_PORT) do
-        TRACE("EXCLUDE_CHK", v, port.name)
+        --TRACE("EXCLUDE_CHK", v, port.name)
         if port == v then
-            TRACE("EXCLUDED", v, port.name)
+            --TRACE("EXCLUDED", v, port.name)
             return true
         end
     end
     for i, v in ipairs(EXCLUDED_PORT_PREFIX) do
-        TRACE("EXCLUDE_CHK", v, port.name)
+        --TRACE("EXCLUDE_CHK", v, port.name)
         if string.sub(port, 1, #v) == v then
-            TRACE("EXCLUDED", v, port.name)
+            --TRACE("EXCLUDED", v, port.name)
             return true
         end
     end
@@ -114,7 +114,7 @@ local function list()
     for i, v in ipairs(EXCLUDED_PORT_PREFIX) do
         table.insert(result, v .. "*")
     end
-    TRACE("EXCLUDES_LIST", result)
+    --TRACE("EXCLUDES_LIST", result)
     return result
 end
 

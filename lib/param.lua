@@ -176,7 +176,7 @@ local function __index(param, k)
         wrkdirprefix = __globalmakevars,
     }
 
-    TRACE("INDEX(param)", param, k)
+    --TRACE("INDEX(param)", param, k)
     local w = rawget(param, k)
     if w == nil then
         rawset(param, k, false)
@@ -191,9 +191,9 @@ local function __index(param, k)
         --else
             -- error("illegal field requested: Package." .. k)
         end
-        TRACE("INDEX(param)->", param, k, w)
+        --TRACE("INDEX(param)->", param, k, w)
     else
-        TRACE("INDEX(param)->", param, k, w, "(cached)")
+        --TRACE("INDEX(param)->", param, k, w, "(cached)")
     end
     return w
 end

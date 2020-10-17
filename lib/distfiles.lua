@@ -42,7 +42,7 @@ SIZE (bash/bash-5.0.tar.gz) = 10135110
 -- return table indexed by filename
 local function parse_distinfo(origin)
     local di_filename = origin.distinfo_file
-    TRACE("PARSE_DISTINFO", di_filename)
+    --TRACE("PARSE_DISTINFO", di_filename)
     local result = {}
     local di_file = io.open(di_filename, "r")
     if di_file then --  meta-ports do not have a distinfo file
@@ -53,7 +53,7 @@ local function parse_distinfo(origin)
             if key then
                local t = result[file] or {TIMESTAMP = timestamp}
                t[key] = value
-               TRACE("DISTINFO", key, file, value)
+               --TRACE("DISTINFO", key, file, value)
                result[file] = t
             end
         end
@@ -69,7 +69,7 @@ local function generate_distinfo(origin)
       v = string.match(v, "^(.*):") or v
       result[v] = {}
    end
-   TRACE("GENERATE_DISTINFO", origin.name, result)
+   --TRACE("GENERATE_DISTINFO", origin.name, result)
    return result
 end
 
@@ -80,10 +80,10 @@ local function dist_fetch(origin)
    local function update_distinfo_cache(distinfo)
       local port = origin.port
       for file, di in pairs(distinfo) do
-         TRACE("UPDATE_DISTINFO_CACHE", file)
+         --TRACE("UPDATE_DISTINFO_CACHE", file)
          local di_c = DISTINFO_CACHE[file]
          if di_c and next(di) then
-            TRACE("DI", di, di_c)
+            --TRACE("DI", di, di_c)
             assert(di.SIZE == di_c.SIZE and di.SHA256 == di_c.SHA256 and di.TIMESTAMP == di_c.TIMESTAMP,
                   "Distinfo mismatch for " .. file .. " between " .. port .. " and " .. di.port[1])
             table.insert(di_c.port, port)
@@ -97,9 +97,9 @@ local function dist_fetch(origin)
       local unchecked = {}
       table.sort(filenames)
       for _, file in ipairs(filenames) do
-         TRACE("FETCH_REQUIRED?", file)
+         --TRACE("FETCH_REQUIRED?", file)
          if DISTINFO_CACHE[file].checked == nil then
-            TRACE("FETCH_REQUIRED!", file)
+            --TRACE("FETCH_REQUIRED!", file)
             table.insert(unchecked, file)
          end
       end
@@ -107,11 +107,11 @@ local function dist_fetch(origin)
    end
    local function setall(di, field, value)
       for file, _ in pairs(di) do
-         TRACE("DISTINFO_CACHE", field, value, file)
+         --TRACE("DISTINFO_CACHE", field, value, file)
          rawset (DISTINFO_CACHE[file], field, value)
       end
    end
-   TRACE("DIST_FETCH", origin and origin.name or "<nil>", origin and origin.distinfo_file or "<nil>")
+   --TRACE("DIST_FETCH", origin and origin.name or "<nil>", origin and origin.distinfo_file or "<nil>")
    local port = origin.port
    local success = true
    local distinfo = generate_distinfo(origin)
@@ -127,7 +127,7 @@ local function dist_fetch(origin)
       local really_unchecked = fetch_required(unchecked) -- fetch again since we may have been blocked and sleeping
       if #really_unchecked > 0 then
          setall(distinfo, "fetching", true)
-         TRACE("FETCH_MISSING", really_unchecked)
+         --TRACE("FETCH_MISSING", really_unchecked)
          local lines, err, exitcode = origin:port_make{
             as_root = Param.distdir_ro,
             table = true,
@@ -140,7 +140,7 @@ local function dist_fetch(origin)
          }
          setall(distinfo, "checked", true)
          for _, l in ipairs(lines) do
-            TRACE("FETCH:", l)
+            --TRACE("FETCH:", l)
             local files = string.match(l, "Giving up on fetching files: (.*)")
             if files then
                success = false
@@ -154,7 +154,7 @@ local function dist_fetch(origin)
       fetch_lock:release(unchecked)
       -- <<<< FetchLock(unchecked)
    end
-   TRACE("FETCH->", port, success)
+   --TRACE("FETCH->", port, success)
    return success
 end
 
@@ -167,7 +167,7 @@ end
 local function fetch_wait(origin)
    if fetch_lock then
       local distfiles = origin.distfiles
-      TRACE("FETCH_WAIT", distfiles)
+      --TRACE("FETCH_WAIT", distfiles)
       distfiles.shared = true
       distfiles.tag = origin.name
       -- >>>> FetchLock(distfiles, SHARED)
@@ -179,7 +179,7 @@ end
 
 --
 local function fetch_finish()
-   TRACE("FETCH_FINISH")
+   --TRACE("FETCH_FINISH")
    Exec.finish_spawned(fetch, "Finish background fetching and checking of distribution files")
    if fetch_lock then
       fetch_lock:destroy()

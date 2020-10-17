@@ -92,7 +92,7 @@ local function port_make(origin, args)
         local pf = pseudo_flavor(origin)
         if pf then
             table.insert(args, 1, "DEFAULT_VERSIONS='" .. pf .. "'")
-            TRACE("DEFAULT_VERSIONS", pf)
+            --TRACE("DEFAULT_VERSIONS", pf)
         end
     else
         table.insert(args, 1, "-f/usr/share/mk/bsd.port.mk")
@@ -117,7 +117,7 @@ local function port_var(origin, vars)
     end
     table.insert(args, "-DBUILD_ALL_PYTHON_FLAVORS") -- required for make -V FLAVORS to get the full list :X
     local out, _, exitcode = port_make(origin, args)
-    TRACE("PORTVAR->", out, exitcode)
+    --TRACE("PORTVAR->", out, exitcode)
     if exitcode ~= 0 then
         out = nil
     end
@@ -203,7 +203,7 @@ local ORIGINS_CACHE = {}
 -- setmetatable (ORIGINS_CACHE, {__mode = "v"})
 
 local function __newindex(origin, n, v)
-    TRACE("SET(o)", origin.name, n, v)
+    --TRACE("SET(o)", origin.name, n, v)
     rawset(origin, n, v)
 end
 
@@ -217,7 +217,7 @@ local function get(name)
         if result == false then
             return get(ORIGIN_ALIAS[name])
         end
-        TRACE("GET(o)->", name, result)
+        --TRACE("GET(o)->", name, result)
         return result
     end
 end
@@ -232,14 +232,14 @@ local function dump_cache()
     local t = ORIGINS_CACHE
     for i, v in ipairs(table.keys(t)) do
         if t[v] then
-            TRACE("ORIGINS_CACHE", i, v, t[v])
+            --TRACE("ORIGINS_CACHE", i, v, t[v])
         else
-            TRACE("ORIGINS_CACHE", i, v, "ALIAS", ORIGIN_ALIAS[v])
+            --TRACE("ORIGINS_CACHE", i, v, "ALIAS", ORIGIN_ALIAS[v])
         end
     end
     local t = ORIGIN_ALIAS
     for i, v in ipairs(table.keys(t)) do
-        TRACE("ORIGIN_ALIAS", i, v, t[v])
+        --TRACE("ORIGIN_ALIAS", i, v, t[v])
     end
 end
 
@@ -283,7 +283,7 @@ local __port_vars_table = {
 local function __port_vars(origin, k, recursive)
     local function check_origin_alias(origin)
         local function adjustname(origin, new_name)
-            TRACE("ORIGIN_SETALIAS", origin.name, new_name)
+            --TRACE("ORIGIN_SETALIAS", origin.name, new_name)
             ORIGIN_ALIAS[origin.name] = new_name
             local o = Origin.get(new_name)
             if o then -- origin with alias has already been seen, move fields over and continue with new table
@@ -304,7 +304,7 @@ local function __port_vars(origin, k, recursive)
         -- check for existing package cache entry and its origin
         local p = origin.pkg_new
         local o = p and p.origin -- MERGE !!!
-        TRACE("CHECK_ORIGIN_ALIAS", origin and origin.name or "<nil>", o and o.name or "<nil>", p and p.name or "<nil>")
+        --TRACE("CHECK_ORIGIN_ALIAS", origin and origin.name or "<nil>", o and o.name or "<nil>", p and p.name or "<nil>")
         if o and o.name ~= origin.name then
             adjustname(origin, o.name)
         end
@@ -312,12 +312,12 @@ local function __port_vars(origin, k, recursive)
     local function set_pkgname(origin, var, pkgname)
         if pkgname then
             local p = Package:new(pkgname)
-            TRACE("PKG_NEW", pkgname, origin.name, p.origin and p.origin.name or "''")
+            --TRACE("PKG_NEW", pkgname, origin.name, p.origin and p.origin.name or "''")
             origin[var] = p
         end
     end
     local t = origin:port_var(__port_vars_table)
-    TRACE("PORT_VAR(" .. origin.name .. ", " .. k .. ")", t)
+    --TRACE("PORT_VAR(" .. origin.name .. ", " .. k .. ")", t)
     if t then
         -- first check for and update port options since they might affect the package name
         set_table(origin, "new_options", t.NEW_OPTONS)
@@ -390,7 +390,7 @@ local function __port_depends(origin, k)
     for _, v in ipairs(t) do
         for _, d in ipairs(origin[v] or {}) do
             local pattern = k == "special_depends" and "^[^:]+:([^:]+:%S+)" or "^[^:]+:([^:]+)$"
-            TRACE("PORT_DEPENDS", k, d, pattern)
+            --TRACE("PORT_DEPENDS", k, d, pattern)
             local o = string.match(d, pattern)
             if o then
                 ut[o] = true
@@ -411,7 +411,7 @@ local function __port_conflicts(origin, k)
     local ut = {}
     for _, v in ipairs(t) do
         local t = origin[v]
-        TRACE("CHECK_C?", origin.name, k, v)
+        --TRACE("CHECK_C?", origin.name, k, v)
         if t then
             for _, d in ipairs(t) do
                 ut[d] = true
@@ -479,7 +479,7 @@ local __index_dispatch = {
 }
 
 local function __index(origin, k)
-    TRACE("INDEX(o)", origin, k)
+    --TRACE("INDEX(o)", origin, k)
     local w = rawget(origin.__class, k)
     if w == nil then
         rawset(origin, k, false)
@@ -494,9 +494,9 @@ local function __index(origin, k)
         else
             error("illegal field requested: Origin." .. k)
         end
-        TRACE("INDEX(o)->", origin, k, w)
+        --TRACE("INDEX(o)->", origin, k, w)
     else
-        TRACE("INDEX(o)->", origin, k, w, "(cached)")
+        --TRACE("INDEX(o)->", origin, k, w, "(cached)")
     end
     return w
 end
@@ -519,10 +519,10 @@ local function new(Origin, name)
             O = {name = name}
             O.__class = Origin
             setmetatable(O, mt)
-            TRACE("NEW Origin", name)
+            --TRACE("NEW Origin", name)
             ORIGINS_CACHE[name] = O
         else
-            TRACE("NEW Origin", name, "(cached)", O.name)
+            --TRACE("NEW Origin", name, "(cached)", O.name)
         end
         return O
     end

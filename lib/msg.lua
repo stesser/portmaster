@@ -95,7 +95,7 @@ local function show(args)
             -- print message with separator for new message section
             State.at_start = true
             State.sep = State.sep1
-            TRACE("MSG_START")
+            --TRACE("MSG_START")
         end
         if args.verbatim then
             -- print message with separator for new message section
@@ -231,7 +231,7 @@ end
 
 -- print $prompt and read checked user input
 local function read_answer(prompt, default, choices)
-    TRACE("READ_ANSWER", prompt, default, choices)
+    --TRACE("READ_ANSWER", prompt, default, choices)
     local choice
     local opt_list
     local display_default = ""

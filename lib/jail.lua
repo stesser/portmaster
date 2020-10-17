@@ -87,7 +87,7 @@ local JAIL_FS = {
 
 -- ---------------------------------------------------------------------------
 local function unmount_all(jaildir)
-    TRACE("UNMOUNT_ALL", jaildir)
+    --TRACE("UNMOUNT_ALL", jaildir)
     assert(jaildir and jaildir == Param.jailbase, "invalid jail directory " .. jaildir .. " passed")
     local mnt_dev, mnt_point, md_unit
     local df_lines = Exec.run{
@@ -99,7 +99,7 @@ local function unmount_all(jaildir)
         mnt_dev, mnt_point = string.match(df_lines[i], "^(%S*)%s.*%s(/%S*)$")
         if string.match(mnt_point, "^" .. jaildir) then
             md_unit = string.match(mnt_dev, "^/dev/md(.+)")
-            TRACE("UNMOUNT", mnt_point, md_unit)
+            --TRACE("UNMOUNT", mnt_point, md_unit)
             Exec.run{
                 as_root = true,
                 log = true,
@@ -139,7 +139,7 @@ local function mount_dir(fs_type, what, where, param)
 end
 
 local function mount_null(fs_type, what, where, param)
-    TRACE("MOUNT_NULL", fs_type, what, where, param)
+    --TRACE("MOUNT_NULL", fs_type, what, where, param)
     param = param or "ro"
     assert(param == "rw" or param == "ro", "Invalid parameter '" .. param .. "' passed to jail mount of " .. where)
     --   local real_fs = Exec.run {safe = true, CMD.realpath, what}
@@ -193,7 +193,7 @@ local function mount_all(jaildir)
             CMD.realpath, dir
         }
         local where = path_concat(jaildir, real_fs)
-        TRACE("MOUNT", fs_type, jaildir, dir, mnt_point, real_fs, where, mount_opt or "<nil>")
+        --TRACE("MOUNT", fs_type, jaildir, dir, mnt_point, real_fs, where, mount_opt or "<nil>")
         if not is_dir(where) then
             Exec.run{
                 as_root = true,

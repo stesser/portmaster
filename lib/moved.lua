@@ -109,14 +109,14 @@ local function lookup_moved_origin(origin)
             return port, flavor, nil
         end
         local max_i = #movedrec
-        TRACE("MOVED?", o(port, flavor), port, flavor, min_i, max_i)
+        --TRACE("MOVED?", o(port, flavor), port, flavor, min_i, max_i)
         for i = max_i, min_i, -1 do
             local o_p, o_f, n_p, n_f, date, reason = table.unpack(movedrec[i])
             if port == o_p and (not flavor or not o_f or flavor == o_f) then
                 local newport = n_p
                 local newflavor = flavor ~= o_f and flavor or n_f
                 local r = reason .. " on " .. date
-                TRACE("MOVED->", o(newport, newflavor), r)
+                --TRACE("MOVED->", o(newport, newflavor), r)
                 if not newport or Posix.access(Param.portsdir .. newport .. "/Makefile", "r") then
                     return newport, newflavor, r
                 end

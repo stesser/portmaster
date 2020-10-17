@@ -725,7 +725,7 @@ local function perform_install_or_upgrade(action)
                     return fail(action, "Could not re-install previously installed version after failed installation", err)
                 end
             end
-            fail(action, "Failed to install port", portname, err)
+            fail(action, "Failed to install port " .. portname, err)
         end
     end
     -- perform actual installation from a port or package

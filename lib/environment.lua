@@ -38,7 +38,7 @@ local CMD = require("portmaster.cmd")
 -------------------------------------------------------------------------------------
 -- set sane defaults and cache some buildvariables in the environment
 local function init()
-    setenv("PATH", "/bin:/sbin:/usr/bin:/usr/sbin:" .. Param.localbase .. "bin:" .. Param.localbase .. "sbin")
+    setenv("PATH", "/bin:/sbin:/usr/bin:/usr/sbin:" .. Param.localbase .. "/bin:" .. Param.localbase .. "/sbin")
     setenv("PID", getpid())
     setenv("LANG", "C")
     setenv("LC_CTYPE", "C")

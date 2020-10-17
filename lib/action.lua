@@ -344,13 +344,15 @@ local function pkgs_from_origin_tables(...)
         for _, origin in ipairs(t) do
             if not string.match(origin, ":.*") then -- ignore special depends
                 local o = Origin.get(origin)
-                TRACE("PKG_FROM_ORIGIN_TABLES", origin, o)
+                --TRACE("PKG_FROM_ORIGIN_TABLES", origin, o)
+                if o then
                 local p = o.pkg_new.name
                 pkgs[#pkgs + 1] = p
             end
         end
     end
-    TRACE("PKGS_FROM_ORIGIN_TABLES", pkgs, ...)
+    end
+    --TRACE("PKGS_FROM_ORIGIN_TABLES", pkgs, ...)
     return pkgs
 end
 

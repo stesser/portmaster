@@ -174,8 +174,7 @@ local function release(lock, items)
         end
         for _, item in ipairs(items) do
             local listitem = state[item]
-            --if listitem then
-                local acquired = listitem.acquired
+            local acquired = listitem and listitem.acquired or 0
                 if shared then
                     assert(acquired > 0, lock.name .. ': No shared lock currently acquired for "' .. item .. '"')
                     acquired = acquired - 1
@@ -185,7 +184,6 @@ local function release(lock, items)
                 end
                 listitem.acquired = acquired
                 state[item] = listitem
-            --end
         end
     end
     local function released(shared)

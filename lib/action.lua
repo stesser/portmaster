@@ -151,7 +151,8 @@ local function log(action, args)
         args.start = args.start or co ~= previous_action_co
         previous_action_co = co
         table.insert(args, 1, action.startno_string)
-        table.insert(args, 2, action.pkg_new.name .. ":")
+        local name = action.pkg_new and action.pkg_new.name or action.pkg_old.name
+        table.insert(args, 2, name .. ":")
     end
     --TRACE("LOG", args)
     Msg.show(args)

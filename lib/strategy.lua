@@ -43,7 +43,7 @@ local P_US = require("posix.unistd")
 local access = P_US.access
 
 --
-local function add_action (args)
+local function add_action(args)
     --Action:new(args)
     Exec.spawn(Action.new, Action, args)
     TRACE ("ADD_ACTION_SPAWNED", table.keys(args))
@@ -74,7 +74,12 @@ local function add_missing_deps(action_list) -- XXX need to also add special dep
                                 add_dep_hdr = nil
                             end
                             dep_ports[dep] = true
-                            add_action{build_type = "auto", dep_type = "build", pkg_new = p, o_n = o}
+                            add_action{
+                                is_auto = true,
+                                is_build_dep = true,
+                                pkg_new = p,
+                                o_n = o
+                            }
                             p.is_build_dep = true
                         end
                     else
@@ -94,7 +99,12 @@ local function add_missing_deps(action_list) -- XXX need to also add special dep
                                 add_dep_hdr = nil
                             end
                             dep_ports[dep] = true
-                            add_action{build_type = "auto", dep_type = "run", pkg_new = p, o_n = o}
+                            add_action{
+                                is_auto = true,
+                                is_run_dep = true,
+                                pkg_new = p,
+                                o_n = o
+                            }
                             p.is_run_dep = true
                         else
                             TRACE("ADD_RUN_DEP-", dep, "cannot be found")
@@ -158,7 +168,12 @@ local function ports_update(filters)
         for _, pkg in ipairs(pkgs) do
             local selected, force = filter(pkg)
             if selected then
-                add_action{build_type = "user", dep_type = "run", force = force, pkg_old = pkg}
+                add_action{
+                    is_user = true,
+                    is_run_dep = true,
+                    force = force,
+                    pkg_old = pkg
+                }
             else
                 table.insert(rest, pkg)
             end
@@ -174,26 +189,32 @@ local function add_multiple(args)
         local pattern = string.gsub(name_glob, "%.", "%%.")
         pattern = string.gsub(pattern, "%?", ".")
         pattern = string.gsub(pattern, "%*", ".*")
-        table.insert(pattern_table, "^(" .. pattern .. ")")
+        table.insert(pattern_table, "^(" .. pattern .. ")$")
     end
-    local function filter_match(pkg)
+    local function filter_match(pkg) -- filter return values are: match, force
         for _, v in ipairs(pattern_table) do
             if string.match(pkg.name_base, v .. "$") then
-                return true
+                return true, Options.force
             end
-            if pkg.origin and (string.match(pkg.origin.name, v .. "$") or string.match(pkg.origin.name, v .. "@%S+$")) then
-                return true
+            if pkg.origin and (string.match(pkg.origin.name, v) or string.match(pkg.origin.port, v)) then
+                return true, Options.force
             end
         end
     end
-    TRACE("PORTS_ADD_MULTIPLE-<", args)
-    TRACE("PORTS_ADD_MULTIPLE->", pattern_table)
-    ports_update {filter_match}
+    --TRACE("PORTS_ADD_MULTIPLE-<", args)
+    --TRACE("PORTS_ADD_MULTIPLE->", pattern_table)
+    ports_update {filter_match} -- filter return values are: match, force
     for _, v in ipairs(args) do
         if string.match(v, "/") and access(path_concat(Param.portsdir, v, "Makefile"), "r") then
             local o = Origin:new(v)
             local p = o.pkg_new
-            Action:new{build_type = "user", dep_type = "run", force = Options.force, o_n = o, pkg_new = p}
+            Action:new{
+                is_user = true,
+                is_run_dep = true,
+                force = Options.force,
+                o_n = o,
+                pkg_new = p
+            }
         end
     end
     --[[
@@ -204,7 +225,11 @@ local function add_multiple(args)
 	    if access (filename, "r") then
 	       local port = string.match (filename, "/([^/]+/[^/]+)/Makefile")
 	       local origin = Origin:new (port)
-	       Action:new {build_type = "user", dep_type = "run", o_n = origin}
+           Action:new {
+               is_user = true,
+               is_run_dep = true,
+               o_n = origin
+            }
 	    end
 	 end
       else

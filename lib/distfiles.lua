@@ -121,7 +121,7 @@ local function dist_fetch(origin)
    local unchecked = fetch_required(distfiles)
    if #unchecked > 0 then
       unchecked.tag = port.name
-      fetch_lock = fetch_lock or Lock.new("FetchLock")
+      fetch_lock = fetch_lock or Lock:new("FetchLock")
       -- >>>> FetchLock(unchecked)
       fetch_lock:acquire(unchecked)
       local really_unchecked = fetch_required(unchecked) -- fetch again since we may have been blocked and sleeping

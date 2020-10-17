@@ -34,6 +34,7 @@ local Lock = require("portmaster.lock")
 local CMD = require("portmaster.cmd")
 local Param = require("portmaster.param")
 local Moved = require("portmaster.moved")
+local Excludes = require("portmaster.excludes")
 
 -------------------------------------------------------------------------------------
 local P = require("posix")
@@ -76,7 +77,10 @@ end
 -- check whether the action denoted by "verb" has been registered
 local function action_is(action, verb)
     local a = action_get(action)
-    --TRACE ("ACTION_IS", action.pkg_new or action.pkg_old, a, verb)
+    TRACE ("ACTION_IS", action.pkg_new or action.pkg_old, a, verb)
+    if action.ignore then
+        return verb == "exclude" or verb == "keep" or not verb
+    end
     return verb and a == verb
 end
 
@@ -1548,6 +1552,54 @@ local function check_conflicts(mode)
     Msg.show {level = 2, start = true, "Check for conflicts has been completed"}
 end
 
+--
+local function check_excluded(action)
+    local function locked_pkg(pkg)
+        if pkg then
+            return pkg.is_locked, pkg.name, "package is locked"
+        end
+    end
+    local function excluded_pkg(pkg)
+        if pkg then
+            if Excludes.check_pkg(pkg) then
+                return true, pkg.name, "excluded on user request"
+            end
+        end
+    end
+    local function ignored_port(origin)
+        if origin then
+            if origin.is_forbidden then
+                return true, origin.name, origin.is_forbidden
+            end
+            if origin.is_broken and not Param.try_broken then
+                return true, origin.name, origin.is_broken
+            end
+            if origin.is_ignore then
+                return true, origin.name, origin.is_ignore
+            end
+            if Excludes.check_port(origin) then
+                return true, origin.name, "excluded on user request"
+            end
+        end
+    end
+    local function excluded_chk(f, arg)
+        if not rawget (action, "ignore") then
+            local excluded, name, reason = f(arg)
+            if excluded then
+                action.ignore = true
+                fail(action, name .. " " .. reason)
+            end
+        end
+    end
+    excluded_chk(ignored_port, action.o_n)
+    excluded_chk(ignored_port, action.o_o)
+    excluded_chk(excluded_pkg, action.pkg_new)
+    excluded_chk(excluded_pkg, action.pkg_old)
+    excluded_chk(locked_pkg, action.pkg_new)
+    excluded_chk(locked_pkg, action.pkg_old)
+    return rawget(action, "ignore")
+end
+
 -- DEBUGGING: DUMP INSTANCES CACHE
 local function dump_cache()
     local t = ACTION_CACHE
@@ -1615,6 +1667,7 @@ local function __index(action, k)
         short_name = __short_name,
         startno = __startno,
         jobs = __jobs,
+        ignore = check_excluded,
         buildstate = __empty_table,
     }
 

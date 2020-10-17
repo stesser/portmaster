@@ -226,20 +226,26 @@ local function release(lock, items)
         TRACE("RESUME_UNLOCKED", lock.name, resume_list)
         local locktable = BlockedTasks[lock]
         assert(locktable, "No BlockedTasks sub-table named " .. lock.name)
-        for co, _ in pairs(resume_list) do
-            local queueitems = locktable[co]
-            --TRACE("LOCK.WAITTEST", lock.name, co, queueitems)
-            if queueitems then
-                if tryacquire(lock, queueitems) then
-                    lockitems_dequeue(co, queueitems)
-                    tasks_blocked = tasks_blocked - 1
-                    locktable[co] = nil
-                    return coroutine.resume(co)
+        local again
+        repeat
+            again = false
+            for co, _ in pairs(resume_list) do
+                local queueitems = locktable[co]
+                --TRACE("LOCK.WAITTEST", lock.name, co, queueitems)
+                if queueitems then
+                    if tryacquire(lock, queueitems) then
+                        lockitems_dequeue(co, queueitems)
+                        tasks_blocked = tasks_blocked - 1
+                        locktable[co] = nil
+                        coroutine.resume(co)
+                        again = true
+                        break
+                    end
+                --else
+                    --TRACE("LOCK.CLEAR_STALE(2)", lock.name, co, queueitems)
                 end
-            --else
-                --TRACE("LOCK.CLEAR_STALE(2)", lock.name, co, queueitems)
             end
-        end
+        until not again
     end
 
     TRACE("LOCK.RELEASE", lock.name, items)

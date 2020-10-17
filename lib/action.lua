@@ -345,7 +345,7 @@ local function pkgs_from_origin_tables(...)
             if not string.match(origin, ":.*") then -- ignore special depends
                 local o = Origin.get(origin)
                 --TRACE("PKG_FROM_ORIGIN_TABLES", origin, o)
-                if o then
+                if o and o.pkg_new then
                     local p = o.pkg_new.name
                     pkgs[#pkgs + 1] = p
                 end
@@ -413,18 +413,19 @@ local WorkDirLock
 local RunnableLock
 local JobsLock
 
--- install or upgrade a port
+-- install or upgrade a port - now also performs deinstall!!!
 local function perform_install_or_upgrade(action)
     local p_o = action.pkg_old
     local pkgname_old = p_o and p_o.name
     local p_n = action.pkg_new
-    local pkgname_new = p_n.name
-    local pkgfile = p_n.pkgfile
+    local pkgname_new = p_n and p_n.name
+    local pkgfile = p_n and p_n.pkgfile
     local o_n = action.o_n
-    local portname = o_n.name -- o_n.port ???
-    local build_depends = o_n.build_depends
-    local pkg_depends = o_n.pkg_depends
-    local special_depends = o_n.special_depends -- check for special license and ask user to accept it (may require make extract/patch)
+    local o_o = action.o_o
+    local portname = o_n and o_n.name -- o_n.port ???
+    local build_depends = o_n and o_n.build_depends
+    local pkg_depends = o_n and o_n.pkg_depends or { "ports-mgmt/pkg" }
+    local special_depends = o_n and o_n.special_depends -- check for special license and ask user to accept it (may require make extract/patch)
     local build_dep_pkgs
 
     local function wait_for_distfiles()
@@ -617,7 +618,7 @@ local function perform_install_or_upgrade(action)
         for _, p in ipairs(build_dep_pkgs) do
             --TRACE("FAILED?", p)
             local a = get(p)
-            if not a or failed(a) then
+            if a and failed(a) then
                 return fail(action, "Skipped because of failed dependency " .. p)
             end
         end
@@ -766,10 +767,10 @@ local function perform_install_or_upgrade(action)
     TRACE("PERFORM_INSTALL_OR_UPGRADE", action)
     --TRACE("P", p_n.name, p_n)
     -- has a package been identified to be used instead of building the port?
-    local buildrequired = not p_n.pkgfile or action.force or not (Options.packages or Options.packages_build and not p_n.is_run_dep)
-    --TRACE("BUILDREQUIRED", buildrequired, rawget(action, "force"), Options.packages)
+    local buildrequired = p_n and (not p_n.pkgfile or action.force or not (Options.packages or Options.packages_build and not p_n.is_run_dep))
+    --TRACE("BUILDREQUIRED", buildrequired, action.force, Options.packages)
     local skip_install = (Options.skip_install or Options.jailed) and not p_n.is_build_dep -- NYI: and BUILDDEP[o_n]
-    local pkg_dep_pkgs = pkgs_from_origin_tables(pkg_depends)
+    local pkg_dep_pkgs = pkgs_from_origin_tables(pkg_depends or {})
     pkg_dep_pkgs.shared = true
     if buildrequired then
         -- if not installing from a package file ...
@@ -827,21 +828,23 @@ local function perform_install_or_upgrade(action)
                 build_step(recover_precious)
             end
         end
-        if buildrequired then
-            build_step(install_from_stage_area)
-        else
-            build_step(install_from_package)
+        if p_n then -- p_n == nil for package deinstallation
+            if buildrequired then
+                build_step(install_from_stage_area)
+            else
+                build_step(install_from_package)
+            end
+            RunnableLock:release{p_n.name}
+            -- <<<< RunnableLock(p_n.name)
+            --build_step(fetch_pkg_message)
+            build_step(post_install_fixup)
+            build_done("provide")
+            if not Options.jailed then
+                build_done("install")
+            end
         end
         RunnableLock:release(pkg_dep_pkgs)
         -- <<<< RunnableLock(pkg_dep_pkgs)
-        RunnableLock:release{p_n.name}
-        -- <<<< RunnableLock(p_n.name)
-        --build_step(fetch_pkg_message)
-        build_step(post_install_fixup)
-        build_done("provide")
-        if not Options.jailed then
-            build_done("install")
-        end
     end
     if buildrequired then
         -- preserve file names and hashes of distfiles from new port
@@ -949,45 +952,12 @@ local function perform_upgrades(action_list)
         -- set to_tty = false for shell commands
         --BUILDLOG = tempfile_create("BUILD_LOG")
         end
-        local result
-        -- print ("DO", action.verb, action.pkg_new.name)
-        if action_is(action, "delete") then
-            result = perform_deinstall(action)
-        elseif action_is(action, "upgrade") then
+        if action.ignore then
+            --TRACE("IGNORE". action.describe)
+        --elseif -- change origin and rename port here ...
+        --        perform_origin_change(action)
+        else
             Exec.spawn(perform_install_or_upgrade, action)
-            result = true
-        elseif action_is(action, "change") then
-            if action.pkg_old.name ~= action.pkg_new.name then
-                result = perform_pkg_rename(action)
-            elseif action.o_o.name ~= action.o_n.name then
-                result = perform_origin_change(action)
-            end
-        elseif action_is(action, "provide") or action_is(action, "keep") then
-            if Options.jailed then
-                if action.pkg_new.pkgfile then
-                    result = perform_provide(action)
-                else
-                    Exec.spawn(perform_install_or_upgrade, action)
-                    result = true
-                end
-            else
-                result = true -- nothing to be done
-            end
-        elseif action_is(action, "exclude") then
-            result = true -- do nothing
-        else
-            error("unknown verb in action: " .. (action.verb or "<nil>"))
-        end
-        if result then
-            --[[
-            if BUILDLOG then
-                tempfile_delete("BUILD_LOG")
-                BUILDLOG = nil
-            end
-            -- NYI: o_n:perform_post_build_deletes ()
-            --]]
-        else
-            return false
         end
     end
     Exec.finish_spawned()

@@ -301,12 +301,12 @@ local function spawn(f, ...)
         tasks_spawned = tasks_spawned + 1
         tasks_spawned_with[f] = (tasks_spawned_with[f] or 0) + 1
         local success, traceback = xpcall (f, debug.traceback, ...)
+        tasks_spawned = tasks_spawned - 1
+        tasks_spawned_with[f] = tasks_spawned_with[f] - 1
         if not success then
             print (traceback)
             os.exit(1)
         end
-        tasks_spawned = tasks_spawned - 1
-        tasks_spawned_with[f] = tasks_spawned_with[f] - 1
     end
     tasks_poll()
     --TRACE ("SPAWN", f, ...)

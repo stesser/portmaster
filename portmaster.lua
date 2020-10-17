@@ -120,11 +120,11 @@ function TRACE(...)
         end
         local result = {}
         for k, v in pairs(t) do
-            if string.sub(k, 1, 1) ~= "_" then
-            k = type(k) == "table" and table_to_string(k, 1, "") or as_string(k)
-            v = type(v) == "table" and table_to_string(v, level - 1, indent2) or as_string(v)
-            result[#result + 1] = k .. " = " .. v
-        end
+            if type(k) ~= "string" or string.sub(k, 1, 1) ~= "_" then
+                k = type(k) == "table" and table_to_string(k, 1, "") or as_string(k)
+                v = type(v) == "table" and table_to_string(v, level - 1, indent2) or as_string(v)
+                result[#result + 1] = k .. " = " .. v
+            end
         end
         if #result == 0 then
             return "{}"

@@ -316,7 +316,6 @@ end
 -------------------------------------------------------------------------------------
 return {
     abort = abort,
-    -- display = display,
     incr_level = incr_level,
     level = level,
     read_nl = read_nl,

@@ -158,7 +158,7 @@ local function acquire(lock, items)
         locktable_insert(co)
         coroutine.yield()
     end
-    TRACE("LOCK.ACQUIRE->", lock.name, items)
+    TRACE("LOCK.ACQUIRE->", lock.name, lock.blocked, lock.avail)
     --TRACE("BlockedTasks:", BlockedTasks)
     --tracelockstate(lock)
     --TRACE("---")
@@ -234,9 +234,9 @@ local function release(lock, items)
                     lockitems_dequeue(co, queueitems)
                     tasks_blocked = tasks_blocked - 1
                     locktable[co] = nil
-                    coroutine.resume(co)
+                    return coroutine.resume(co)
                 end
-            else
+            --else
                 --TRACE("LOCK.CLEAR_STALE(2)", lock.name, co, queueitems)
             end
         end

@@ -57,7 +57,7 @@ local function add_missing_deps(action_list) -- XXX need to also add special dep
         local last_elem = #action_list
         for i = start_elem, last_elem do
             local a = action_list[i]
-            --TRACE("ADD_MISSING_DEPS", i, #action_list)
+            TRACE("ADD_MISSING_DEPS", i, #action_list)
             if a.pkg_new and rawget(a.pkg_new, "is_installed") and not Options.force then
                 -- print (a, "is already installed")
             else
@@ -66,24 +66,16 @@ local function add_missing_deps(action_list) -- XXX need to also add special dep
                 for _, dep in ipairs(deps) do
                     local o = Origin:new(dep)
                     local p = o.pkg_new
-                    --TRACE("ADD_MISSING_DEPS(build)", dep, o, p)
-                    if p and not p.is_installed then
-                        if not Action.get(p.name) and not dep_ports[dep] then
-                            if add_dep_hdr then
-                                Msg.show {level = 2, start = true, add_dep_hdr}
-                                add_dep_hdr = nil
-                            end
-                            dep_ports[dep] = true
-                            add_action{
-                                is_auto = true,
-                                is_build_dep = true,
-                                pkg_new = p,
-                                o_n = o
-                            }
-                            p.is_build_dep = true
-                        end
-                    else
-                        --TRACE("ADD_BUILD_DEP-", dep, "cannot be found")
+                    TRACE("ADD_MISSING_DEPS(build)", dep, o, p)
+                    if not (p.is_installed or p.is_build_dep) then
+                        Msg.show {level = 2, start = true, add_dep_hdr}
+                        add_dep_hdr = nil
+                        add_action{
+                            is_build_dep = true,
+                            pkg_new = p,
+                            o_n = o
+                        }
+                        p.is_build_dep = true
                     end
                 end
                 add_dep_hdr = "Add run dependencies of " .. a.short_name
@@ -91,24 +83,16 @@ local function add_missing_deps(action_list) -- XXX need to also add special dep
                 for _, dep in ipairs(deps) do
                     local o = Origin:new(dep)
                     local p = o.pkg_new
-                    --TRACE("ADD_MISSING_DEPS(run)", dep, o, p)
-                    if p and not p.is_installed then
-                        if not Action.get(p.name) and not dep_ports[dep] then
-                            if add_dep_hdr then
-                                Msg.show {level = 2, start = true, add_dep_hdr}
-                                add_dep_hdr = nil
-                            end
-                            dep_ports[dep] = true
-                            add_action{
-                                is_auto = true,
-                                is_run_dep = true,
-                                pkg_new = p,
-                                o_n = o
-                            }
-                            p.is_run_dep = true
-                        else
-                            --TRACE("ADD_RUN_DEP-", dep, "cannot be found")
-                        end
+                    TRACE("ADD_MISSING_DEPS(run)", dep, o, p)
+                    if not (p.is_installed or p.is_run_dep) then
+                        Msg.show {level = 2, start = true, add_dep_hdr}
+                        add_dep_hdr = nil
+                        add_action{
+                            is_run_dep = true,
+                            pkg_new = p,
+                            o_n = o
+                        }
+                        p.is_run_dep = true
                     end
                 end
             end
@@ -296,17 +280,15 @@ local function perform_actions(action_list)
             Progress.clear()
             if Msg.read_yn("y", "Perform these upgrades now?") then
                 -- perform the planned tasks in the order recorded in action_list
+                Param.phase = "build"
                 Msg.show {start = true}
                 Progress.set_max(tasks_count())
                 --
                 if Options.jailed then
                     Jail.create()
                 end
-                if not Action.perform_upgrades(action_list) then
-                    if Options.hide_build then
-                        -- shell_pipe ("cat > /dev/tty", BUILDLOG) -- use read and write to copy the file to STDOUT XXX
-                    end
-                end
+                Action.perform_upgrades(action_list)
+                -- if Options.hide_build then -- shell_pipe ("cat > /dev/tty", BUILDLOG)
                 if Options.jailed then
                     Jail.destroy()
                 end
@@ -314,12 +296,13 @@ local function perform_actions(action_list)
                 if Options.repo_mode then
                     Action.perform_repo_update()
                 else
+                    Param.phase = "install"
+                    --[[
                     -- XXX fold into perform_upgrades()???
                     -- new action verb required???
                     -- or just a plain install from package???)
-                    --[[
                     if #DELAYED_INSTALL_LIST > 0 then -- NYI to be implemented in a different way
-                        Param.phase = "install"
+
                         perform_delayed_installations()
                     end
                     --]]
@@ -342,14 +325,20 @@ local function report_results(action_list)
             Msg.show{action.short_name, msg}
         end
     end
+    local function ignored_filter(action)
+        return rawget(action, "is_ignored")
+    end
     local function failed_filter(action)
-        return rawget(action, "failed_msg")
+        return rawget(action, "failed_msg") and not ignored_filter(action)
     end
     --TRACE("REPORT_RESULTS")
     Msg.show{start = true, "Build results:"}
     for _, a in ipairs(action_list) do
         --TRACE("REPORT_RESULT", a)
         reportline(a, failed_filter, "FAILED: " .. (rawget(a, "failed_msg") or ""))
+    end
+    for _, a in ipairs(action_list) do
+        reportline(a, ignored_filter, "IGNORED: " .. (rawget(a, "failed_msg") or ""))
     end
 end
 
@@ -376,8 +365,6 @@ local function execute()
     --]]
 
     -- end of scan phase, all required actions are known at this point, builds may start
-    Param.phase = "build"
-
     perform_actions(action_list)
 
     report_results(action_list)

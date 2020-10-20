@@ -327,18 +327,19 @@ local function report_results(action_list)
                     Msg.show{start = true, msg}
                     msg = nil
                 end
+                --TRACE("ACTION", action)
                 Msg.show{action.short_name .. ": ".. action[field] or ""}
             end
         end
     end
     local function installed_filter(action)
-        return rawget(action, "buildstate") and rawget(action.buildstate, "installed")
+        return rawget(action, "buildstate") and rawget(action.buildstate, "install")
     end
     local function packaged_filter(action)
-        return rawget(action, "buildstate") and rawget(action.buildstate, "packaged")
+        return rawget(action, "buildstate") and rawget(action.buildstate, "package")
     end
     local function ignored_filter(action)
-        return rawget(action, "is_ignored")
+        return rawget(action, "ignore")
     end
     local function failed_filter(action)
         return rawget(action, "failed_msg") and not ignored_filter(action)
@@ -348,8 +349,8 @@ local function report_results(action_list)
     --TRACE("REPORT_RESULT", a)
     reportlines(failed_filter, "Build failures", "failed_msg")
     reportlines(ignored_filter, "Ignored packages", "failed_msg")
-    reportlines(packaged_filter, "Packages created", "describe")
-    reportlines(installed_filter, "Packages installed", "describe")
+    reportlines(packaged_filter, "Package files created", "short_name")
+    reportlines(installed_filter, "Packages installed", "name")
 end
 
 --
@@ -387,6 +388,21 @@ return {
 }
 
 --[[
+Dependencies:
+    user-selected port
+        - build-depends:
+            must be runnable at start of build process
+            --> acquire(shared) RunnableLock(deps) for all build dependencies at start of build
+        run-depends:
+            must be runnable after installation (before stage for some ports???)
+            --> acquire(shared) RunnableLock (deps) before reporting success and release of port's exclusive RunnableLock
+
+    build dependency:
+        - build-depends:
+            (see above)
+        - run depends:
+
+
 Build goals:
     create package
         < fetch/checksum

@@ -117,7 +117,8 @@ local function lookup_moved_origin(origin)
                 local newflavor = flavor ~= o_f and flavor or n_f
                 local r = reason .. " on " .. date
                 --TRACE("MOVED->", o(newport, newflavor), r)
-                if not newport or Posix.access(Param.portsdir .. newport .. "/Makefile", "r") then
+                local path = path_concat(Param.portsdir, newport, "Makefile")
+                if not newport or Posix.access(path, "r") then
                     return newport, newflavor, r
                 end
                 return locate_move(newport, newflavor, i + 1)

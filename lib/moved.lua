@@ -74,9 +74,9 @@ local function moved_cache_load()
                 local mcr = MOVED_CACHE_REV[n_p] or {}
                 mcr[#mcr + 1] = record
                 MOVED_CACHE_REV[n_p] = mcr
-                end
             end
         end
+    end
 
     if not MOVED_CACHE then
         MOVED_CACHE = {}
@@ -89,19 +89,19 @@ local function moved_cache_load()
                 register_moved(string.match(line, "^([^#][^|]+)|([^|]*)|([^|]+)|([^|]+)"))
             end
             io.close(movedfile)
-        Msg.show {level = 2, "The list of renamed or removed ports has been loaded"}
-        Msg.show {level = 2, start = true}
+            Msg.show {level = 2, "The list of renamed or removed ports has been loaded"}
+            Msg.show {level = 2, start = true}
+        end
     end
-end
 end
 
 -- combine port and flavor to get origin
-    local function o(port, flavor)
-        if port and flavor then
-            port = port .. "@" .. flavor
-        end
-        return port
+local function o(port, flavor)
+    if port and flavor then
+        port = port .. "@" .. flavor
     end
+    return port
+end
 
 -- try to find origin in list of moved or deleted ports, returns new origin or nil if found, false if not found, followed by reason text
 local function lookup_new_origin(origin)
@@ -142,6 +142,50 @@ local function lookup_new_origin(origin)
     end
 end
 
+--
+local function lookup_prev_origin(origin)
+    local function locate_rev_move(port, flavor, min_i)
+        local movedrec = MOVED_CACHE_REV[port]
+        if not movedrec then
+            return port, flavor, nil
+        end
+        local max_i = #movedrec
+        --TRACE("REV_MOVED?", o(port, flavor), port, flavor, min_i, max_i)
+        for i = max_i, min_i, -1 do
+            local o_p, o_f, n_p, n_f, date, reason = table.unpack(movedrec[i])
+            if port == n_p and (not flavor or not n_f or flavor == n_f) then
+                local prevport = o_p
+                local prevflavor = flavor ~= n_f and flavor or o_f
+                local r = reason .. " on " .. date
+                --TRACE("REV_MOVED->", o(prevport, prevflavor), r)
+                if not prevport then
+                    return false, false, nil
+                end
+                local prev_origin = Origin.get(o(prevport, prevflavor))
+                if prev_origin then
+                    return prevport, prevflavor, r
+                end
+                return locate_rev_move(prevport, prevflavor, i + 1)
+            end
+        end
+        return port, flavor, nil
+    end
+
+    if not MOVED_CACHE_REV then
+        moved_cache_load()
+    end
+    local port, flavor, r = locate_rev_move(origin.port, origin.flavor, 1)
+    --if r then
+        if port then
+            origin = Origin.get(o(port, flavor))
+        end
+        origin.reason = r -- XXX reason might be set on wrong port (old vs. new???)
+        return origin
+    --end
+end
+
+--
 return {
     new_origin = lookup_new_origin,
+    prev_origin = lookup_prev_origin,
 }

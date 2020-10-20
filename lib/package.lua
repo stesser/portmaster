@@ -211,7 +211,7 @@ end
 -------------------------------------------------------------------------------------
 -- install package from passed pkg
 local function install(pkg, abi)
-    local pkgfile = pkg.pkg_filename
+    local pkgfile = pkg.pkgfile
     local jailed = Options.jailed and Param.phase == "build"
     local env = {IGNORE_OSVERSION = "yes"}
     TRACE("INSTALL", abi, pkgfile)

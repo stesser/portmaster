@@ -52,7 +52,11 @@ If the passed-in origin contains a flavor, then entries before
 the addition of flavors should be ignored, but there is no way
 to reliably determjne the date when flavors were from the data
 in the MOVED file.
+
+MOVED_CACHE[port_old]     -> array of {port_old, flavor_old, port_new, flavor_new, date, reason}
+MOVED_CACHE_REV[port_new] -> array of {port_old, flavor_old, port_new, flavor_new, date, reason}
 --]]
+
 local function moved_cache_load()
     local function register_moved(old, new, date, reason)
         if old then
@@ -63,36 +67,32 @@ local function moved_cache_load()
             o_f = o_f ~= "" and o_f or nil
             n_f = n_f ~= "" and n_f or nil
             local record = {o_p, o_f, n_p, n_f, date, reason}
-            if not MOVED_CACHE[o_p] then
-                MOVED_CACHE[o_p] = {record}
-            else
-                table.insert(MOVED_CACHE[o_p], record)
-            end
+            local mc = MOVED_CACHE[o_p] or {}
+            mc[#mc + 1] = record
+            MOVED_CACHE[o_p] = mc
             if n_p then
-                if not MOVED_CACHE_REV[n_p] then
-                    MOVED_CACHE_REV[n_p] = {record}
-                else
-                    table.insert(MOVED_CACHE_REV[n_p], record)
+                local mcr = MOVED_CACHE_REV[n_p] or {}
+                mcr[#mcr + 1] = record
+                MOVED_CACHE_REV[n_p] = mcr
                 end
             end
         end
-    end
 
     if not MOVED_CACHE then
         MOVED_CACHE = {}
         MOVED_CACHE_REV = {}
         local filename = path_concat(Param.portsdir, "MOVED") -- allow override with configuration parameter ???
-        Msg.show {level = 2, start = true, "Load list of renamed or removed ports from", filename}
         local movedfile = io.open(filename, "r")
         if movedfile then
+            Msg.show {level = 2, start = true, "Load list of renamed or removed ports from", filename}
             for line in movedfile:lines() do
                 register_moved(string.match(line, "^([^#][^|]+)|([^|]*)|([^|]+)|([^|]+)"))
             end
             io.close(movedfile)
-        end
         Msg.show {level = 2, "The list of renamed or removed ports has been loaded"}
         Msg.show {level = 2, start = true}
     end
+end
 end
 
 -- try to find origin in list of moved or deleted ports, returns new origin or nil if found, false if not found, followed by reason text

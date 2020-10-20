@@ -95,14 +95,16 @@ local function moved_cache_load()
 end
 end
 
--- try to find origin in list of moved or deleted ports, returns new origin or nil if found, false if not found, followed by reason text
-local function lookup_moved_origin(origin)
+-- combine port and flavor to get origin
     local function o(port, flavor)
         if port and flavor then
             port = port .. "@" .. flavor
         end
         return port
     end
+
+-- try to find origin in list of moved or deleted ports, returns new origin or nil if found, false if not found, followed by reason text
+local function lookup_new_origin(origin)
     local function locate_move(port, flavor, min_i)
         local movedrec = MOVED_CACHE[port]
         if not movedrec then
@@ -141,5 +143,5 @@ local function lookup_moved_origin(origin)
 end
 
 return {
-    new_origin = lookup_moved_origin
+    new_origin = lookup_new_origin,
 }

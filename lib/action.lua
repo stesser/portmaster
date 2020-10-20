@@ -101,7 +101,7 @@ local function describe(action)
         else
             return string.format("Change origin of port %s to %s for package %s", o_o.short_name, o_n.short_name, p_n.name)
         end
-    elseif action_is(action, "exclude") then
+    elseif action_is(action, "exclude") and p_o then
         return string.format("Skip excluded package %s installed from %s", p_o.name, o_o.short_name)
     elseif action_is(action, "upgrade") then
         local from
@@ -426,6 +426,7 @@ local function perform_install_or_upgrade(action)
     local portname = o_n and o_n.name -- o_n.port ???
     local build_depends = o_n and o_n.build_depends
     local pkg_depends = o_n and o_n.pkg_depends or { "ports-mgmt/pkg" }
+    local run_depends = o_n and o_n.run_depends or {}
     local special_depends = o_n and o_n.special_depends -- check for special license and ask user to accept it (may require make extract/patch)
     local build_dep_pkgs
 
@@ -620,6 +621,7 @@ local function perform_install_or_upgrade(action)
             --TRACE("FAILED?", p)
             local a = get(p)
             if a and failed(a) then
+                a.ignore = true
                 return fail(action, "Skipped because of failed dependency " .. p)
             end
         end
@@ -773,6 +775,9 @@ local function perform_install_or_upgrade(action)
     local skip_install = (Options.skip_install or Options.jailed) and not p_n.is_build_dep -- NYI: and BUILDDEP[o_n]
     local pkg_dep_pkgs = pkgs_from_origin_tables(pkg_depends or {})
     pkg_dep_pkgs.shared = true
+    local run_dep_pkgs = pkgs_from_origin_tables(run_depends or {})
+    run_dep_pkgs.shared = true
+    action.buildstate = {}
     if buildrequired then
         -- if not installing from a package file ...
         WorkDirLock = WorkDirLock or Lock:new("WorkDirLock")
@@ -820,7 +825,7 @@ local function perform_install_or_upgrade(action)
         --TRACE("PKGFILE2", buildrequired, pkgfile)
         -- prepare installation, if this is an upgrade (and not a fresh install)
         if pkgname_old then
-            --TRACE("PERFORM_INSTALLATION/REMOVE_OLD_PKG", pkgname_old)
+            TRACE("PERFORM_INSTALLATION/REMOVE_OLD_PKG", pkgname_old)
             if not Options.jailed or Param.phase == "install" then
                 build_step(create_backup_package)
                 build_step(preserve_old_shared_libraries)
@@ -832,13 +837,27 @@ local function perform_install_or_upgrade(action)
         if p_n then -- p_n == nil for package deinstallation
             if buildrequired then
                 build_step(install_from_stage_area)
+                -- preserve file names and hashes of distfiles from new port
+                -- NYI distinfo_cache_update (o_n, pkgname_new)
+                -- backup clean port directory and special build depends (might also be delayed to just before program exit)
+                if not Options.no_post_clean then
+                    build_step(port_clean)
+                    -- delete old distfiles
+                    -- NYI distfiles_delete_old (o_n, pkgname_old) -- OUTPUT
+                end
+                WorkDirLock:release {o_n.wrkdir}
+                -- <<<< WorkDirLock(o_n.wrkdir)
             else
                 build_step(install_from_package)
             end
+            build_step(post_install_fixup)
+            build_step(delete_stale_pkgfiles)
+            build_step(cleanup_old_shared_libraries)
+            -- >>>> RunnableLock(run_dep_pkgs)
+            RunnableLock:acquire(run_dep_pkgs)
             RunnableLock:release{p_n.name}
             -- <<<< RunnableLock(p_n.name)
             --build_step(fetch_pkg_message)
-            build_step(post_install_fixup)
             build_done("provide")
             if not Options.jailed then
                 build_done("install")
@@ -847,20 +866,6 @@ local function perform_install_or_upgrade(action)
         RunnableLock:release(pkg_dep_pkgs)
         -- <<<< RunnableLock(pkg_dep_pkgs)
     end
-    if buildrequired then
-        -- preserve file names and hashes of distfiles from new port
-        -- NYI distinfo_cache_update (o_n, pkgname_new)
-        -- backup clean port directory and special build depends (might also be delayed to just before program exit)
-        if not Options.no_post_clean then
-            build_step(port_clean)
-        -- delete old distfiles
-        -- NYI distfiles_delete_old (o_n, pkgname_old) -- OUTPUT
-        end
-        WorkDirLock:release {o_n.wrkdir}
-    -- <<<< WorkDirLock(o_n.wrkdir)
-    end
-    build_step(cleanup_old_shared_libraries)
-    build_step(delete_stale_pkgfiles)
     -- report success or failure ...
     if not Options.dry_run then
         local failed_msg, failed_log = failed(action)
@@ -1600,17 +1605,13 @@ local function __index(action, k)
         if p_n.no_build or p_n.make_jobs_unsafe or p_n.disable_make_jobs then
             return 1
         end
-        local n = p_n.make_jobs_number or (Param.ncpu // 2)
+        local n = p_n.make_jobs_number or Param.ncpu
         local l = p_n.make_jobs_number_limit or Param.ncpu
-        if n > l then
-            n = l
-        end
-        return n
-    end
-    local function __empty_table(action, k)
-        return {}
+        return n >= l and n or l
     end
     local dispatch = {
+        name = describe,
+        short_name = __short_name,
         pkg_old = determine_pkg_old,
         pkg_new = determine_pkg_new,
         vers_cmp = compare_versions_old_new,
@@ -1619,11 +1620,9 @@ local function __index(action, k)
         build_depends = __depends,
         run_depends = __depends,
         action = determine_action,
-        short_name = __short_name,
         startno = __startno,
         jobs = __jobs,
         ignore = check_excluded,
-        buildstate = __empty_table,
     }
 
     --TRACE("INDEX(a)", k)
@@ -1846,6 +1845,7 @@ local function new(Action, args)
         merge_origin(action, args, "origin_new")
         merge_pkg(action, args, "pkg_old")
         merge_pkg(action, args, "pkg_new")
+        action.buildstate = {}
         setmetatable(action, mt)
         TRACE("ACTION(new)->", action)
         cache_add(action)

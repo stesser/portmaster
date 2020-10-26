@@ -118,7 +118,11 @@ end
 
 -- (UTIL)
 local function do_mount(fs_type, from, onto, param)
-    local args = {as_root = true, log = true, "mount"}
+    local args = {
+        as_root = true,
+        log = true,
+        CMD.mount
+    }
     if fs_type then
         table.insert(args, "-t")
         table.insert(args, fs_type .. "fs")

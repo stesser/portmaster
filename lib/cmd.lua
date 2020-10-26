@@ -40,6 +40,7 @@ CMD.make = "/usr/bin/make"
 CMD.mdconfig = "/sbin/mdconfig"
 CMD.mkdir = "/bin/mkdir"
 CMD.mktemp = "/usr/bin/mktemp"
+CMD.mount = "/sbin/mount"
 CMD.mv = "/bin/mv"
 CMD.pkg = "/usr/local/sbin/pkg-static"
 CMD.pkg_bootstrap = "/usr/sbin/pkg" -- pkg dummy in base system used for pkg bootstrap

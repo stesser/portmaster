@@ -320,7 +320,7 @@ local function create()
 end
 
 local function destroy()
-    if not Options.dry_run then
+    if not Options.dry_run and not Options.developer_mode then
         unmount_all(Param.jailbase)
     end
     Param.jailbase = nil

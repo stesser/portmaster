@@ -402,6 +402,9 @@ local function run(args)
     if args.to_tty then
         return exitcode == 0, "", exitcode
     else
+        if exitcode ~= 0 then
+            TRACE("EXEC->", exitcode, "STDOUT=", stdout, "STDERR=", stderr)
+        end
         --TRACE("EXEC:STDOUT", tostring(stdout))
         if stdout == nil and exitcode == 0 then
             stdout = task_result

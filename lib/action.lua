@@ -772,7 +772,7 @@ local function perform_install_or_upgrade(action)
     -- has a package been identified to be used instead of building the port?
     local buildrequired = p_n and (not p_n.pkgfile or action.force or not (Options.packages or Options.packages_build and not p_n.is_run_dep))
     --TRACE("BUILDREQUIRED", buildrequired, action.force, Options.packages)
-    local skip_install = (Options.skip_install or Options.jailed) and not p_n.is_build_dep -- NYI: and BUILDDEP[o_n]
+    local skip_install = (Options.skip_install or Options.jailed) and not (p_n.is_build_dep or p_n.is_pkg_dep)
     local pkg_dep_pkgs = pkgs_from_origin_tables(pkg_depends or {})
     pkg_dep_pkgs.shared = true
     local run_dep_pkgs = pkgs_from_origin_tables(run_depends or {})

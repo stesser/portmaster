@@ -250,6 +250,17 @@ function table:index(val)
     end
 end
 
+-- return union of tables
+function table.union(...)
+    local k = {}
+    for _t, t in ipairs({...}) do
+        for _, v in ipairs(t) do
+            k[v] = true
+        end
+    end
+    return table.keys(k)
+end
+
 -- directory name part of file path
 function dirname(filename)
     return string.match(filename, ".*/") or "."

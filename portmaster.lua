@@ -235,7 +235,7 @@ function table:keys()
     local result = {}
     for k, _ in pairs(self) do
         if type(k) ~= "number" then
-            table.insert(result, k)
+            result[#result + 1] = k
         end
     end
     return result

@@ -258,7 +258,11 @@ function table.union(...)
             k[v] = true
         end
     end
-    return table.keys(k)
+    local result = {}
+    for v, _ in pairs(k) do
+        result[#result + 1] = v
+    end
+    return result
 end
 
 -- directory name part of file path

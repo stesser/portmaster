@@ -564,7 +564,7 @@ local function list_ports(mode)
             end,
         },
     }
-    local listdata = {}
+    local listdata
     local function check_version(pkg_old)
         --TRACE("CHECK_VERSION_SPAWNED", pkg_old.name)
         local o_o = pkg_old.origin
@@ -574,12 +574,14 @@ local function list_ports(mode)
         local reason
         if not pkgname_new then
             local o_n = Moved.new_origin(o_o)
+            --TRACE("MOVED??", o_o, o_n)
+            if o_n ~= o_o then
             reason = o_o.reason
-            --TRACE("MOVED??", reason)
-            if o_n and o_n ~= o_o then
+                if o_n then
                 pkg_new = o_n.pkg_new
                 pkgname_new = pkg_new and pkg_new.name
             end
+        end
         end
         local result
         if not pkgname_new then

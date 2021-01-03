@@ -488,7 +488,6 @@ local function packages_cache_load()
         pkg_count = pkg_count + 1
     end
     Msg.show {level = 2, "The list of installed packages has been loaded (" .. pkg_count .. " packages)"}
-    --[[
     Msg.show {level = 2, start = true, "Load package dependencies"}
     local p = {}
     lines = PkgDb.query {table = true, "%n-%v %rn-%rv"}
@@ -499,10 +498,9 @@ local function packages_cache_load()
             p.dep_pkgs = {}
         end
         p.num_depending = p.num_depending + 1
-        table.insert(p.dep_pkgs, dep_pkg)
+        table.insert(p.dep_pkgs, dep_pkg) -- XXX actually used ???
     end
     Msg.show {level = 2, "Package dependencies have been loaded"}
-    --]]
     Msg.show {level = 2, start = true}
     shared_libs_cache_load()
     req_shared_libs_cache_load()

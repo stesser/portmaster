@@ -37,10 +37,10 @@ local State = {
     at_start = true,
     empty_line = true,
     doprompt = false,
-    sep1 = "# -----\t",
-    sep2 = "#\t",
-    sepabort = "# !!!!!\t",
-    sepprompt = "#   >>>\t",
+    sep1 = "#- ",
+    sep2 = "#  ",
+    sepabort = "#! ",
+    sepprompt = "#> ",
 }
 State.sep = State.sep1
 

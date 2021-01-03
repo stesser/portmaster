@@ -600,6 +600,29 @@ local function __newindex(pkg, n, v)
 end
 
 local function __index(pkg, k)
+    local function __depends(pkg, k)
+        local o_n = pkg.origin
+        local depends = o_n and o_n.depends
+        if not depends then
+            return {}
+        end
+        return {
+            build = pkgs_from_origin_tables(
+                depends.extract,
+                depends.patch,
+                depends.fetch,
+                depends.build,
+                depends.lib
+            ),
+            pkg = pkgs_from_origin_tables(
+                depends.pkg
+            ),
+            run = pkgs_from_origin_tables(
+                depends.lib,
+                depends.run
+            )
+        }
+    end
     local function __pkg_vars(pkg, k)
         local function set_field(field, v)
             if v == "" then
@@ -648,6 +671,7 @@ local function __index(pkg, k)
         is_installed = function(pkg, k)
             return false -- always explicitly set when found or during installation
         end,
+        depends = __depends,
         --[[
         files = function (pkg, k)
             return PkgDb.query {table = true, "%Fp", pkg.name}

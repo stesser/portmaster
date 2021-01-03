@@ -576,12 +576,12 @@ local function list_ports(mode)
             local o_n = Moved.new_origin(o_o)
             --TRACE("MOVED??", o_o, o_n)
             if o_n ~= o_o then
-            reason = o_o.reason
+                reason = o_o.reason
                 if o_n then
-                pkg_new = o_n.pkg_new
-                pkgname_new = pkg_new and pkg_new.name
+                    pkg_new = o_n.pkg_new
+                    pkgname_new = pkg_new and pkg_new.name
+                end
             end
-        end
         end
         local result
         if not pkgname_new then

@@ -422,11 +422,12 @@ local function __port_conflicts(origin, k)
     return table.keys(ut)
 end
 
--- strip any implicit default flavor -- XXX any strip pseudo-flavor too ???
+-- strip any implicit default flavor -- XXX and strip pseudo-flavor too ???
 local function __short_name(origin)
     local f = origin.flavor
     if f then
-        if f == origin.flavors[1] then
+        local ff = origin.flavors
+        if ff and f == ff[1] then
             return origin.port
         end
     end

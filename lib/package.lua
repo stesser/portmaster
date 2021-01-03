@@ -543,7 +543,7 @@ local function split_version_string(pkgname)
     return result
 end
 
---
+-- return 0 for v1 == v2, positive result for v1 higher than v2, negative result else
 local function compare_versions(p1, p2)
     local function compare_lists(t1, t2)
         local n1 = #t1
@@ -569,7 +569,7 @@ local function compare_versions(p1, p2)
             if result == 0 then
                 result = compare_lists(v1, v2)
                 if result == 0 then
-                    result = result ~= 0 and result or v1.revision - v2.revision
+                    result = v1.revision - v2.revision
                 end
             end
         end

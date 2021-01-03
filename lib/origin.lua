@@ -340,14 +340,15 @@ local function __port_vars(origin, k, recursive)
         set_table(origin, "new_options", t.NEW_OPTIONS)
         set_table(origin, "port_options", t.PORT_OPTIONS)
         set_table(origin, "categories", t.CATEGORIES)
-        set_table(origin, "fetch_depends_var", t.FETCH_DEPENDS)
-        set_table(origin, "extract_depends_var", t.EXTRACT_DEPENDS)
-        set_table(origin, "patch_depends_var", t.PATCH_DEPENDS)
-        set_table(origin, "build_depends_var", t.BUILD_DEPENDS)
-        set_table(origin, "lib_depends_var", t.LIB_DEPENDS)
-        set_table(origin, "run_depends_var", t.RUN_DEPENDS)
-        set_table(origin, "test_depends_var", t.TEST_DEPENDS)
-        set_table(origin, "pkg_depends_var", t.PKG_DEPENDS)
+        origin.depends = {}
+        set_table(origin.depends, "fetch", t.FETCH_DEPENDS)
+        set_table(origin.depends, "extract", t.EXTRACT_DEPENDS)
+        set_table(origin.depends, "patch", t.PATCH_DEPENDS)
+        set_table(origin.depends, "build", t.BUILD_DEPENDS)
+        set_table(origin.depends, "lib", t.LIB_DEPENDS)
+        set_table(origin.depends, "run", t.RUN_DEPENDS)
+        set_table(origin.depends, "test", t.TEST_DEPENDS)
+        set_table(origin.depends, "pkg", t.PKG_DEPENDS)
         set_table(origin, "conflicts_build_var", t.CONFLICTS_BUILD)
         set_table(origin, "conflicts_install_var", t.CONFLICTS_INSTALL)
         set_table(origin, "conflicts_var", t.CONFLICTS)
@@ -454,21 +455,14 @@ local __index_dispatch = {
     path = path,
     port = port,
     port_exists = check_port_exists,
-    fetch_depends = __port_depends,
-    extract_depends = __port_depends,
-    patch_depends = __port_depends,
-    build_depends = __port_depends,
-    run_depends = __port_depends,
-    pkg_depends = __port_depends,
+    --fetch_depends = __port_depends,
+    --extract_depends = __port_depends,
+    --patch_depends = __port_depends,
+    --build_depends = __port_depends,
+    --run_depends = __port_depends,
+    --pkg_depends = __port_depends,
     special_depends = __port_depends,
-    fetch_depends_var = __port_vars,
-    extract_depends_var = __port_vars,
-    patch_depends_var = __port_vars,
-    build_depends_var = __port_vars,
-    lib_depends_var = __port_vars,
-    pkg_depends_var = __port_vars,
-    run_depends_var = __port_vars,
-    test_depends_var = __port_vars,
+    depends = __port_vars,
     conflicts_build_var = __port_vars,
     conflicts_install_var = __port_vars,
     conflicts_var = __port_vars,

@@ -253,8 +253,8 @@ end
 -- return union of tables
 function table.union(...)
     local k = {}
-    for _t, t in ipairs({...}) do
-        for _, v in ipairs(t) do
+    for _, t in ipairs({...}) do
+        for _, v in pairs(t) do
             k[v] = true
         end
     end

@@ -132,13 +132,13 @@ local function lookup_new_origin(origin)
     if not MOVED_CACHE then
         moved_cache_load()
     end
+    local origin_0 = origin
     local port, flavor, r = locate_move(origin.port, origin.flavor, 1)
     if r then
+        origin_0.reason = r -- XXX reason might be set on wrong port (old vs. new???)
         if port then
-            origin = Origin:new(o(port, flavor))
+            return Origin:new(o(port, flavor))
         end
-        origin.reason = r -- XXX reason might be set on wrong port (old vs. new???)
-        return origin
     end
 end
 

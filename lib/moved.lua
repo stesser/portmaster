@@ -117,7 +117,7 @@ local function lookup_new_origin(origin)
             if port == o_p and (not flavor or not o_f or flavor == o_f) then
                 local newport = n_p
                 local newflavor = flavor ~= o_f and flavor or n_f
-                local r = reason .. " on " .. date
+                local r = date .. ": " .. reason
                 --TRACE("MOVED->", o(newport, newflavor), r)
                 local path = path_concat(Param.portsdir, newport, "Makefile")
                 if not newport or Posix.access(path, "r") then

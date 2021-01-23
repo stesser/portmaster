@@ -1,7 +1,7 @@
 --[[
 SPDX-License-Identifier: BSD-2-Clause-FreeBSD
 
-Copyright (c) 2019, 2020 Stefan Eßer <se@freebsd.org>
+Copyright (c) 2019-2021 Stefan Eßer <se@freebsd.org>
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions
@@ -319,9 +319,15 @@ local function shell(args)
     if args.to_tty then
         return task_create(args)
     end
-    local co, in_main = coroutine.running()
+    local co = coroutine.running()
     local pid = task_create(args)
-    if in_main then
+    if coroutine.isyieldable() then
+        --TRACE("FORK_EXEC", args)
+        -- in coroutine: execute background process
+        co_table[pid] = co
+        return coroutine.yield()
+    else
+        --TRACE("MAIN_EXEC", args)
         -- in main program wait for and return results
         co_table[pid] = false
         local exitcode, stdout, stderr
@@ -339,10 +345,6 @@ local function shell(args)
         --TRACE("SHELL(exitcode)", exitcode)
         co_table[pid] = nil
         return exitcode, stdout, stderr
-    else
-        -- in coroutine: execute background process
-        co_table[pid] = co
-        return coroutine.yield()
     end
 end
 

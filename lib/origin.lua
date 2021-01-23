@@ -1,7 +1,7 @@
 --[[
 SPDX-License-Identifier: BSD-2-Clause-FreeBSD
 
-Copyright (c) 2019, 2020 Stefan Eßer <se@freebsd.org>
+Copyright (c) 2019-2021 Stefan Eßer <se@freebsd.org>
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions
@@ -49,7 +49,7 @@ end
 
 --
 local function check_port_exists(origin)
-    return access(path(origin) .. "/Makefile", "r")
+    return access(path_concat(path(origin), "Makefile"), "r")
 end
 
 -- return flavor of passed origin or nil
@@ -66,7 +66,8 @@ end
 -- return path to the portdb directory (contains cached port options)
 local function portdb_path(origin)
     local dir = port(origin)
-    return Param.port_dbdir .. dir:gsub("/", "_")
+    --TRACE("PORTDB_PATH", origin.name, dir, path_concat(Param.port_dbdir, dir:gsub("/", "_")))
+    return path_concat(Param.port_dbdir, dir:gsub("/", "_"))
 end
 
 -- call make for origin with arguments used e.g. for variable queries (no state change)
@@ -91,8 +92,9 @@ local function port_make(origin, args)
         table.insert(args, 2, dir)
         local pf = pseudo_flavor(origin)
         if pf then
-            table.insert(args, 1, "DEFAULT_VERSIONS='" .. pf .. "'")
-            --TRACE("DEFAULT_VERSIONS", pf)
+            args.env = args.env or {}
+            args.env.DEFAULT_VERSIONS = pf
+            TRACE("DEFAULT_VERSIONS", pf)
         end
     else
         table.insert(args, 1, "-f/usr/share/mk/bsd.port.mk")
@@ -313,6 +315,7 @@ local function __port_vars(origin, k, recursive)
         if pkgname then
             local p = Package:new(pkgname)
             --TRACE("PKG_NEW", pkgname, origin.name, p.origin and p.origin.name or "''")
+            p.origin = origin
             origin[var] = p
         end
     end
@@ -362,7 +365,7 @@ local function __port_vars(origin, k, recursive)
 end
 
 --
-local function __port_depends(origin, k)
+local function __port_depends(origin, k) -- XXX rename special_depends_var to ???
     local depends_table = {
         build_depends = {
             "extract_depends_var",

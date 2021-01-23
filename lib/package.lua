@@ -297,35 +297,28 @@ local function recover(pkg)
     Msg.show {"Recovery from backup package file", pkgfile, "failed"}
 end
 
--- search package file
-local function file_search(pkg)
-    for d in ipairs({"All", "package-backup"}) do
-        local file
-        for _, f in ipairs(glob(filename {subdir = d, ext = ".t?*", pkg}) or {}) do
-            if file_valid_abi(f) then
-                if not file or stat(file).modification < stat(f).modification then
-                    file = f
-                end
-            end
-        end
-        if file then
-            return file
-        end
-    end
-end
-
--- lookup package file
-local function pkg_lookup(pkg, k)
-    local subdir = k == "pkgfile" and "All" or "portmaster-backup"
+-- search package file in directory
+local function file_search_in(pkg, subdir)
     local file
     for _, f in ipairs(glob(filename {subdir = subdir, ext = ".t?*", pkg}) or {}) do
         if file_valid_abi(f) then
-            if not file or stat(file).st_mtime < stat(f).st_mtime then
+            if not file or stat(file).st_mtime < stat(f).st_mtime then -- newer than previously checked package file?
                 file = f
             end
         end
     end
     return file
+end
+
+-- search package file
+local function file_search(pkg)
+    return file_search_in(pkg, "All") or file_search_in(pkg, "package-backup")
+end
+
+-- lookup package file
+local function pkg_lookup(pkg, k)
+    local subdir = k == "pkgfile" and "All" or "portmaster-backup"
+    return file_search_in(pkg, subdir)
 end
 
 -- delete backup package file

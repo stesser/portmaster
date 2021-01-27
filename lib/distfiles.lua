@@ -1,7 +1,7 @@
 --[[
 SPDX-License-Identifier: BSD-2-Clause-FreeBSD
 
-Copyright (c) 2019, 2020 Stefan Eßer <se@freebsd.org>
+Copyright (c) 2019-2021 Stefan Eßer <se@freebsd.org>
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions
@@ -180,8 +180,8 @@ end
 --
 local function fetch_finish()
    --TRACE("FETCH_FINISH")
-   Exec.finish_spawned(fetch, "Finish background fetching and checking of distribution files")
    if fetch_lock then
+      Exec.finish_spawned(fetch, "Finish background fetching and checking of distribution files")
       fetch_lock:destroy()
       fetch_lock = false -- prevent further use as a table
    end

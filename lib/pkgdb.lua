@@ -1,7 +1,7 @@
 --[[
 SPDX-License-Identifier: BSD-2-Clause-FreeBSD
 
-Copyright (c) 2019, 2020 Stefan Eßer <se@freebsd.org>
+Copyright (c) 2019, 2021 Stefan Eßer <se@freebsd.org>
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions
@@ -27,28 +27,7 @@ SUCH DAMAGE.
 
 -------------------------------------------------------------------------------------
 local Exec = require("portmaster.exec")
-local Lock = require("portmaster.lock")
 local Param = require("portmaster.param")
-
-local PkgDbLock
-
--------------------------------------------------------------------------------------
-local function lock(shared)
-    PkgDbLock = PkgDbLock or Lock:new("PkgDbLock")
-    PkgDbLock:acquire{weight = 1, shared = shared}
-end
-
-local function unlock(shared)
-    PkgDbLock:release{weight = 1, shared = shared}
-end
-
-local function pkg(args)
-    local shared = args.safe
-    lock(shared)
-    local result = Exec.pkg(args)
-    unlock(shared)
-    return result
-end
 
 -------------------------------------------------------------------------------------
 -- query package DB for passed origin (with optional flavor) or passed package name
@@ -67,12 +46,12 @@ local function query(args)
     end
     table.insert(args, 1, "query")
     args.safe = true
-    return pkg(args)
+    return Exec.pkg(args)
 end
 
 -- get package information from pkgdb
 local function info(...)
-    return pkg{
+    return Exec.pkg{
         safe = true,
         table = true,
         "info", "-q", ...
@@ -81,7 +60,7 @@ end
 
 -- set package attribute for specified ports and/or packages
 local function set(...)
-    return pkg{
+    return Exec.pkg{
         as_root = true,
         log = true,
         "set", "-y", ...
@@ -91,7 +70,7 @@ end
 -- get the annotation value (e.g. flavor), if any
 local function annotate_get(var, name)
     assert(var, "no var passed")
-    return pkg{
+    return Exec.pkg{
         safe = true,
         "annotate", "-Sq", name, var
     }
@@ -100,7 +79,7 @@ end
 -- set the annotation value, or delete it if "$value" is empty
 local function annotate_set(var, name, value)
     local opt = value and #value > 0 and "-M" or "-D"
-    return pkg{
+    return Exec.pkg{
         as_root = true,
         log = true,
         "annotate", "-qy", opt, name, var, value
@@ -109,7 +88,7 @@ end
 
 -- check package dependency information in the pkg db
 local function check_depends()
-    pkg{
+    Exec.pkg{
         as_root = true,
         to_tty = true,
         "check", "-dn"
@@ -118,7 +97,7 @@ end
 
 -- return system ABI
 local function system_abi()
-    local abi = chomp(pkg{
+    local abi = chomp(Exec.pkg{
         safe = true,
         "config", "abi"
     })
@@ -174,7 +153,7 @@ end
 
 -- update repository database after creation of new packages
 local function update_repo() -- move to Package module XXX
-    pkg {
+    Exec.pkg {
         as_root = true,
         "repo", Param.packages .. "All"
     }
@@ -192,6 +171,4 @@ return {
     update_origin = update_origin,
     update_pkgname = update_pkgname,
     update_repo = update_repo,
-    lock = lock,
-    unlock = unlock,
 }

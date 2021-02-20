@@ -3,7 +3,7 @@
 --[[
 SPDX-License-Identifier: BSD-2-Clause-FreeBSD
 
-Copyright (c) 2019, 2020 Stefan Eßer <se@freebsd.org>
+Copyright (c) 2019-2021 Stefan Eßer <se@freebsd.org>
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions
@@ -281,6 +281,18 @@ function path_concat(result, ...)
         --TRACE("PATH_CONCAT->", result)
         return result
     end
+end
+
+-- go directory levels up
+function path_up(result, level)
+    level = level or 1
+    for _ = 1, level do
+        if result == "/" then
+                break
+        end
+        result = string.gsub(result, "/[^/]+$", "")
+    end
+    return result
 end
 
 -- check whether path points to a directory
@@ -903,51 +915,6 @@ os.exit(0)
 	  r     J  - register package for delayed installation / upgrade
 
 	          repo-mode is identical to jailed builds but without installation in base
---]]
-
---[[
-	-----------------------
-	Invocation of "make -V $VAR" - possible speed optimization: query multiple variables and cache result
-
-	# --> register_depends
-	origin_var "$dep_origin" FLAVOR
-
-	# --> origin_from_dir
-	origin_var "$dir" PKGORIGIN
-
-	# --> dist_fetch_overlap
-	origin_var "$origin" ALLFILES
-	origin_var "$origin" DIST_SUBDIR
-
-	# --> distinfo_update_cache
-	origin_var "$origin" DISTINFO_FILE
-
-	# --> port_flavors_get
-	origin_var "$origin" FLAVORS
-
-	# --> port_is_interactive
-	origin_var "$o_n" IS_INTERACTIVE
-
-	# --> check_license
-	origin_var "$o_n" LICENSE
-
-	# --> *
-	origin_var "$o_n" PKGNAME
-
-	# --> package_check_build_conflicts
-	origin_var "$o_n" BUILD_CONFLICTS
-
-	# --> choose_action, (list_ports)
-	origin_var "$o_o" PKGNAME
-
-	# --> origin_from_dir_and_pkg
-	origin_var "$o_o" PKGORIGIN
-
-	# --> choose_action
-	origin_var_jailed "$o_o" PKGNAME
-
-	# --> choose_action, origin_from_dir_and_pkg
-	origin_var_jailed "$o_n" PKGNAME
 --]]
 
 --[[

@@ -1,7 +1,7 @@
 --[[
 SPDX-License-Identifier: BSD-2-Clause-FreeBSD
 
-Copyright (c) 2019, 2020 Stefan Eßer <se@freebsd.org>
+Copyright (c) 2019, 2021 Stefan Eßer <se@freebsd.org>
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions
@@ -134,6 +134,13 @@ local function __ncpu(param, k)
     return tonumber(os.getenv("_SMP_CPUS"))
 end
 
+-- maximum number of make jobs - twice the number of CPU threads?
+local function __maxjobs(param, k)
+    local overcommit = 1
+    local offset = 2
+    return math.floor(param.ncpu * overcommit + offset)
+end
+
 local function __uid(param, k)
     return geteuid()
 end
@@ -155,6 +162,7 @@ local function __index(param, k)
         distdir_ro = __distdir_ro,
         home = __user,
         ncpu = __ncpu,
+        maxjobs = __maxjobs,
         package_format = __package_fmt,
         packages_ro = __packages_ro,
         pkg_dbdir_ro = __pkg_dbdir_ro,

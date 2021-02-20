@@ -189,6 +189,7 @@ local function install(origin)
         log = true,
         jailed = true,
         as_root = true,
+        pkgdb_wr = true,
         "install"
     }
 end
@@ -368,31 +369,31 @@ end
 local function __port_depends(origin, k) -- XXX rename special_depends_var to ???
     local depends_table = {
         build_depends = {
-            "extract_depends_var",
-            "patch_depends_var",
-            "fetch_depends_var",
-            "build_depends_var",
-            "lib_depends_var"
+            "extract",
+            "patch",
+            "fetch",
+            "build",
+            "lib"
         },
         pkg_depends = {
-            "pkg_depends_var"
+            "pkg"
         },
         run_depends = {
-            "lib_depends_var",
-            "run_depends_var"
+            "lib",
+            "run"
         },
         test_depends = {
-            "test_depends_var"
+            "test"
         },
         special_depends = {
-            "build_depends_var"
+            "build"
         },
     }
     local t = depends_table[k]
     assert(t, "non-existing dependency " .. k or "<nil>" .. " requested")
     local ut = {}
     for _, v in ipairs(t) do
-        for _, d in ipairs(origin[v] or {}) do
+        for _, d in ipairs(origin.depends[v] or {}) do
             local pattern = k == "special_depends" and "^[^:]+:([^:]+:%S+)" or "^[^:]+:([^:]+)$"
             --TRACE("PORT_DEPENDS", k, d, pattern)
             local o = string.match(d, pattern)
@@ -437,6 +438,13 @@ local function __short_name(origin)
     return origin.name
 end
 
+--
+local function __verify_origin(o)
+    if o and o.name and o.name ~= "" then
+        return access(path_concat(o.path, "Makefile"), "r")
+    end
+end
+
 -------------------------------------------------------------------------------------
 --
 local __index_dispatch = {
@@ -474,6 +482,7 @@ local __index_dispatch = {
     build_conflicts = __port_conflicts,
     install_conflicts = __port_conflicts,
     short_name = __short_name,
+    exists = __verify_origin,
 }
 
 local function __index(origin, k)

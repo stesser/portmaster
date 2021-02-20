@@ -1,7 +1,7 @@
 --[[
 SPDX-License-Identifier: BSD-2-Clause-FreeBSD
 
-Copyright (c) 2019, 2020 Stefan Eßer <se@freebsd.org>
+Copyright (c) 2019-2021 Stefan Eßer <se@freebsd.org>
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions
@@ -370,7 +370,7 @@ local function check_default_version(origin_name, pkgname)
     local T = {
         apache = "^apache(%d)(%d)-",
         -- llvm= "^llvm(%d%d)-",
-        -- lua = "^lua(%d)(%d)-",
+        lua = "^lua(%d)(%d)-",
         mysql = "^mysql(%d)(%d)-",
         pgsql = "^postgresql(9)(%d)-",
         pgsql1 = "^postgresql1(%d)-",
@@ -468,7 +468,7 @@ local function packages_cache_load()
         if not rawget(o, "old_pkgs") then
             o.old_pkgs = {}
         end
-        o.old_pkgs[pkgname] = true
+        table.insert(o.old_pkgs, pkgname)
         p.origin = o
         p.abi = abi
         p.flavor = f
@@ -586,6 +586,36 @@ local function installed_pkgs()
     return result
 end
 
+-- wait for dependencies to become available
+local function pkgs_from_origin_tables(...)
+    local pkgs = {}
+    local tables = {...}
+    --TRACE("TABLES", tables)
+    for _, t in ipairs(tables) do
+        --TRACE("DEP_PORTS", t)
+        if t then
+            for _, v in ipairs(t) do
+                --TRACE("DEP_COND", v)
+                local origin = string.match(v, "^[^:]+:(.+)")
+                --TRACE("DEP_PORT", v, origin)
+                if not string.match(origin, ":") then -- ignore special depends
+                    local o_n = Origin:new(origin)
+                    --TRACE("PKG_FROM_ORIGIN_TABLES", origin, o_n)
+                    local p_n = o_n and o_n.pkg_new
+                    if p_n then
+                        local pkgname = o_n.pkg_new.name
+                        pkgs[#pkgs + 1] = pkgname
+                        p_n.origin = p_n.origin or o_n
+                    end
+                end
+            end
+        end
+    end
+    pkgs.shared = true
+    --TRACE("PKGS_FROM_ORIGIN_TABLES->", pkgs, ...)
+    return pkgs
+end
+
 --
 local function __newindex(pkg, n, v)
     --TRACE("SET(p)", pkg.name, n, v)
@@ -595,26 +625,29 @@ end
 local function __index(pkg, k)
     local function __depends(pkg, k)
         local o_n = pkg.origin
-        local depends = o_n and o_n.depends
-        if not depends then
+        local o_depends = o_n and o_n.depends
+        if not o_depends then
             return {}
         end
-        return {
+        TRACE("O_DEPENDS", o_n.name, o_depends)
+        local p_depends = {
             build = pkgs_from_origin_tables(
-                depends.extract,
-                depends.patch,
-                depends.fetch,
-                depends.build,
-                depends.lib
+                o_depends.extract,
+                o_depends.patch,
+                o_depends.fetch,
+                o_depends.build,
+                o_depends.lib
             ),
             pkg = pkgs_from_origin_tables(
-                depends.pkg
+                o_depends.pkg
             ),
             run = pkgs_from_origin_tables(
-                depends.lib,
-                depends.run
-            )
+                o_depends.lib,
+                o_depends.run
+            ),
         }
+        TRACE("P_DEPENDS", pkg.name, p_depends)
+        return p_depends
     end
     local function __pkg_vars(pkg, k)
         local function set_field(field, v)
@@ -630,6 +663,9 @@ local function __index(pkg, k)
         set_field("num_depending", tonumber(t[4]))
         return pkg[k]
     end
+    local function __origin_from_pkg(pkg, k)
+        TRACE("ORIGIN_FROM_PKG", k, pkg)
+    end
     local function load_num_dependencies(pkg, k)
         Msg.show {level = 2, start = true, "Load dependency counts"}
         local t = PkgDb.query {table = true, "%#d %n-%v"}
@@ -641,7 +677,16 @@ local function __index(pkg, k)
         Msg.show {level = 2, start = true}
         return pkg[k]
     end
-
+    local function __get_abi(pkg, v)
+        return file_get_abi(filename {pkg}) or false
+    end
+    local function __pkg_filename(pkg, v)
+        if v == "pkg_filename" then
+            return filename {subdir = "All", pkg}
+        elseif v == "bak_filename" then
+            return filename {subdir = "portmaster-backup", ext = Param.backup_format, pkg}
+        end
+    end
     local dispatch = {
         abi = __pkg_vars,
         is_automatic = __pkg_vars,
@@ -655,43 +700,15 @@ local function __index(pkg, k)
         version = pkg_version,
         pkgfile = pkg_lookup,
         bakfile = pkg_lookup,
-        pkgfile_abi = function(pkg, v)
-            return file_get_abi(filename {pkg}) or false
-        end,
+        pkgfile_abi = __get_abi,
         -- bakfile_abi = file_get_abi,
         shared_libs = false, -- batch loaded at start
         req_shared_libs = false, -- batch loaded at start
-        is_installed = function(pkg, k)
-            return false -- always explicitly set when found or during installation
-        end,
+        is_installed = false, -- set for files in package db
         depends = __depends,
-        --[[
-        files = function (pkg, k)
-            return PkgDb.query {table = true, "%Fp", pkg.name}
-        end,
-        categories = function (pkg, k)
-            error ("should be cached")
-            return PkgDb.query {table = true, "%C", pkg.name}
-        end,
-      --]]
-        pkg_filename = function(pkg, k)
-            return filename {subdir = "All", pkg}
-        end,
-        bak_filename = function(pkg, k)
-            return filename {subdir = "portmaster-backup", ext = Param.backup_format, pkg}
-        end,
-        --[[
-        origin = function (pkg, k)
-            error ("should be cached")
-            --TRACE ("Looking up origin for", pkg.name)
-            local port = PkgDb.query {"%o", pkg.name}
-            if port ~= "" then
-                local flavor = pkg.flavor
-                local n = flavor and port .. "@" .. flavor or port
-                return Origin:new (n)
-            end
-        end,
-        --]]
+        pkg_filename = __pkg_filename,
+        bak_filename = __pkg_filename,
+        origin = __origin_from_pkg,
     }
 
     --TRACE("INDEX(p)", pkg, k)

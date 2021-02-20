@@ -1,7 +1,7 @@
 --[[
 SPDX-License-Identifier: BSD-2-Clause-FreeBSD
 
-Copyright (c) 2019, 2020 Stefan Eßer <se@freebsd.org>
+Copyright (c) 2019-2021 Stefan Eßer <se@freebsd.org>
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions
@@ -53,18 +53,18 @@ local function list()
 end
 
 -- return the sum of the numbers of required operations
-function tasks_count()
+local function tasks_count()
     return #ACTION_LIST
 end
 
 --
-local function origin_changed(o_o, o_n)
+local function origin_changed(o_o, o_n) -- move to Origin package !!!
     return o_o and o_o.name ~= "" and o_o ~= o_n and o_o.name ~= string.match(o_n.name, "^([^%%]+)%%")
 end
 
 --
 local function action_set(action, verb)
-    --TRACE("ACTION_SET", action.pkg_new or action.pkg_old, verb)
+    --TRACE("ACTION_SET", action.pkg_new or action.old_pkgs[1], verb)
     verb = verb ~= "keep" and verb ~= "exclude" and verb or false
     action.action = verb
 end
@@ -77,7 +77,7 @@ end
 -- check whether the action denoted by "verb" has been registered
 local function action_is(action, verb)
     local a = action_get(action)
-    TRACE ("ACTION_IS", action.pkg_new or action.pkg_old, a, verb)
+    TRACE ("ACTION_IS", action.pkg_new or action.old_pkgs[1], a, verb)
     if action.ignore then
         return verb == "exclude" or verb == "keep" or not verb
     end
@@ -86,12 +86,54 @@ end
 
 -- Describe action to be performed
 local function describe(action)
-    local o_o = action.o_o
-    local p_o = action.pkg_old
-    local o_n = action.o_n
     local p_n = action.pkg_new
-    --TRACE("DESCRIBE", action.action, o_o, o_n, p_o, p_n)
-    if action_is(action, "delete") then
+    local old_pkgs = action.old_pkgs -- XXX update for multiple old packages !!!
+    local n_old = #old_pkgs
+    TRACE("DESCRIBE", rawget(p_n or {}, "name"), action)
+    local text
+    if action.do_deinstall then
+        assert(n_old == 1)
+        local p_o = old_pkgs[1]
+        local reason = rawget (p_o.origin, "reason") or
+            "Port directory " .. p_o.origin.port .. " has been deleted"
+        text = "Deinstall " .. p_o.name .. " (" .. reason .. ")"
+    elseif action.do_upgrade then
+        local verb
+        if n_old == 0 then
+            verb = "Install"
+        elseif action.do_build then
+            verb = "Upgrade"
+        elseif action.do_pkgcreate then
+            verb = "Create package"
+        elseif action.do_provide then
+            verb = "Provide"
+        else
+            verb = "???UNDEF???"
+        end
+        if n_old == 0 then
+            text = verb .. " " .. p_n.name .. " from " .. p_n.origin.name
+        else
+            text = verb .. " "
+            for i, p_o in ipairs(old_pkgs) do
+                if i > 1 then
+                    text = text .. ", "
+                end
+                text = text .. p_o.name
+                if p_o.origin.name ~= p_n.origin.name then
+                    text = text .. " (" .. p_o.origin.name .. ")"
+                end
+            end
+            text = text .. " to " .. p_n.name
+            if action.use_pkgfile then
+                text = text .. " from " .. p_n.pkg_filename
+            else
+                text = text .. " from " .. p_n.origin.name
+            end
+        end
+    end
+    return text
+    --[[
+    if action.do_deinstall then
         return string.format("De-install %s built from %s", p_o.name, o_o.short_name)
     elseif action_is(action, "change") then
         if p_o ~= p_n then
@@ -135,6 +177,7 @@ local function describe(action)
         return string.format("%s %s%s %s", verb, prev_pkg, p_n.name, from)
     end
     return "No action for " .. action.short_name
+    --]]
 end
 
 --
@@ -145,14 +188,15 @@ local function log(action, args)
     if Param.phase ~= "scan" then
         if not rawget(action, "startno_string") then
             action.startno_string = "[" .. tostring(action.startno) .. "/" .. tostring(#ACTION_LIST) .. "]"
-            action:log {describe(action)}
+            TRACE("STARTNO", action.startno_string, action.listpos, action.short_name)
+            action:log { start = true, "START:", describe(action)}
+            args.start = nil
         end
         local co = coroutine.running()
         args.start = args.start or co ~= previous_action_co
         previous_action_co = co
         table.insert(args, 1, action.startno_string)
-        local name = action.pkg_new and action.pkg_new.name or action.pkg_old.name
-        table.insert(args, 2, name .. ":")
+        table.insert(args, 2, action.short_name .. ":")
     end
     --TRACE("LOG", args)
     Msg.show(args)
@@ -163,7 +207,7 @@ end
 local function fail(action, msg, errlog)
     if not rawget(action, "failed_msg") then
         action.failed_msg = msg
-        --TRACE("SET_FAILED", action, msg)
+        TRACE("SET_FAILED", msg, action)
     end
     if errlog then
         if rawget(action, "failed_log") then
@@ -183,7 +227,11 @@ end
 -- rename all matching package files (excluding package backups)
 local function pkgfiles_rename(action) -- UNTESTED !!!
     local p_n = action.pkg_new
-    local p_o = action.pkg_old
+    local old_pkgs = action.old_pkgs
+    if #old_pkgs ~= 1 then
+        return fail(action, "Zero or more than 1 old package passed to pkgfiles_rename")
+    end
+    local p_o = old_pkgs[1]
     assert(p_o, "No old package passed to pkgfiles_rename()")
     --TRACE("PKGFILES_RENAME", action, p_o.name, p_n.name)
     local file_pattern = Package.filename {subdir = "*", ext = "t?*", p_o}
@@ -214,22 +262,27 @@ end
 -- convert origin with flavor to sub-directory name to be used for port options
 -- move the options file if the origin of a port is changed
 local function portdb_update_origin(action)
-    local portdb_dir_old = action.o_o:portdb_path()
+    assert(#action.old_pkgs == 1, "portdb_update_origin called with 0 or >1 old origin")
+    local o_o = action.old_pkgs[1].origin -- XXX should be called with specific origin !!!
+    local portdb_dir_old = o_o:portdb_path()
     if is_dir(portdb_dir_old) and access(portdb_dir_old .. "/options", "r") then
-        local portdb_dir_new = action.o_n:portdb_path()
-        if is_dir(portdb_dir_new) then
-            return fail(action, "Target directory does already exist")
-        end
-        local _, err, exitcode =
-            Exec.run {
-            as_root = true,
-            log = true,
-            CMD.mv,
-            portdb_dir_old,
-            portdb_dir_new
-        }
-        if exitcode ~= 0 then
-            return fail(action, "Failed to rename " .. portdb_dir_old .. " to " .. portdb_dir_new .. " in the package database", err)
+        local o_n = action.pkg_new.origin
+        if o_n then
+            local portdb_dir_new = o_n:portdb_path()
+            if is_dir(portdb_dir_new) then
+                return fail(action, "Target directory does already exist")
+            end
+            local _, err, exitcode =
+                Exec.run {
+                as_root = true,
+                log = true,
+                CMD.mv,
+                portdb_dir_old,
+                portdb_dir_new
+            }
+            if exitcode ~= 0 then
+                return fail(action, "Failed to rename " .. portdb_dir_old .. " to " .. portdb_dir_new .. " in the package database", err)
+            end
         end
     end
     return true
@@ -257,7 +310,7 @@ end
 
 -- create package file from staging area of previously built port
 local function package_create(action)
-    local o_n = action.o_n
+    local o_n = action.pkg_new and action.pkg_new.origin
     local pkgname = action.pkg_new.name
     local pkgfile = action.pkg_new.pkg_filename -- (Param.packages .. "All", pkgname, Param.package_format)
     --TRACE("PACKAGE_CREATE", o_n, pkgname, pkgfile)
@@ -312,12 +365,12 @@ end
 
 -- check conflicts of new port with installed packages (empty table if no conflicts found)
 local function conflicting_pkgs(action, mode)
-    local origin = action.o_n
-    if origin and origin.build_conflicts and origin.build_conflicts[1] then
-        local list = {}
+    local o_n = action.pkg_new and action.pkg_new.origin
+    if o_n and o_n.build_conflicts and o_n.build_conflicts[1] then
+        local result = {}
         local make_target = mode == "build_conflicts" and "check-build-conflicts" or "check-conflicts"
         local conflicts_table, err, exitcode =
-            origin:port_make {
+            o_n:port_make {
             table = true,
             safe = true,
             make_target
@@ -327,36 +380,17 @@ local function conflicting_pkgs(action, mode)
                 --TRACE("CONFLICTS", line)
                 local pkgname = line:match("^%s+(%S+)%s*")
                 if pkgname then
-                    table.insert(list, Package:new(pkgname))
-                elseif #list > 0 then
+                    table.insert(result, Package:new(pkgname))
+                elseif #result > 0 then
                     break
                 end
             end
         end
-        return list
+        return result
     end
 end
 
 -------------------------------------------------------------------------------------
--- wait for dependencies to become available
-local function pkgs_from_origin_tables(...)
-    local pkgs = {}
-    for _, t in ipairs({...}) do
-        for _, origin in ipairs(t) do
-            if not string.match(origin, ":.*") then -- ignore special depends
-                local o = Origin.get(origin)
-                --TRACE("PKG_FROM_ORIGIN_TABLES", origin, o)
-                if o and o.pkg_new then
-                    local p = o.pkg_new.name
-                    pkgs[#pkgs + 1] = p
-                end
-            end
-        end
-    end
-    --TRACE("PKGS_FROM_ORIGIN_TABLES", pkgs, ...)
-    return pkgs
-end
-
 --
 local function get(pkgname)
     return rawget(ACTION_CACHE, pkgname)
@@ -366,22 +400,17 @@ end
 -- perform all steps required to build a port (extract, patch, build, stage, opt. package)
 
 -- de-install (possibly partially installed) port after installation failure
-local function deinstall_failed(action)
-    action:log {"Installation from", action.o_n.name, "failed, deleting partially installed package"}
+local function deinstall_failed_port(action)
+    local o_n = action.pkg_new.origin
+    action:log {"Installation from", o_n.name, "failed, deleting partially installed package"}
     local out, err, exitcode =
-        action.o_n:port_make {
+        o_n:port_make {
         log = true,
         jailed = true,
         as_root = true,
         "deinstall"
     }
     return exitcode == 0
-end
-
---
-local function perform_provide(action)
-    --TRACE("PROVIDE", action.pkg_new.name)
-    return action.pkg_new:install()
 end
 
 --[[
@@ -416,17 +445,15 @@ local JobsLock
 
 -- install or upgrade a port - now also performs deinstall!!!
 local function perform_install_or_upgrade(action)
-    local p_o = action.pkg_old
-    local pkgname_old = p_o and p_o.name
+    local old_pkgs = action.old_pkgs
     local p_n = action.pkg_new
     local pkgname_new = p_n and p_n.name
     local pkgfile = p_n and p_n.pkgfile
-    local o_n = action.o_n
-    local o_o = action.o_o
+    local o_n = p_n and p_n.origin
     local portname = o_n and o_n.name -- o_n.port ???
-    local build_depends = o_n and o_n.build_depends
-    local pkg_depends = o_n and o_n.pkg_depends or { "ports-mgmt/pkg" }
-    local run_depends = o_n and o_n.run_depends or {}
+    --local build_depends = o_n and o_n.depends.build
+    --local pkg_depends = o_n and o_n.depends.run or { "ports-mgmt/pkg" }
+    --local run_depends = o_n and o_n.depends.run or {}
     local special_depends = o_n and o_n.special_depends -- check for special license and ask user to accept it (may require make extract/patch)
     local build_dep_pkgs
 
@@ -447,7 +474,7 @@ local function perform_install_or_upgrade(action)
             --TRACE("DO_CLEAN", origin)
             local must_clean = access(origin.wrkdir, "r")
             if must_clean then
-                local need_root = not access(origin.wrkdir, "w") or not access(path_concat(origin.wrkdir, ".."), "w")
+                local need_root = not access(origin.wrkdir, "w") or not access(path_up(origin.wrkdir), "w")
                 --TRACE("DO_CLEAN_AS", origin.name, need_root)
                 return origin:port_make {
                     log = true,
@@ -483,7 +510,7 @@ local function perform_install_or_upgrade(action)
         --TRACE("SPECIAL:", #special_depends, special_depends[1])
         if #special_depends > 0 then
             --TRACE("SPECIAL_DEPENDS", special_depends)
-            -- local special_depends = action.o_n.special_depends
+            -- local special_depends = action.pkg_new.origin.special_depends
             for _, origin_target in ipairs(special_depends) do
                 -- print ("SPECIAL_DEPENDS", origin_target)
                 local target = target_part(origin_target)
@@ -510,7 +537,7 @@ local function perform_install_or_upgrade(action)
         end
     end
     local function extract()
-        local wrkdir_parent = path_concat(o_n.wrkdir, "..")
+        local wrkdir_parent = path_up(o_n.wrkdir)
         action:log {"Extract port", portname}
         local _, _, exitcode =
             Exec.run {
@@ -564,6 +591,22 @@ local function perform_install_or_upgrade(action)
             fail(action, "Build failed in patch phase", out)
         end
     end
+    local function configure()
+        action:log {"Configure port", portname}
+        local out, _, exitcode =
+            o_n:port_make {
+            log = true,
+            errtoout = true,
+            jailed = true,
+            "NO_DEPENDS=1",
+            "DEFER_CONFLICTS_CHECK=1",
+            "DISABLE_CONFLICTS=1",
+            "configure"
+        }
+        if exitcode ~= 0 then
+            fail(action, "Build failed in configure phase", out)
+        end
+    end
     --[[
     local function conflicts()
         -- check whether build of new port is in conflict with currently installed version
@@ -592,7 +635,7 @@ local function perform_install_or_upgrade(action)
             "NO_DEPENDS=1",
             "DISABLE_CONFLICTS=1",
             "_OPTIONS_OK=1",
-            "MAKE_JOBS_NUMBER_LIMIT=" .. action.jobs,
+            "MAKE_JOBS_NUMBER_LIMIT=" .. tostring(action.jobs),
             "build"
         }
         if exitcode ~= 0 then
@@ -619,23 +662,20 @@ local function perform_install_or_upgrade(action)
     local function check_build_deps()
         for _, p in ipairs(build_dep_pkgs) do
             --TRACE("FAILED?", p)
-            local a = get(p)
+            local a = ACTION_CACHE[p]
             if a and failed(a) then
                 a.ignore = true
                 return fail(action, "Skipped because of failed dependency " .. p)
             end
         end
     end
-    -- create package file from staging area
-    local function create_package()
-        if Options.create_package then
-            package_create(action)
-        end
-    end
     local function preserve_old_shared_libraries()
         -- preserve currently installed shared libraries
-        if Options.save_shared and not p_o:shlibs_backup() then
-            return fail(action, "Could not save old shared libraries to compat directory")
+        for _, p_o in ipairs(old_pkgs) do
+            action:log {level = 2, "Preserve shared libraries of old version", p_o.name}
+            if not p_o:shlibs_backup() then
+                return fail(action, "Could not save old shared libraries to compat directory")
+            end
         end
     end
     local function preserve_precious()
@@ -643,32 +683,37 @@ local function perform_install_or_upgrade(action)
         if portname == "ports-mgmt/pkg" then
             Exec.run {
                 as_root = true,
-                CMD.unlink,
-                CMD.pkg .. "~"
-            }
-            Exec.run {
-                as_root = true,
                 CMD.ln,
+                "-fF",
                 CMD.pkg,
                 CMD.pkg .. "~"
             }
         end
     end
-    local function create_backup_package()
-        -- create backup package file from installed files
-        local create_backup = pkgname_old ~= pkgname_new or not pkgfile
-        if create_backup then
-            local out, err, exitcode = p_o:backup_old_package()
-            if exitcode ~= 0 then
-                return fail(action, "Create backup package for " .. pkgname_old, err)
+    local function create_backup_packages()
+        -- create backup package files from installed files
+        for _, p_o in ipairs(old_pkgs) do
+            local pkgname_old = p_o.name
+            local create_backup = pkgname_old ~= pkgname_new or not pkgfile
+            if create_backup then
+                action:log {level = 1, "Create backup of old version", pkgname_old}
+                local out, err, exitcode = p_o:backup_old_package()
+                if exitcode ~= 0 then
+                    return fail(action, "Create backup package for " .. pkgname_old, err)
+                end
             end
         end
     end
-    local function delete_old_package()
+    local function delete_old_packages()
         -- delete old package version
-        local out, err, exitcode = p_o:deinstall()
-        if exitcode ~= 0 then
-            fail(action, "Failed to deinstall old version", err)
+        for _, p_o in ipairs(old_pkgs) do
+            action:log {level = 1, "Deinstall old version", p_o.name}
+            local out, err, exitcode = p_o:deinstall()
+--            register_deinstallation(p_o, exitcode == 0) -- allow automatic packages to be deleted after last dependency is gone
+            if exitcode ~= 0 then
+                -- XXX try to recover from failed deinstallation - reinstall backup package?
+                fail(action, "Failed to deinstall old version", err)
+            end
         end
     end
     local function recover_precious()
@@ -676,12 +721,8 @@ local function perform_install_or_upgrade(action)
         if portname == "ports-mgmt/pkg" then
             Exec.run {
                 as_root = true,
-                CMD.unlink,
-                CMD.pkg
-            }
-            Exec.run {
-                as_root = true,
                 CMD.mv,
+                "-fF",
                 CMD.pkg .. "~",
                 CMD.pkg
             }
@@ -693,13 +734,14 @@ local function perform_install_or_upgrade(action)
         action:log {"Install from package file", p_n.pkgfile}
         -- <se> DEAL WITH CONFLICTS ONLY DETECTED BY PLIST CHECK DURING PKG REGISTRATION!!!
         local _, err, exitcode = p_n:install()
+        local errtxt
         if exitcode ~= 0 then
             p_n:deinstall() -- ignore output and exitcode
             if not Options.jailed then
-                if p_o then
+                for _, p_o in ipairs(old_pkgs) do
                     _, err, exitcode = p_o:recover()
                     if exitcode ~= 0 then
-                        fail(action, "Could not re-install previously installed version after failed installation", err)
+                        errtxt = err
                     end
                 end
             end
@@ -708,45 +750,53 @@ local function perform_install_or_upgrade(action)
             os.rename(pkgfile, pkgfile .. ".NOTOK")
             --]]
             fail(action, "Failed to install from package file " .. p_n.pkgfile, err)
+            if errtxt then
+                fail(action, "Could not re-install previously installed version after failed installation", errtxt)
+            end
         end
     end
     local function install_from_stage_area()
         -- try to install new port
         --TRACE("PERFORM_INSTALLATION/PORT", portname)
         -- >>>> PkgDbLock(weight = 1)
-        PkgDb.lock() -- only one installation at a time due to exclusive lock on pkgdb
+        -- PkgDb.lock() -- only one installation at a time due to exclusive lock on pkgdb
         action:log {"Install", pkgname_new, "built from", portname, "on base system"}
         local out, err, exitcode = o_n:install() -- <se> DEAL WITH CONFLICTS ONLY DETECTED BY PLIST CHECK DURING PKG REGISTRATION!!!
-        PkgDb.unlock()
+        --PkgDb.unlock()
         -- <<<< PkgDbLock(weight = 1)
         if exitcode ~= 0 then
-            deinstall_failed(action)
-            if p_o then
+            local errtxt
+            deinstall_failed_port(action)
+            for _, p_o in ipairs(old_pkgs) do
                 local out, err, exitcode = p_o:recover()
                 if exitcode ~= 0 then
-                    return fail(action, "Could not re-install previously installed version after failed installation", err)
+                    errtxt = err
                 end
             end
             fail(action, "Failed to install port " .. portname, err)
+            if errtxt then
+                return fail(action, "Could not re-install previously installed version after failed installation", errtxt)
+            end
         end
     end
     -- perform actual installation from a port or package
     local function post_install_fixup()
         --TRACE("PERFORM_INSTALLATION", action)
         -- set automatic flag to the value the previous version had
-        if p_o and p_o.is_automatic then
+        if action.is_auto then
             p_n:automatic_set(true)
         end
     end
     local function cleanup_old_shared_libraries()
         -- remove all shared libraries replaced by new versions from shlib backup directory
-        if p_o and Options.save_shared then
+        for _, p_o in ipairs (old_pkgs) do
             p_o:shlibs_backup_remove_stale() -- use action as argument???
         end
     end
     local function delete_stale_pkgfiles()
         -- delete stale package files
-        if pkgname_old then
+        for _, p_o in ipairs(old_pkgs) do
+            local pkgname_old = p_o.name
             if pkgname_old ~= pkgname_new then
                 p_o:delete_old()
                 if not Options.backup then
@@ -768,79 +818,97 @@ local function perform_install_or_upgrade(action)
     end
 
     TRACE("PERFORM_INSTALL_OR_UPGRADE", action)
-    --TRACE("P", p_n.name, p_n)
     -- has a package been identified to be used instead of building the port?
-    local buildrequired = p_n and (not p_n.pkgfile or action.force or not (Options.packages or Options.packages_build and not p_n.is_run_dep))
-    --TRACE("BUILDREQUIRED", buildrequired, action.force, Options.packages)
-    local skip_install = (Options.skip_install or Options.jailed) and not (p_n.is_build_dep or p_n.is_pkg_dep)
-    local pkg_dep_pkgs = pkgs_from_origin_tables(pkg_depends or {})
-    pkg_dep_pkgs.shared = true
-    local run_dep_pkgs = pkgs_from_origin_tables(run_depends or {})
-    run_dep_pkgs.shared = true
+    TRACE("BUILDREQUIRED", action.do_build, action.force, Options.packages)
     action.buildstate = {}
-    if buildrequired then
-        -- if not installing from a package file ...
+    if action.do_build then
+        -- == do_build==true if the port has to be built (independently of whether and where it will be installed)
+        -- == i.e. we are not installing from a package file ...
         WorkDirLock = WorkDirLock or Lock:new("WorkDirLock")
         -- >>>> WorkDirLock(o_n.wrkdir)
-        WorkDirLock:acquire {tag = p_n.name, o_n.wrkdir}
+        WorkDirLock:acquire {tag = p_n.name, o_n.wrkdir} -- XXX adjust condition to that of the corresponding release() !!!
         --TRACE("perform_portbuild", portname, pkgname_new, special_depends)
         -- >>>> RunnableLock(build_dep_pkgs, SHARED)
-        build_dep_pkgs = pkgs_from_origin_tables(build_depends, special_depends)
+        --build_dep_pkgs = pkgs_from_origin_tables(build_depends, special_depends)
+        build_dep_pkgs = action.depends.build
         build_dep_pkgs.shared = true
         build_dep_pkgs.tag = pkgname_new
         RunnableLock:acquire(build_dep_pkgs) -- acquire shared lock to wait for build deps to become runnable
         build_step(check_build_deps)
-        JobsLock = JobsLock or Lock:new("JobsLock", Param.ncpu) -- limit number of processes to one per (virtual) core
-        -- XXX action.jobs = action.jobs or 4 -- Param.ncpu -- number of processes this build might spawn -- to be set in strategy module
-        local jobslockitems = {weight = action.jobs}
-        -- >>>> JobsLock(jobslockitems)
-        JobsLock:acquire(jobslockitems)
+        build_step(wait_for_distfiles)
+        JobsLock = JobsLock or Lock:new("JobsLock", Param.maxjobs) -- limit number of processes to one per (virtual) core
+        -- >>>> JobsLock(weight = action.jobs)
+        JobsLock:acquire({weight = action.jobs})
         if not Options.no_pre_clean then
+            -- == no_pre_clean==true if work directory shall be used without cleaning
             build_step(port_clean)
         end
-        build_step(wait_for_distfiles)
         build_step(check_license)
         build_step(special_deps)
         build_step(extract)
         build_step(patch)
         --build_step(conflicts)
+        build_step(configure)
         build_step(build)
-        JobsLock:release(jobslockitems)
-        -- <<<< JobsLock(jobslockitems)
+        JobsLock:release({weight = action.jobs})
+        -- <<<< JobsLock(weight = action.jobs)
         build_step(stage)
-        build_dep_pkgs.shared = true
         RunnableLock:release(build_dep_pkgs)
-        -- <<<< Packagelock(build_dep_pkgs, SHARED)
-        -- >>>> RunnableLock(pkg_dep_pkgs)
-        RunnableLock:acquire(pkg_dep_pkgs)
-        build_step(create_package)
-        build_done("package")
-        RunnableLock:release(pkg_dep_pkgs)
-        -- <<<< RunnableLock(pkg_dep_pkgs)
+        if Options.create_package then
+            -- == create_package==true to create a new package from a port
+            -- >>>> RunnableLock(action.depends.pkg)
+            RunnableLock:acquire(action.depends.pkg)
+            TRACE("RUNNABLE_LOCK_ACQUIRE_SHARED2", table.concat(action.depends.pkg or {}, " "), RunnableLock)
+            build_step(package_create)
+            RunnableLock:release(action.depends.pkg)
+            -- <<<< RunnableLock(action.depends.pkg)
+            build_done("package") -- XXX set if no package is to be created, too ???
+        end
     end
     -- install build depends immediately but optionally delay installation of other ports
-    if not skip_install then
-        -- >>>> RunnableLock(pkg_dep_pkgs)
-        RunnableLock:acquire(pkg_dep_pkgs)
-        --TRACE("PKGFILE2", buildrequired, pkgfile)
+    if not action.skip_install then
+        -- == skip_install==true if the port or pkgfile will not be immediately installed in the build jail (or base system)
+        TRACE("DEPENDS:", action.short_name, action.depends)
+        -- >>>> RunnableLock(action.depends.pkg)
+        RunnableLock:acquire(action.depends.pkg)
+        TRACE("RUNNABLE_LOCK_ACQUIRE_SHARED3", table.concat(action.depends.pkg or {}, " "), RunnableLock)
         -- prepare installation, if this is an upgrade (and not a fresh install)
-        if pkgname_old then
-            TRACE("PERFORM_INSTALLATION/REMOVE_OLD_PKG", pkgname_old)
+        if #old_pkgs > 0 then
+            -- == #old_pkgs>0 if old packages need to be de-intalled before the new port can be installed to the base system
+            -- == this cannot happen in the jail where no old packages exist
+            --TRACE("PERFORM_INSTALLATION/REMOVE_OLD_PKG", old_pkgs)
             if not Options.jailed or Param.phase == "install" then
-                build_step(create_backup_package)
-                build_step(preserve_old_shared_libraries)
+                -- == true, if installation on the base system has to be prepared
+                -- >>>> RunnableLock(action.depends.pkg)
+                RunnableLock:acquire(action.depends.pkg)
+                TRACE("RUNNABLE_LOCK_ACQUIRE_SHARED3", table.concat(action.depends.pkg or {}, " "), RunnableLock)
+                build_step(create_backup_packages)
+                if Options.save_shared then
+                    -- == if save_shared==true then preserve old shared libraries in compat directory
+                    build_step(preserve_old_shared_libraries)
+                end
                 build_step(preserve_precious)
-                build_step(delete_old_package)
+                build_step(delete_old_packages) -- PKGS!!!
                 build_step(recover_precious)
+                RunnableLock:release(action.depends.pkg)
+                -- <<<< RunnableLock(action.depends.pkg)
             end
         end
-        if p_n then -- p_n == nil for package deinstallation
-            if buildrequired then
+        if action.do_provide or action.do_install then
+            -- == true if port or package is to be immediately installed into the build jail or on the base system
+            if action.do_build then
+                -- == true if port has been built and staged
+                -- >>>> RunnableLock(action.depends.pkg)
+                RunnableLock:acquire(action.depends.pkg)
+                TRACE("RUNNABLE_LOCK_ACQUIRE_SHARED3", table.concat(action.depends.pkg or {}, " "), RunnableLock)
                 build_step(install_from_stage_area)
+                RunnableLock:release(action.depends.pkg)
+                -- <<<< RunnableLock(action.depends.pkg)
                 -- preserve file names and hashes of distfiles from new port
                 -- NYI distinfo_cache_update (o_n, pkgname_new)
                 -- backup clean port directory and special build depends (might also be delayed to just before program exit)
                 if not Options.no_post_clean then
+                    -- == if no_post_clean==false then clean work directory (including possible special_depend workdirs)
                     build_step(port_clean)
                     -- delete old distfiles
                     -- NYI distfiles_delete_old (o_n, pkgname_old) -- OUTPUT
@@ -848,102 +916,45 @@ local function perform_install_or_upgrade(action)
                 WorkDirLock:release {o_n.wrkdir}
                 -- <<<< WorkDirLock(o_n.wrkdir)
             else
+                -- == execute if no port has been built and installation from a package is required
+                -- >>>> RunnableLock(action.depends.pkg)
+                RunnableLock:acquire(action.depends.pkg)
+                TRACE("RUNNABLE_LOCK_ACQUIRE_SHARED4", table.concat(action.depends.pkg or {}, " "), RunnableLock)
                 build_step(install_from_package)
+                RunnableLock:release(action.depends.pkg)
+                -- <<<< RunnableLock(action.depends.pkg)
             end
             build_step(post_install_fixup)
             build_step(delete_stale_pkgfiles)
-            build_step(cleanup_old_shared_libraries)
-            -- >>>> RunnableLock(run_dep_pkgs)
-            RunnableLock:acquire(run_dep_pkgs)
+            if Options.save_shared then
+                -- == if old shared libraries may have been saved in the compat directory then delete those that have been installed anew
+                build_step(cleanup_old_shared_libraries)
+            end
+            -- >>>> RunnableLock(action.depends.run)
+            RunnableLock:acquire(action.depends.run)
+            TRACE("RUNNABLE_LOCK_RELEASE", p_n.name)
             RunnableLock:release{p_n.name}
             -- <<<< RunnableLock(p_n.name)
             --build_step(fetch_pkg_message)
             build_done("provide")
             if not Options.jailed then
+                -- == if jailed then the installation to the base system has not been peformed yet
                 build_done("install")
             end
         end
-        RunnableLock:release(pkg_dep_pkgs)
-        -- <<<< RunnableLock(pkg_dep_pkgs)
     end
     -- report success or failure ...
     if not Options.dry_run then
         local failed_msg, failed_log = failed(action)
         if failed_msg then
-            action:log {describe(action), "failed:", failed_msg .. (failed_log and ":" or "")}
+            action:log {describe(action), "FAILURE:", failed_msg .. (failed_log and ":" or "")}
             if failed_log then
                 Msg.show {verbatim = true, failed_log, "\n"}
             end
         else
-            action:log {describe(action), "successfully completed."}
+            action:log {"SUCCESS:", describe(action)}
         end
     end
-    return not failed(action)
-end
-
---[[
--- delete build dependencies after dependent ports have been built
-local function perform_post_build_deletes(origin)
-    local origins = DEP_DEL_AFTER_BUILD[origin.name]
-    DEP_DEL_AFTER_BUILD[origin.name] = nil
-    local del_done = false
-    while origins do
-        for i, origin in pairs(origins) do
-            if package_deinstall_unused(origin) then del_done = true end
-        end
-        origins = del_done and table.keys(DELAYED_DELETES)
-    end
-end
---]]
--- deinstall package files after optionally creating a backup package
-local function perform_deinstall(action)
-    local p_o = action.pkg_old
-    action:log {level = 1, "Deinstall old version", p_o.name}
-    if Options.backup and not p_o:backup_old_package() then
-        return false, "Failed to create backup package of " .. p_o.name
-    end
-    local out, err, exitcode = p_o:deinstall()
-    if exitcode ~= 0 then
-        return fail(action, "Failed to deinstall package " .. p_o.name, err)
-    end
-    action.done = true
-    return true
-end
-
---[[
--- peform delayed installation of ports not required as build dependencies after all ports have been built
-local function perform_delayed_installation(action)
-    local p_n = action.pkg_new
-    action.pkg_new.pkgfile = Package.filename {p_n}
-    local taskmsg = describe(action)
-    action:log{taskmsg}
-    assert(perform_installation(action),
-           "Installation of " .. p_n.name .. " from " .. pkgfile .. " failed")
-    Msg.success_add(taskmsg)
-end
---]]
--------------------------------------------------------------------------------------
--- update changed port origin in the package db and move options file
-local function perform_origin_change(action)
-    action:log {"Change origin of", action.pkg_old.name, "from", action.o_o.name, "to", action.o_n.name}
-    if PkgDb.update_origin(action.o_o, action.o_n, action.pkg_old.name) then
-        portdb_update_origin(action.o_o, action.o_n)
-        action.done = true
-        return true
-    end
-end
-
--- update package name of installed package
-local function perform_pkg_rename(action)
-    local p_o = action.pkg_old
-    local p_n = action.pkg_new
-    action:log {"Rename package", p_o.name, "to", p_n.name}
-    local out, err, exitcode = PkgDb.update_pkgname(p_o, p_n)
-    if exitcode ~= 0 then
-        return fail(action, "Rename package " .. p_o.name .. " to " .. p_n.name .. " failed", err)
-    end
-    pkgfiles_rename(action)
-    action.done = true
     return not failed(action)
 end
 
@@ -952,7 +963,8 @@ local function perform_upgrades(action_list)
     -- install or upgrade required packages
     for _, action in ipairs(action_list) do
         -- if Options.hide_build is set the buildlog will only be shown on errors
-        local o_n = rawget(action, "o_n")
+        local p_n = action.pkg_new
+        local o_n = p_n and p_n.origin
         local is_interactive = o_n and o_n.is_interactive
         if Options.hide_build and not is_interactive then
         -- set to_tty = false for shell commands
@@ -1014,11 +1026,11 @@ local function show_statistics(action_list)
         end
         for _, v in ipairs(action_list) do
             if action_is(v, "upgrade") then
-                local p_o = v.pkg_old
+                local old_pkgs = v.old_pkgs
                 local p_n = v.pkg_new
-                if p_o == p_n then
+                if #old_pkgs == 1 and old_pkgs[1] == p_n then
                     incr("reinstalls")
-                elseif p_o == nil then
+                elseif #old_pkgs == 0 then
                     incr("installs")
                 else
                     incr("upgrades")
@@ -1073,7 +1085,7 @@ end
 
 --
 local function determine_pkg_old(action, k)
-    local pt = action.o_o and action.o_o.old_pkgs
+    local pt = action.o_o and action.o_o.old_pkgs -- XXX support multiple old packages in action !!!
     if pt then
         local pkg_new = action.pkg_new
         if pkg_new then
@@ -1087,197 +1099,134 @@ local function determine_pkg_old(action, k)
     end
 end
 
---
+-- XXX conflicts check required???
 local function determine_pkg_new(action, k)
-    local p = action.o_n and action.o_n.pkg_new
-    if not p and action.o_o and action.pkg_old then
-        p = action.o_o.pkg_new
-    --[[
-      if p and p.name_base_major ~= action.pkg_old.name_base_major then
-	 p = nil -- further tests required !!!
-      end
-      --]]
+    TRACE("DETERMINE_PKG_NEW", action)
+    local p_n
+    for _, p_o in ipairs(action.old_pkgs or {}) do
+        local o_o = p_o.origin
+        TRACE("DETERMINE_PKG_NEW(o_o)-1", o_o)
+        if o_o and o_o.port_exists then
+            p_n = o_o.pkg_new
+            TRACE("DETERMINE_PKG_NEW(o_o)-1.1", o_o.name, p_o.name_base, p_n and p_n.name_base)
+            if p_n and p_n.name_base == p_o.name_base then
+                TRACE("DETERMINE_PKG_NEW->", p_n.name)
+                return p_n
+            end
+        end
     end
-    return p
+    local pkgs = {}
+    for _, p_o in ipairs(action.old_pkgs or {}) do
+        local o_o = p_o.origin
+        TRACE("DETERMINE_PKG_NEW(o_o)-2", o_o)
+        local o_n = o_o and Moved.new_origin(o_o)
+        if o_n and o_n.port_exists then
+            p_n = o_n.pkg_new
+            if p_n then
+                local basename = p_n.name_base
+                for _, p_o in ipairs(action.old_pkgs) do
+                    if p_o.name_base == basename then
+                        TRACE("DETERMINE_PKG_NEW->", p_n.name)
+                        return p_n
+                    end
+                end
+            end
+        end
+    end
+    TRACE("DETERMINE_PKG_NEW->", p_n and p_n.name or "<nil>")
+    return p_n
+end
+
+local function determine_origin_old(action, k)
+    local p_n = action.pkg_new
+    if p_n then
+        local basename = p_n.name_base_major
+        local o_n = p_n.origin
+        for _, pkgname in ipairs(o_n.old_pkgs) do
+            local p_o = Package.get(pkgname)
+            if p_o and p_o.name_base_major == basename then
+                action.pkg_old = p_o
+            end
+        end
+        basename = p_n.name_base
+        for _, pkgname in ipairs(o_n.old_pkgs) do
+            local p_o = Package.get(pkgname)
+            if p_o and p_o.name_base == basename then
+                action.pkg_old = p_o
+            end
+        end
+    end
 end
 
 --
 local function determine_o_o(action, k)
     -- print ("OO:", action.pkg_old, (rawget (action, "pkg_old") and (action.pkg_old).origin or "-"), action.pkg_new, (rawget (action, "pkg_new") and (action.pkg_new.origin or "-")))
-    local o = action.pkg_old and rawget(action.pkg_old, "origin") or action.pkg_new and action.pkg_new.origin -- NOT EXACT
+    local old_pkgs = action.old_pkgs -- XXX support more than 1 old package !!!
+    local p_o = old_pkgs[1] -- should be tested in a loop !!! XXX
+    local o = p_o and rawget(p_o, "origin") or action.pkg_new and action.pkg_new.origin -- XXX NOT EXACT
     return o
 end
 
 --
-local function verify_origin(o)
-    if o and o.name and o.name ~= "" then
-        local n = o.path .. "/Makefile"
-        -- print ("Param", n)
-        return access(n, "r")
-    end
-end
-
---
 local function determine_o_n(action, k)
-    local o = action.pkg_old and action.pkg_old.origin
-    if o then
-        local mo = Moved.new_origin(o)
-        if mo and mo.reason or verify_origin(mo) then
-            return mo
-        end
-        if verify_origin(o) then
-            return o
+    for p_o in ipairs(action.old_pkgs) do
+        local o_o = p_o.origin
+        if o_o then
+            local o_n = Moved.new_origin(o_o)
+            if o_n and o_n.exists then
+                return o_n
+            end
+            if not o_o.reason and o_o.exists then
+                return o_o
+            end
         end
     end
 end
 
 --
-local function compare_versions_old_new(action, k)
-    local p_o = action.pkg_old
+local function compare_versions_old_new(action)
+    local old_pkgs = action.old_pkgs
     local p_n = action.pkg_new
-    if p_o and p_n then
-        return Package.compare_versions(p_o, p_n)
+    if p_n then
+        local n = p_n.name_base
+        local f = p_n.origin and p_n.origin.flavor
+        for _, p_o in ipairs(old_pkgs) do
+            if p_o.name_base == n then
+                if p_n.origin and f ~= p_n.origin.flavor then
+                    return -1 -- flavor mismatch requires update
+                end
+                return Package.compare_versions(p_o, p_n)
+            end
+        end
     end
+    return -1 -- return outdated if the base names did not match
 end
 
 --
 local function determine_action(action, k)
-    local p_o = action.pkg_old -- keep next 4 lines in this order!
-    local o_n = action.o_n
-    local o_o = action.o_o
-    local p_n = action.pkg_new
-    local function need_upgrade()
-        if action.force then -- XXX action.build_type == "provide" or action.build_type == "checkabi"
-            return true -- XXX add further checks, e.g. changed dependencies ???
-        end
-        if not o_o or o_o.flavor ~= o_n.flavor then
-            return true
-        end
-        if not p_o or not p_n or p_o.version ~= p_n.version then -- XXX compare full package names instead of versions ???
-            return true
-        end
-    end
-    local function excluded()
-        if p_o and rawget(p_o, "is_locked") or p_n and rawget(p_n, "is_locked") then
-            return true -- ADD FURTHER CASES: excluded, broken without --try-broken, ignore, ...
-        end
-    end
-
-    --TRACE("DETERMINE_ACTION", p_o, p_n, o_o, o_n)
-    if excluded() then
+    if action.is_locked then
         action_set(action, "exclude")
-    elseif not p_n then
+    elseif action.do_deinstall then
         action_set(action, "delete")
-    elseif not p_o or need_upgrade() then
+    elseif #action.old_pkgs == 0 or action.do_upgrade then
         action_set(action, "upgrade")
+    --[[
     elseif p_o ~= p_n or origin_changed(o_o, o_n) then
         action_set(action, "change")
+    --]]
     else
         action_set(action, "keep")
     end
     return action.action
 end
 
---[=[
---
-local function clear_cached_action(action)
-    local pkg_old = action.pkg_old
-    local pkg_new = action.pkg_new
-    if action_is(action, "delete") then
-        if ACTION_CACHE[pkg_old] then
-            ACTION_CACHE[pkg_old.name] = nil
-        end
-    end
-    if ACTION_CACHE[pkg_new] then
-        ACTION_CACHE[pkg_new.name] = nil
-    end
-end
-
-local function set_cached_action(action)
-    local function check_and_set(field)
-        local v = rawget(action, field)
-        if v then
-            local n = v.name
-            if n and n ~= "" then
-                if ACTION_CACHE[n] and ACTION_CACHE[n] ~= action then
-                    -- error ()
-                    --TRACE("SET_CACHED_ACTION_CONFLICT", describe(ACTION_CACHE[n]), describe(action))
-                end
-                ACTION_CACHE[n] = action
-                --TRACE("SET_CACHED_ACTION", field, n)
-            else
-                error("Empty package name " .. field .. " " .. describe(action))
-            end
-        end
-    end
-    assert(action, "set_cached_action called with nil argument")
-    --TRACE("SET_ACTION", describe(action))
-    check_and_set("pkg_old")
-    if not action_is(action, "delete") then
-        check_and_set("pkg_new")
-    end
-    return action
-end
-
---
-local function get_pkgname(action)
-    if action.pkg_old and action_is(action, "delete") then
-        return action.pkg_old.name
-    elseif action.pkg_new then
-        return action.pkg_new.name
-    end
-end
-
-local function fixup_conflict(action1, action2)
-    --TRACE("FIXUP", action1.action, action2.action)
-    if action2.action and (not action1.action or action1.action > action2.action) then
-        action1, action2 = action2, action1 -- normalize order: action1 < action2 or action2 == nil
-    end
-    local pkgname = get_pkgname(action1) or get_pkgname(action2)
-    local a1 = action1.action
-    local a2 = action2.action
-    if a1 == "upgrade" then
-        if not a2 then -- attempt to upgrade some port to already existing package
-            --TRACE("FIXUP_CONFLICT1", describe(action1))
-            --TRACE("FIXUP_CONFLICT2", describe(action2))
-            action_set(action1, "delete")
-            action1.o_o = action1.o_o or action1.o_n
-            action1.o_n = nil
-            action1.pkg_old = action1.pkg_old or action1.pkg_new
-            action1.pkg_new = nil
-            --TRACE("FIXUP_CONFLICT->", describe(action1))
-        elseif a2 == "upgrade" then
-            --TRACE("FIXUP_CONFLICT1", describe(action1))
-            --TRACE("FIXUP_CONFLICT2", describe(action2))
-            if action1.pkg_new == action2.pkg_new then
-                for k, v1 in pairs(action1) do
-                    local v2 = rawget(action2, k)
-                    if v1 and not v2 then
-                        action2[k] = v1
-                    end
-                end
-                action_set(action1, "keep")
-                --TRACE("FIXUP_CONFLICT->", describe(action2))
-            else
-                -- other cases
-            end
-        else
-            -- other cases
-        end
-    else
-        -- other cases
-    end
-    --error("Duplicate actions for " .. pkgname .. ":\n#	1) " .. (action1 and describe(action1) or "") .. "\n#	2) " ..
-    --          (action2 and describe(action2) or ""))
-end
-
 --
 local function check_config_allow(action, recursive)
-    local origin = action.o_n
-    --TRACE("CHECK_CONFIG_ALLOW", origin, recursive)
-    if not origin then
+    --TRACE("CHECK_CONFIG_ALLOW", action.pkg_new and action.pkg_new.name, recursive)
+    if not action.pkg_new then
         return
     end
+    local origin = action.pkg_new.origin
     local function check_ignore(name, field)
         --TRACE("CHECK_IGNORE", origin.name, name, field, rawget(origin, field))
         if rawget(origin, field) then
@@ -1341,126 +1290,9 @@ local function check_config_allow(action, recursive)
 end
 
 --
-local function action_enrich(action)
-    --[[
-   o_n (o_o, pkg_old)
-   - in general same as o_o, but must be verified!!!
-   - !!! lookup in MOVED port list (not fully deterministic due to lack of a "flavors required" flag in the list)
-   - conflicts check required (via pkg_new (o_n)) to verify acceptable origin has been found
-   --]]
-    --[[
-   pkg_new (o_n, pkg_old)
-   - from make -V PKGNAME with FLAVOR and possibly DEFAULT_VERIONS override (must be derived from pkg_old !!!)
-   - might depend on port OPTIONS
-   - conflicts check required !!!
-   --]]
-    local function try_get_o_n(action)
-        local function try_origin(origin)
-            if origin and verify_origin(origin) then
-                local p_n = origin.pkg_new
-                --TRACE("P_N", origin.name, p_n)
-                if p_n and p_n.name_base == action.pkg_old.name_base then
-                    action.pkg_new = p_n
-                    action.o_n = origin
-                    --TRACE("TRY_GET_ORIGIN", p_n.name, origin.name)
-                    return action
-                end
-            end
-        end
-        return try_origin(action.o_o) or try_origin(determine_o_n(action))
-        -- or
-        -- try_origin (check_used_default_version (action))
-    end
-    --[[
-   pkg_old (pkg_new)
-   - in general the old name can be found by looking up the package name without version in the pkgdb
-   - the lookup is not guaranteed to succeed due to package name changes (e.g. if FLAVORS have been added or removed from a port)
-   --]]
-    --[[
-   pkg_old (o_o, pkg_new)
-   - for installed packages always possible via pkgdb lookup of origin with flavor
-   - implementation via ORIGIN_CACHE[o_o.name].old_pkgs
-   - !!! possibly multiple results (due to multiple packages built with different DEFAULT_VERSIONS settings)
-   - pkg_new may be used to select the correct result if multiple candidate results have been obtained
-   --]]
-    local function try_get_pkg_old(action)
-        local o_n = rawget(action, "o_n")
-        if o_n then
-            local p_o = rawget(o_n, "pkg_old")
-            if not p_o then
-            -- reverse move
-            end
-        end
-        local p_n = action.pkg_new
-        if p_n then
-            local namebase = p_n.name_base
-            local p_o = PkgDb.query {"%n-%v", namebase}
-            if p_o and p_o ~= "" then
-                local p = Package:new(p_o)
-                action.o_o = p.origin
-            end
-        end
-    end
-
-    --[[
-   o_o (pkg_old)
-   - for installed packages always possible via pkgdb
-   - implementation via PACKAGES_CACHE[pkg_old.name].origin
-   - if applicable: DEFAULT_VERSIONS parameter can be derived from the old package name (string match)
-   --]]
-    --
-    if not rawget(action, "o_n") and rawget(action, "pkg_old") then
-        try_get_o_n(action)
-    end
-    --
-    if not rawget(action, "pkg_old") and action.pkg_new then
-        try_get_pkg_old(action)
-    end
-    --
-    if not rawget(action, "o_n") and rawget(action, "pkg_old") then
-        try_get_o_n(action)
-    end
-    --
-    if action.o_o and action.o_o:check_excluded() or action.o_n and action.o_n:check_excluded() or action.pkg_new and action.pkg_new:check_excluded() then
-        action_set(action, "exclude")
-        return action
-    end
-    --
-    check_config_allow(action, rawget(action, "recursive"))
-
-    --TRACE("CHECK_PKG_OLD_o_o", action.o_o, action.pkg_old, action.o_n, action.pkg_new)
-    if not action.pkg_old and action.o_o and action.pkg_new then
-        local pkg_name = chomp(PkgDb.query {"%n-%v", action.pkg_new.name_base})
-        --TRACE("PKG_NAME", pkg_name)
-        if pkg_name then
-            action.pkg_old = Package:new(pkg_name)
-        end
-    end
-
-    --[[
-   --Action.check_conflicts ("build_conflicts")
-   Action.check_conflicts ("install_conflicts")
-
-   --
---   Action.check_licenses ()
-
-   -- build list of packages to install after all ports have been built
-   Action.register_delayed_installs ()
-   --]]
-    --[[
-   o_o (o_n, pkg_new)
-   - lookup via pkg_new (without version) may be possible, but pkg_new may depend on parameters derived from pkg_old (DEFAULT_VERSIONS)
-   - reverse lookup in the MOVED list until an entry in the pkgdb matches
-   - the old origin might have been the same as the provided new origin (and in general will be ...)
-   --]]
-    return action -- NYI
-end
---]=]
-
---
 local function check_licenses()
-    local accepted = {}
-    local accepted_opt = nil
+    --local accepted = {}
+    --local accepted_opt = nil
     local function check_accepted(licenses)
         --
     end
@@ -1468,7 +1300,7 @@ local function check_licenses()
         -- LICENSES_ACCEPTED="L1 L2 L3"
     end
     for _, action in ipairs(ACTION_LIST) do
-        local o = rawget(action, "o_n")
+        local o = rawget(action.pkg_new, "origin")
         if o and rawget(o, "license") then
             if not check_accepted(o.license) then
                 action:log {"Check license for", o.name, o.license}
@@ -1480,24 +1312,12 @@ local function check_licenses()
     end
 end
 
---[[
-local function port_options()
-    Msg.show {level = 2, start = true, "Check for new port options"}
-    for i, a in ipairs(ACTION_LIST) do
-        local o = rawget(a, "o_n")
-        -- if o then print ("O", o, o.new_options) end
-        if o and rawget(o, "new_options") then
-            a:log{"Set port options for port", o.name}
-        end
-    end
-    Msg.show {level = 2, start = true, "Check for new port options has completed"}
-end
---]]
 --
 local function check_conflicts(mode)
     Msg.show {level = 2, start = true, "Check for conflicts between requested updates and installed packages"}
     for _, action in ipairs(ACTION_LIST) do
-        local o_n = rawget(action, "o_n")
+        local p_n = action.pkg_new
+        local o_n = rawget(p_n, "origin")
         if o_n and o_n[mode] then
             local conflicts_table = conflicting_pkgs(action, mode)
             if conflicts_table and #conflicts_table > 0 then
@@ -1551,12 +1371,20 @@ local function check_excluded(action)
             end
         end
     end
-    excluded_chk(ignored_port, action.o_n)
-    excluded_chk(ignored_port, action.o_o)
+    local old_pkgs = action.old_pkgs
+    local o_n = action.pkg_new and action.pkg_new.origin
+    excluded_chk(ignored_port, o_n)
+    for _, p_o in ipairs(old_pkgs) do
+        excluded_chk(ignored_port, p_o.origin)
+    end
     excluded_chk(excluded_pkg, action.pkg_new)
-    excluded_chk(excluded_pkg, action.pkg_old)
+    for _, p_o in ipairs(old_pkgs) do
+        excluded_chk(excluded_pkg, p_o)
+    end
     excluded_chk(locked_pkg, action.pkg_new)
-    excluded_chk(locked_pkg, action.pkg_old)
+    for _, p_o in ipairs(old_pkgs) do
+        excluded_chk(locked_pkg, p_o)
+    end
     return rawget(action, "ignore")
 end
 
@@ -1569,6 +1397,7 @@ local function dump_cache()
 end
 
 -------------------------------------------------------------------------------------
+--[[
 local function __newindex(action, n, v)
     --TRACE("SET(a)", rawget(action, "pkg_new") and action.pkg_new.name or rawget(action, "pkg_old") and action.pkg_old.name, n, v)
     if v and (n == "pkg_old" or n == "pkg_new") then
@@ -1576,25 +1405,22 @@ local function __newindex(action, n, v)
     end
     rawset(action, n, v)
 end
+--]]
 
 local actions_started = 0
 
 local function __index(action, k)
-    local function __depends(action, k)
-        local o_n = action.o_n
-        if o_n then
-            --TRACE("DEP_REF", k, o_n[k])
-            return o_n[k]
-        -- k = string.match (k, "[^_]+")
-        -- return o_n.depends (action.o_n, k)
-        end
-    end
     local function __short_name(action, k)
-        return action.pkg_new and action.pkg_new.name
-            or action.pkg_old and action.pkg_old.name
-            or action.o_n and action.o_n.name
-            or action.o_o and action.o_o.name
+        TRACE("T", action)
+        local p_n = action.pkg_new
+        local o_n = p_n and p_n.origin
+        local old_pkgs = action.old_pkgs
+        action.short_name = p_n and p_n.name
+            or o_n and o_n.name
+            or #old_pkgs > 0 and old_pkgs[1].name
             or "<unknown>"
+        TRACE("T->", action.short_name)
+        return action.short_name
     end
     local function __startno(action, k)
         actions_started = actions_started + 1
@@ -1605,37 +1431,144 @@ local function __index(action, k)
         if p_n.no_build or p_n.make_jobs_unsafe or p_n.disable_make_jobs then
             return 1
         end
-        local n = p_n.make_jobs_number or Param.ncpu
-        local l = p_n.make_jobs_number_limit or Param.ncpu
-        return n >= l and n or l
+        local n = p_n.make_jobs_number or Param.maxjobs
+        local limit = p_n.make_jobs_number_limit or Param.ncpu
+        if n > limit then
+            n = limit
+        end
+        return math.floor(n) -- convert from float to integer
+    end
+    local function __depends(action, k)
+        local p_n = action.pkg_new
+        if p_n then
+            return p_n.depends
+        else
+            return {}
+        end
+    end
+    local function __check_req_for(action, k)
+        local depends = action.depends
+        return {
+            build = #depends.build > 0,
+            build_only = #depends.build > 0 and #depends.run == 0 and #depends.pkg == 0,
+            pkg = #depends.pkg > 0,
+            run = #depends.run > 0,
+        }
+    end
+    local function __use_pkgfile(action, k)
+        --TRACE("USE_PKGFILE?", action)
+        local p_n = action.pkg_new
+        if p_n then
+            if action.force then -- always rebuild if forced
+                --TRACE("NOT USE_PKGFILE", "force", p_n.name)
+                return false
+            end
+            if not p_n.pkgfile then -- no usable package file found
+                --TRACE("NOT USE_PKGFILE", "no pkgfile", p_n.name)
+                return false
+            end
+            if Options.packages then -- use package if allowed and available
+                --TRACE("USE_PKGFILE", "use pkgfile", p_n.name)
+                return true
+            end
+            if action.req_for.run or not action.is_auto then -- build from port if not only a build dependency
+                --TRACE("NOT USE_PKGFILE", "user installed or run dependency without --packages option", p_n.name)
+                return false
+            end
+            if Options.packages_build then -- rebuild pure build dependencies unless pkg allowed
+                --TRACE("USE_PKGFILE", "build dep from pkgfile allowed", p_n.name)
+                return true
+            end
+            --TRACE("NOT USE_PKGFILE", "no --packages-build option", p_n.name)
+        end
+    end
+    local function __is_auto(action, k) -- force is_auto to false for new user installed packages!!! XXX
+        for _, p_o in ipairs(action.old_pkgs) do
+            if not rawget(p_o, "is_automatic") then
+                return false
+            end
+        end
+        return true
+    end
+    local function __check_upgrade_needed(action, k)
+        return action.force or compare_versions_old_new(action) ~= 0
+    end
+    local function __check_build_needed(action, k)
+        return action.pkg_new and not action.use_pkgfile
+    end
+    local function __check_provide_needed(action, k)
+        if Param.jailed and action.pkg_new then
+            local req_for = action.req_for
+            return req_for.build or req_for.run -- XXX NYI
+        end
+    end
+    local function __check_install_needed(action, k)
+        return action.pkg_new and (Param.jailed and action.req_for.build or not action.req_for.build_only) -- XXX NYI
+    end
+    local function __check_pkgcreate_needed(action, k)
+        return true -- XXX NYI
+    end
+    local function __check_deinstall_requested(action, k)
+        return not action.pkg_new
+    end
+    local function __check_forced(action, k)
+        return action.force -- XXX NYI
+    end
+    local function __check_skip_install(action, k) -- do not install to base system
+        TRACE("X", action)
+        if Options.skip_install or Options.jailed then
+            if action.is_auto then
+                local req_for = action.req_for
+                return not req_for.build and not req_for.pkg
+            end
+        end
+    end
+    local function __check_locked(action, k)
+        local p_n = action.pkg_new
+        if p_n and p_n.is_locked then
+            return true
+        end
+        for _, p_o in ipairs(action.old_pkgs) do
+            if p_o.is_locked then
+                return true -- ADD FURTHER CASES: excluded, broken without --try-broken, ignore, ...
+            end
+        end
     end
     local dispatch = {
         name = describe,
         short_name = __short_name,
-        pkg_old = determine_pkg_old,
         pkg_new = determine_pkg_new,
+        pkg_old = determine_pkg_old,
         vers_cmp = compare_versions_old_new,
-        o_o = determine_o_o,
-        o_n = determine_o_n,
-        build_depends = __depends,
-        run_depends = __depends,
         action = determine_action,
         startno = __startno,
         jobs = __jobs,
         ignore = check_excluded,
+        depends = __depends,
+        req_for = __check_req_for,
+        --is_special_pkg = __check_dep,
+        is_auto = __is_auto,
+        is_locked = __check_locked,
+        use_pkgfile = __use_pkgfile,
+        skip_install = __check_skip_install,
+        do_upgrade = __check_upgrade_needed,
+        do_build = __check_build_needed,
+        do_provide = __check_provide_needed,
+        do_install = __check_install_needed,
+        do_pkgcreate = __check_pkgcreate_needed,
+        do_deinstall = __check_deinstall_requested,
+        force = __check_forced,
     }
 
     --TRACE("INDEX(a)", k)
     local w = rawget(action.__class, k)
     if w == nil then
-        rawset(action, k, false)
         local f = dispatch[k]
         if f then
+            rawset(action, k, false)
             w = f(action, k)
             if w then
                 rawset(action, k, w)
-            else
-                w = false
             end
         else
             error("illegal field requested: Action." .. k)
@@ -1649,73 +1582,9 @@ end
 
 local mt = {
     __index = __index,
-    __newindex = __newindex, -- DEBUGGING ONLY
+    --__newindex = __newindex, -- DEBUGGING ONLY
     __tostring = describe
 }
-
---[[
-local function new(Action, args)
-    if args then
-        local action
-        --TRACE("ACTION", args.pkg_old or args.pkg_new or args.o_n)
-        action = lookup_cached_action(args)
-        if action then
-            action.recursive = rawget(args, "recursive") -- set if re-entering this function
-            action.force = rawget(action, "force") or args.force -- copy over some flags
-            if args.pkg_old then
-                if rawget(action, "pkg_old") then
-                    -- assert (action.pkg_old.name == args.pkg_old.name, "Conflicting pkg_old: " .. action.pkg_old.name .. " vs. " .. args.pkg_old.name)
-                    action_set(action, "delete")
-                    args.pkg_new = nil
-                    args.o_n = nil
-                end
-                action.pkg_old = args.pkg_old
-            end
-            if args.pkg_new then
-                if rawget(action, "pkg_new") then
-                    assert(action.pkg_new.name == args.pkg_new.name, "Conflicting pkg_new: " .. action.pkg_new.name .. " vs. " .. args.pkg_new.name)
-                else
-                    action.pkg_new = args.pkg_new
-                end
-            end
-            if args.o_n then
-                if rawget(action, "o_n") then
-                    assert(action.o_n.name == args.o_n.name, "Conflicting o_n: " .. action.o_n.name .. " vs. " .. args.o_n.name)
-                else
-                    local p = args.o_n.pkg_new
-                    action.o_n = p.origin -- could be aliased origin and may need to be updated to canonical origin object
-                end
-            end
-        else
-            action = args
-            action.__class = Action
-            setmetatable(action, mt)
-        end
-        if not action_enrich(action) then
-            if action_is(action, "exclude") then
-                if action.o_n then
-                    action.o_n:delete() -- remove this origin from ORIGIN_CACHE
-                end
-                args.recursive = true -- prevent endless config loop
-                return new(Action, args)
-            end
-        end
-        if not action_is(action, "exclude") and not action_is(action, "keep") then
-            if not rawget(action, "listpos") then
-                table.insert(ACTION_LIST, action)
-                action.listpos = #ACTION_LIST
-                Msg.show {tostring(#ACTION_LIST) .. ".", describe(action)}
-            end
-            if action_is(action, "upgrade") then
-                action.o_n:fetch() -- XXX call fetch() only when not installing from package file !!!
-            end
-        end
-        return cache_add(action)
-    else
-        error("Action:new() called with nil argument")
-    end
-end
---]]
 
 --[[
     -- user flag is implied by missing auto flag
@@ -1728,128 +1597,112 @@ end
 --]]
 
 --
-local function lookup_cached_action(args) -- args.pkg_new is a string not an object!!
-    local p_o = rawget(args, "pkg_old")
-    local p_n = rawget(args, "pkg_new") or rawget(args, "o_n") and args.o_n.pkg_new
-    local action = p_n and ACTION_CACHE[p_n.name] or p_o and ACTION_CACHE[p_o.name]
-    --TRACE("CACHED_ACTION", args.pkg_new, args.pkg_old, action and action.pkg_new and action.pkg_new.name, action and action.pkg_old and action.pkg_old.name)
-    return action
-end
-
-local function merge_action(a1, a2)
-    --TRACE("MERGE_ACTION", a1, a2)
-    for k, v1 in pairs(a2) do
-        local v2 = rawget(a1, k)
-        if v2 then
-            if type(v2) == "table" then
-                --a1[k] = merge_action(v1, v2)
-            else
-                --TRACE("MERGE_FIELD", v1, v2)
-                a1[k] = v2
-            end
-        end
-    end
-    return a1
-end
-
--- object that controls the upgrading and other changes
-local function cache_add(action)
-    local p_n = action.pkg_new
-    local action_new = p_n and ACTION_CACHE[p_n.name]
-    local p_o = action.pkg_old
-    local action_old = p_o and ACTION_CACHE[p_o.name]
-    if action_old then
-        action = merge_action(action, action_old)
-        ACTION_CACHE[p_o.name] = nil
-    end
-    if action_new then
-        action = merge_action(action, action_new)
-    end
-    --TRACE("CACHE_ADD", p_o and p_o.name, p_n and p_n.name, action)
-    if p_n then
-        ACTION_CACHE[p_n.name] = action
-    end
-    if p_o then
-        ACTION_CACHE[p_o.name] = action
-    end
-end
-
 local function action_list_add(action)
-    --TRACE("LIST_ADD_ACTION", action)
-    local p_o = action.pkg_old
+    TRACE("LIST_ADD_ACTION", action)
+    local old_pkgs = action.old_pkgs
     local p_n = action.pkg_new
-    if p_n or p_o then
-        TRACE("IGNORE", action.short_name, action.ignore)
+    if p_n or #old_pkgs > 0 then
+        TRACE("IGNORE?", action.short_name, action.ignore)
         if not action.ignore then
-            if action.force or action.vers_cmp ~= 0 then
-                if not rawget(action, "listpos") then
-                    local listpos = #ACTION_LIST + 1
+            if action.do_upgrade or action.do_provide then
+                local listpos = rawget(action, "listpos")
+                if not listpos then
+                    listpos = #ACTION_LIST + 1
                     action.listpos = listpos
-                    ACTION_LIST[listpos] = action
-                    Msg.show {listpos .. ".", describe(action)}
-                    if p_n then
-                        RunnableLock = RunnableLock or Lock:new("RunnableLock")
+                    Msg.show {listpos, describe(action)}
+                    if not action.skip_install and (action.do_provide or action.do_install) then
+                        RunnableLock = RunnableLock or Lock:new("RunnableLock") -- XXX dead-lock due to double locking !!!
                         -- >>>> RunnableLock(p_n.name)
                         RunnableLock:acquire{p_n.name} -- acquire exclusive lock until package is runnable
+                        TRACE("RUNNABLE_LOCK_ACQUIRE", p_n.name)
+                    end
+                end
+                TRACE("ACTION_LIST_ADD", action.listpos, action.short_name)
+                ACTION_LIST[listpos] = action
+            end
+        end
+    else
+        -- error: action_list_add() called without old or new package
+    end
+end
+
+-- add action as new or merge into existing action
+--[[
+    possible action record fields:
+    * upgrade of existing package:
+        may be for all installed packages or some ports or packages specified on the command line
+        old_pkgs[1] contains the existing package, the origin is set as registered in the package db
+    * dependency of existing package:
+        pkg_new contains the package record, the origin is set to the current origin of the port
+        the old package(s) needs to be identified (same origin, or origin lookup in MOVED)
+        this can be a new installation or an upgrade (but only if not all outdated packages have been selected to be updated)
+        if this a dependency is locked, the existing package shall be kept (may lead to a build failure in the dependent package)
+        if this is a new pacakge, its "automatic" flag will be set
+    * new installation:
+        the origin has been passed on the command line, PKGNAME can be identified from the port
+        this will be a new installation (user selected, not as an automatic dependency)
+--]]
+local function cache_add(action)
+    local function cache_lookup(action)
+        local p_n = action.pkg_new
+        local action0 = p_n and ACTION_CACHE[p_n.name]
+        if not action0 then
+            local old_pkgs = action.old_pkgs
+            if #old_pkgs > 0 then
+                for _, p_o in ipairs(old_pkgs) do
+                    action0 = ACTION_CACHE[p_o.name]
+                    if action0 then
+                        break
                     end
                 end
             end
         end
+        return action0
     end
-end
-
---
-local function merge_origin(action, args, field)
-    local argf = rawget(args, field)
-    if argf then
-        local actf = rawget(action, field)
-        if actf then
-            assert(actf.name == argf.name, (action.short_name or "<unknown>") .. ": Mismatch: " .. actf.name .. " / " .. argf.name)
-        else
-            action[field] = Origin:new(argf)
+    local p_n = action.pkg_new
+    local action0 = cache_lookup(action)
+    TRACE("CACHE_ADD", p_n and p_n.name, rawget(action, "name"), rawget(action, "listpos"), action0 and rawget(action0, "name"), action0 and rawget(action0, "listpos"))
+    -- if #action.old_pkgs == 0 then this is a dependency / upgrade only if action record already exists
+    if action0 then
+        if rawget(action0, "listpos") then
+            action, action0 = action0, action -- update the existing action record
+        end
+        TRACE("CACHE_ADD_MERGE", action.pkg_new and action.pkg_new.name, rawget(action, "listpos"), action0.pkg_new.name, rawget(action0, "listpos"))
+        action.old_pkgs = table.union(action.old_pkgs, action0.old_pkgs)
+        -- merge force, req_for[], is_user, ... ??? XXX
+    else
+        local p_n = action.pkg_new
+        TRACE("CACHE_ADD_NEW", action.short_name, p_n, rawget(action, "listpos"))
+        if p_n then
+            ACTION_CACHE[p_n.name] = action
+        end
+        for _, p_o in ipairs(action.old_pkgs) do
+            ACTION_CACHE[p_o.name] = action
         end
     end
-end
-
---
-local function merge_pkg(action, args, field)
-    local argf = rawget(args, field)
-    if argf then
-        local actf = rawget(action, field)
-        if actf then
-            assert(actf.name == argf.name, (action.short_name or "?") .. ": Mismatch: " .. actf.name .. " / " .. argf.name)
-        else
-            action[field] = Package:new(argf)
-        end
+    --[[
+    if #action.old_pkgs == 0 then
+        -- TRY TO IDENTIFY OLD PACKAGE / ORIGIN
+        determine_origin_old(action)
     end
+    --]]
+    check_config_allow(action)
+    TRACE("LIST_ADD", action.pkg_new and action.pkg_new.name or action.old_pkgs[1].name, rawget(action, "listpos"))
+    action_list_add(action)
 end
 
---
+-- object that controls the upgrading and other changes
 local function new(Action, args)
-    local function merge_flag(action, field, value)
-        rawset(action, field, not not value)
-    end
     if args then
         TRACE("ACTION", args)
-        local action = lookup_cached_action(args)
-        if not action then
-            action = args
-            action.__class = Action
-        end
-        merge_flag (action, "is_build_dep", args.is_build_dep)
-        merge_flag (action, "is_run_dep", args.is_run_dep)
-        merge_flag (action, "is_auto", args.is_auto)
-        merge_flag (action, "is_user", args.is_user)
-        merge_flag (action, "force", rawget(args, "force"))
-        merge_origin(action, args, "origin_old")
-        merge_origin(action, args, "origin_new")
-        merge_pkg(action, args, "pkg_old")
-        merge_pkg(action, args, "pkg_new")
+        args.old_pkgs = {args.pkg_old}
+        args.pkg_old = nil
+        local action = args
+        action.__class = Action
         action.buildstate = {}
         setmetatable(action, mt)
         TRACE("ACTION(new)->", action)
         cache_add(action)
-        action_list_add(action)
     else
         error("Action:new() called with nil argument")
     end
@@ -1956,3 +1809,217 @@ Conflicts:
    - derived pkg_new might be for a different DEFAULT_VERSION if the correct pkg_old has not been recognized
 
 --]]
+
+
+--[[
+-- delete build dependencies after dependent ports have been built
+local function perform_post_build_deletes(origin)
+    local origins = DEP_DEL_AFTER_BUILD[origin.name]
+    DEP_DEL_AFTER_BUILD[origin.name] = nil
+    local del_done = false
+    while origins do
+        for i, origin in pairs(origins) do
+            if package_deinstall_unused(origin) then del_done = true end
+        end
+        origins = del_done and table.keys(DELAYED_DELETES)
+    end
+end
+
+-- deinstall package files after optionally creating a backup package
+local function perform_deinstall(action)
+    local p_o = action.pkg_old
+    action:log {level = 1, "Deinstall old version", p_o.name}
+    if Options.backup and not p_o:backup_old_package() then
+        return false, "Failed to create backup package of " .. p_o.name
+    end
+    local out, err, exitcode = p_o:deinstall()
+    if exitcode ~= 0 then
+        return fail(action, "Failed to deinstall package " .. p_o.name, err)
+    end
+    action.done = true
+    return true
+end
+
+-- peform delayed installation of ports not required as build dependencies after all ports have been built
+local function perform_delayed_installation(action)
+    local p_n = action.pkg_new
+    action.pkg_new.pkgfile = Package.filename {p_n}
+    local taskmsg = describe(action)
+    action:log{taskmsg}
+    assert(perform_installation(action),
+           "Installation of " .. p_n.name .. " from " .. pkgfile .. " failed")
+    Msg.success_add(taskmsg)
+end
+--]]
+
+--[[
+-------------------------------------------------------------------------------------
+-- update changed port origin in the package db and move options file
+local function perform_origin_change(action)
+    local old_pkgs = action.old_pkgs
+    if #old_pkgs > 1 then
+        fail ("Too many old packages passed to package rename function")
+    end
+    local p_o = action.old_pkgs[1]
+    action:log {"Change origin of", p_o.name, "from", p_o.origin.name, "to", action.pkg_new.origin.name}
+    if PkgDb.update_origin(action.o_o, action.pkg_new.origin, p_o.name) then
+        portdb_update_origin(action.o_o, action.pkg_new.origin)
+        action.done = true
+        return true
+    end
+end
+
+-- update package name of installed package
+local function perform_pkg_rename(action)
+    local old_pkgs = action.old_pkgs
+    if #old_pkgs > 1 then
+        fail ("Too many old packages passed to package rename function")
+    end
+    local p_o = action.old_pkgs[1]
+    local p_n = action.pkg_new
+    action:log {"Rename package", p_o.name, "to", p_n.name}
+    local out, err, exitcode = PkgDb.update_pkgname(p_o, p_n)
+    if exitcode ~= 0 then
+        return fail(action, "Rename package " .. p_o.name .. " to " .. p_n.name .. " failed", err)
+    end
+    pkgfiles_rename(action)
+    action.done = true
+    return not failed(action)
+end
+--]]
+
+--[=[
+--
+local function action_enrich(action)
+    --[[
+   o_n (o_o, pkg_old)
+   - in general same as o_o, but must be verified!!!
+   - !!! lookup in MOVED port list (not fully deterministic due to lack of a "flavors required" flag in the list)
+   - conflicts check required (via pkg_new (o_n)) to verify acceptable origin has been found
+   --]]
+    --[[
+   pkg_new (o_n, pkg_old)
+   - from make -V PKGNAME with FLAVOR and possibly DEFAULT_VERIONS override (must be derived from pkg_old !!!)
+   - might depend on port OPTIONS
+   - conflicts check required !!!
+   --]]
+    local function try_get_o_n(action)
+        local function try_origin(origin)
+            if origin and origin.exists then
+                local p_n = origin.pkg_new
+                --TRACE("P_N", origin.name, p_n)
+                if p_n and p_n.name_base == action.pkg_old.name_base then -- XXX pkg_old !!!
+                    p_n.origin = origin
+                    action.pkg_new = p_n
+                    --TRACE("TRY_GET_ORIGIN", p_n.name, origin.name)
+                    return action
+                end
+            end
+        end
+        for p_o in ipairs(action.old_pkgs) do
+            local o_o = p_o.origin
+            if o_o then
+                local result = try_origin(o_o)
+                if result then
+                    return result
+                end
+            end
+        end
+        return try_origin(determine_o_n(action))
+        -- or
+        -- try_origin (check_used_default_version (action))
+    end
+    --[[
+   pkg_old (pkg_new)
+   - in general the old name can be found by looking up the package name without version in the pkgdb
+   - the lookup is not guaranteed to succeed due to package name changes (e.g. if FLAVORS have been added or removed from a port)
+   --]]
+    --[[
+   pkg_old (o_o, pkg_new)
+   - for installed packages always possible via pkgdb lookup of origin with flavor
+   - implementation via ORIGIN_CACHE[o_o.name].old_pkgs
+   - !!! possibly multiple results (due to multiple packages built with different DEFAULT_VERSIONS settings)
+   - pkg_new may be used to select the correct result if multiple candidate results have been obtained
+   --]]
+    local function try_get_pkg_old(action)
+        local p_n = rawget(action, "pkg_new")
+        local o_n = p_n and rawget(p_n, "origin")
+        if o_n then
+            local p_o = rawget(o_n, "pkg_old")
+            if not p_o then
+            -- reverse move
+            end
+        end
+        if p_n then
+            local namebase = p_n.name_base
+            local p_o = PkgDb.query {"%n-%v", namebase}
+            if p_o and p_o ~= "" then
+                local p = Package:new(p_o)
+                -- action.o_o = p.origin -- XXX which origin to adjust in old_pkgs ??? !!!
+            end
+        end
+    end
+
+    --[[
+   o_o (pkg_old)
+   - for installed packages always possible via pkgdb
+   - implementation via PACKAGES_CACHE[pkg_old.name].origin
+   - if applicable: DEFAULT_VERSIONS parameter can be derived from the old package name (string match)
+   --]]
+    --
+    if not rawget(action.pkg_new, "origin") and rawget(action, "pkg_old") then
+        try_get_o_n(action)
+    end
+    --
+    if not rawget(action, "pkg_old") and action.pkg_new then
+        try_get_pkg_old(action)
+    end
+    --
+    if not rawget(action.pkg_new, "origin") and rawget(action, "pkg_old") then
+        try_get_o_n(action)
+    end
+    --
+    local p_n = action.pkg_new
+    local o_n = p_n and p_n.origin
+    if o_n and o_n:check_excluded() or p_n and p_n:check_excluded() then
+        action_set(action, "exclude")
+        return action
+    end
+    for p_o in ipairs(action.old_pkgs) do
+        local o_o = p_o.origin
+        if o_o and o_o:check_excluded() then
+            action_set(action, "exclude")
+            return action
+        end
+    end
+    --
+    check_config_allow(action, rawget(action, "recursive"))
+
+    --TRACE("CHECK_PKG_OLD_o_o", action.o_o, action.pkg_old, action.o_n, action.pkg_new)
+    if not action.pkg_old and action.pkg_old.origin and action.pkg_new then
+        local pkg_name = chomp(PkgDb.query {"%n-%v", action.pkg_new.name_base})
+        --TRACE("PKG_NAME", pkg_name)
+        if pkg_name then
+            action.pkg_old = Package:new(pkg_name)
+        end
+    end
+
+    --[[
+   --Action.check_conflicts ("build_conflicts")
+   Action.check_conflicts ("install_conflicts")
+
+   --
+--   Action.check_licenses ()
+
+   -- build list of packages to install after all ports have been built
+   Action.register_delayed_installs ()
+   --]]
+    --[[
+   o_o (o_n, pkg_new)
+   - lookup via pkg_new (without version) may be possible, but pkg_new may depend on parameters derived from pkg_old (DEFAULT_VERSIONS)
+   - reverse lookup in the MOVED list until an entry in the pkgdb matches
+   - the old origin might have been the same as the provided new origin (and in general will be ...)
+   --]]
+    return action -- NYI
+end
+--]=]

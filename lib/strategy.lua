@@ -3,7 +3,7 @@
 --[[
 SPDX-License-Identifier: BSD-2-Clause-FreeBSD
 
-Copyright (c) 2019, 2020 Stefan Eßer <se@freebsd.org>
+Copyright (c) 2019-2021 Stefan Eßer <se@freebsd.org>
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions
@@ -44,59 +44,60 @@ local access = P_US.access
 
 --
 local function add_action(args)
-    --Action:new(args)
-    Exec.spawn(Action.new, Action, args)
-    --TRACE ("ADD_ACTION_SPAWNED", table.keys(args))
+    Exec.spawn(Action.new, Action, args) -- XXX need to protect against simultanouos spawns for the same pkg_new !!!
+    TRACE ("ADD_ACTION_SPAWNED", table.keys(args))
 end
 
 --
 local function add_missing_deps(action_list) -- XXX need to also add special dependencies, somewhat similar to build dependencies
+    -- verify run dependencies of up-to-date ports exist and are not downlevel, too!!!
+    local dep_table
+    local function check_depends(a, type)
+        local deps = a.pkg_new and a.pkg_new.depends[type] or {} -- [dep_var_name] or {}
+        TRACE("DEPS", type, a.pkg_new, deps)
+        for _, dep in ipairs(deps) do
+            deps = dep_table[dep] or {}
+            deps[type] = true
+            dep_table[dep] = deps
+        end
+    end
+    local function process_depends(deps)
+        for dep, types in pairs(deps) do
+            TRACE("PROCESS_DEPENDS", dep, table.concat(table.keys(types), "/"))
+            local p = Package.get(dep)
+            for type, _ in pairs(types) do
+                local dep_stat_var = "is_" .. type .. "_dep" -- rename is_build_dep --> is_dep.build
+                if not (p.is_installed or p[dep_stat_var]) or Param.force or Param.jailed then -- XXX is_installed --> status.installed
+                    local app_dep_hdr = "Add " .. dep .. " as " .. type .. " dependency"
+                    Msg.show {level = 2, start = true and false, app_dep_hdr}
+                    --app_dep_hdr = nil
+                    p[dep_stat_var] = true
+                    --Msg.show{level = 2, "Add", type, "dependency", p.name}
+                end
+            end
+            add_action{
+                pkg_new = p,
+            }
+        end
+    end
     local start_elem = 1
     while start_elem <= #action_list do
-        local dep_ports = {}
+        dep_table = {}
         local last_elem = #action_list
         for i = start_elem, last_elem do
             local a = action_list[i]
-            TRACE("ADD_MISSING_DEPS", i, #action_list)
-            if a.pkg_new and rawget(a.pkg_new, "is_installed") and not Options.force then
-                -- print (a, "is already installed")
+            TRACE("ADD_MISSING_DEPS", i, #action_list, a)
+            if rawget(a, "pkg_new") and rawget(a.pkg_new, "is_installed") and not Options.force and not Options.jailed then
+                --check_depends(a, "pkg")
+                check_depends(a, "run")
             else
-                local add_dep_hdr = "Add build dependencies of " .. a.short_name
-                local deps = a.build_depends or {} -- rename build_depends --> depends.build
-                for _, dep in ipairs(deps) do
-                    local o = Origin:new(dep)
-                    local p = o.pkg_new
-                    TRACE("ADD_MISSING_DEPS(build)", dep, o, p)
-                    if not (p.is_installed or p.is_build_dep) then
-                        Msg.show {level = 2, start = true, add_dep_hdr}
-                        add_dep_hdr = nil
-                        add_action{
-                            is_build_dep = true,
-                            pkg_new = p,
-                            o_n = o
-                        }
-                        p.is_build_dep = true
-                    end
-                end
-                add_dep_hdr = "Add run dependencies of " .. a.short_name
-                deps = a.run_depends or {}
-                for _, dep in ipairs(deps) do
-                    local o = Origin:new(dep)
-                    local p = o.pkg_new
-                    TRACE("ADD_MISSING_DEPS(run)", dep, o, p)
-                    if not (p.is_installed or p.is_run_dep) then
-                        Msg.show {level = 2, start = true, add_dep_hdr}
-                        add_dep_hdr = nil
-                        add_action{
-                            is_run_dep = true,
-                            pkg_new = p,
-                            o_n = o
-                        }
-                        p.is_run_dep = true
-                    end
-                end
+                check_depends(a, "pkg")
+                check_depends(a, "build")
+                check_depends(a, "special")
+                check_depends(a, "run")
             end
         end
+        process_depends(dep_table)
         Exec.finish_spawned(Action.new)
         start_elem = last_elem + 1
     end
@@ -108,30 +109,42 @@ local function sort_list(action_list)
     local sorted_list = {}
     local function add_deps(action)
         local function add_deps_of_type(type)
-            local deps = rawget(action, type .. "_depends")
+            local deps = action.depends[type]
             if deps then
-                for _, o in ipairs(deps) do
-                    local origin = Origin.get(o)
-                    local pkg_new = origin.pkg_new
-                    if pkg_new then
-                        local a = Action.get(pkg_new.name)
-                        --TRACE("ADD_DEPS", type, a and rawget(a, "action"), origin.name, origin.pkg_new, origin.pkg_new and rawget(origin.pkg_new, "is_installed"))
-                        -- if a and not rawget (a, "planned") then
-                        if a and not rawget(a, "planned") and not rawget(origin.pkg_new, "is_installed") then
-                            add_deps(a)
-                        end
+                for _, pkg_new in ipairs(deps) do
+                    local a = Action.get(pkg_new)
+                    --TRACE("ADD_DEPS", type, a and rawget(a, "action"), origin.name, origin.pkg_new, origin.pkg_new and rawget(origin.pkg_new, "is_installed"))
+                    if a and not rawget(a, "planned") and a.pkg_new and not rawget(a.pkg_new, "is_installed") then
+                        add_deps(a)
                     end
                 end
             end
         end
         if not rawget(action, "planned") then
-            add_deps_of_type("build")
-            assert(not rawget(action, "planned"), "Dependency loop for: " .. action:describe())
-            table.insert(sorted_list, action)
-            action.listpos = #sorted_list
-            action.planned = true
-            Msg.show {"[" .. tostring(#sorted_list) .. "/" .. max_str .. "]", tostring(action)}
-            add_deps_of_type("run")
+            local p_n = action.pkg_new
+            local buildrequired = p_n and not action.use_pkgfile
+            if buildrequired then
+                TRACE("BUILDREQUIRED!", p_n.name)
+                add_deps_of_type("pkg")
+                add_deps_of_type("build")
+                add_deps_of_type("special")
+                assert(not rawget(action, "planned"), "Dependency loop for: " .. (rawget(action, "name") or "<nil>"))
+            end
+            local providerequired = action.do_provide
+            local installrequired = action.do_install
+            if providerequired or installrequired then
+                add_deps_of_type("run")
+                table.insert(sorted_list, action)
+                action.listpos = #sorted_list
+                action.planned = true
+                action.providerequired = providerequired
+                action.installrequired = installrequired
+                action.is_provide = true -- XXX TEMPORARY ???
+                action.name = action.name or ("Provide " .. action.short_name)
+                Msg.show {"[" .. tostring(#sorted_list) .. "]", action.name}
+            else
+                Msg.show {"SKIPPING", tostring(action)}
+            end
         end
     end
 
@@ -140,6 +153,7 @@ local function sort_list(action_list)
         Msg.show {start = true}
         add_deps(a)
     end
+    TRACE("SORT->", #action_list, #sorted_list)
     -- assert (#action_list == #sorted_list, "action_list items have been lost: " .. #action_list .. " vs. " .. #sorted_list)
     return sorted_list
 end
@@ -153,7 +167,6 @@ local function ports_update(filters)
             if selected then
                 add_action{
                     is_user = true,
-                    is_run_dep = true,
                     force = force,
                     pkg_old = pkg
                 }
@@ -191,13 +204,14 @@ local function add_multiple(args)
         if string.match(v, "/") and access(path_concat(Param.portsdir, v, "Makefile"), "r") then
             local o = Origin:new(v)
             local p = o.pkg_new
-            Action:new{
+            if p then
+            p.origin = o
+            add_action{
                 is_user = true,
-                is_run_dep = true,
                 force = Options.force,
-                o_n = o,
                 pkg_new = p
             }
+            end
         end
     end
     --[[
@@ -210,7 +224,6 @@ local function add_multiple(args)
 	       local origin = Origin:new (port)
            Action:new {
                is_user = true,
-               is_run_dep = true,
                o_n = origin
             }
 	    end
@@ -266,7 +279,7 @@ end
 
 --
 local function perform_actions(action_list)
-    if tasks_count() == 0 then
+    if Action.tasks_count() == 0 then
         -- ToDo: suppress if no updates had been requested on the command line
         Msg.show {start = true, "No installations or upgrades required"}
     else
@@ -282,7 +295,7 @@ local function perform_actions(action_list)
                 -- perform the planned tasks in the order recorded in action_list
                 Param.phase = "build"
                 Msg.show {start = true}
-                Progress.set_max(tasks_count())
+                Progress.set_max(Action.tasks_count())
                 --
                 if Options.jailed then
                     Jail.create()
@@ -308,7 +321,7 @@ local function perform_actions(action_list)
                     --]]
                 end
             end
-            if tasks_count() == 0 then
+            if Action.tasks_count() == 0 then
                 Msg.show {start = true, "All requested actions have been completed"}
             end
             Progress.clear()

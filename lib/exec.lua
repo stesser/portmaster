@@ -90,7 +90,7 @@ local fdstat = {} -- result, pid
 -- indexed by pid:
 local pidstat = {} -- fds, numfds
 
-local function add_poll_fds(pid, fd1, fd2, to_tty)
+local function add_poll_fds(pid, fd1, fd2)
     --TRACE("ADDPOLL", pid, fd1, fd2)
     pidstat[pid] = {fds = {fd1, fd2}, numfds = 2}
     fdstat[fd1] = {pid = pid, result = {}}
@@ -421,6 +421,10 @@ local function run(args)
     end
 end
 
+---------------------------------------------------------------------------------------
+-- restrict accesses to the package db to prevent lock timeouts
+local PkgDbLock
+
 -- run make command
 local function make(args)
     table.insert(args, 1, CMD.make)
@@ -428,8 +432,19 @@ local function make(args)
         table.insert(args, 1, CMD.ktrace)
         table.insert(args, 2, "-dia")
     end
+    local rd_lock = args.pkgdb_rd
+    local wr_lock = args.pkgdb_wr
+    local lock_args
+    if rd_lock or wr_lock then
+        lock_args = {weight = 1, shared = not wr_lock}
+        PkgDbLock = PkgDbLock or Lock:new("PkgDbLock", 1)
+        PkgDbLock:acquire(lock_args)
+    end
     local stdout, stderr, exitcode = run(args)
     --TRACE ("MAKE->", args, exitcode, stdout, stderr)
+    if lock_args then
+        PkgDbLock:release(lock_args)
+    end
     return stdout, stderr, exitcode
 end
 
@@ -449,10 +464,14 @@ local function pkg(args)
     --]]
     local out, err, exitcode
     table.insert(args, 1, CMD.pkg)
+    local shared = args.safe
+    PkgDbLock = PkgDbLock or Lock:new("PkgDbLock", 1)
     for i = 1, 10 do
         --TRACE("PKG<-", args)
+        PkgDbLock:acquire{weight = 1, shared = shared}
         out, err, exitcode = run(args) -- XXX retry if exitcode indicates lock timeout occurred
         --TRACE("PKG->", args, exitcode, out, err)
+        PkgDbLock:release{weight = 1, shared = shared}
         if exitcode == 0 then
             return (out or args.table and {} or ""), err, 0
         elseif exitcode ~= 75 then

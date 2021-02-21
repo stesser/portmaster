@@ -72,9 +72,28 @@ local function action_set(action, verb)
     action.action = verb
 end
 
+
+--
+local function determine_action(action, k)
+    if action.is_locked then
+        action_set(action, "exclude")
+    elseif action.do_deinstall then
+        action_set(action, "delete")
+    elseif #action.old_pkgs == 0 or action.do_upgrade then
+        action_set(action, "upgrade")
+    --[[
+    elseif p_o ~= p_n or origin_changed(o_o, o_n) then
+        action_set(action, "change")
+    --]]
+    else
+        action_set(action, "keep")
+    end
+    return action.action
+end
+
 --
 local function action_get(action)
-    return action.action or "keep"
+    return rawget(action, "action") or determine_action(action)  or "keep"
 end
 
 -- check whether the action denoted by "verb" has been registered
@@ -1005,7 +1024,7 @@ local function show_statistics(action_list)
             return string.format("%5d %s%s %s", num, "package", plural_s, actiontext)
         end
     end
-    local function count_actions()
+    local function count_actions() -- XXX directly use action flags
         local function incr(field)
             NUM[field] = (NUM[field] or 0) + 1
         end
@@ -1185,24 +1204,6 @@ local function compare_versions_old_new(action)
         end
     end
     return -1 -- return outdated if the base names did not match
-end
-
---
-local function determine_action(action, k)
-    if action.is_locked then
-        action_set(action, "exclude")
-    elseif action.do_deinstall then
-        action_set(action, "delete")
-    elseif #action.old_pkgs == 0 or action.do_upgrade then
-        action_set(action, "upgrade")
-    --[[
-    elseif p_o ~= p_n or origin_changed(o_o, o_n) then
-        action_set(action, "change")
-    --]]
-    else
-        action_set(action, "keep")
-    end
-    return action.action
 end
 
 --
@@ -1525,7 +1526,6 @@ local function __index(action, k)
         pkg_new = determine_pkg_new,
         pkg_old = determine_pkg_old,
         vers_cmp = compare_versions_old_new,
-        action = determine_action,
         startno = __startno,
         jobs = __jobs,
         ignore = check_excluded,

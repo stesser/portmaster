@@ -35,6 +35,9 @@ local CMD = require("portmaster.cmd")
 local Param = require("portmaster.param")
 local Moved = require("portmaster.moved")
 local Excludes = require("portmaster.excludes")
+local Jail = require("portmaster.jail")
+local Progress = require("portmaster.progress")
+local Distfile = require("portmaster.distfiles")
 
 -------------------------------------------------------------------------------------
 local P = require("posix")
@@ -870,7 +873,7 @@ local function perform_install_or_upgrade(action)
                     build_step(preserve_old_shared_libraries)
                 end
                 build_step(preserve_precious)
-                build_step(delete_old_packages) -- PKGS!!!
+                build_step(delete_old_packages)
                 build_step(recover_precious)
                 RunnableLock:release(action.depends.pkg)
                 -- <<<< RunnableLock(action.depends.pkg)
@@ -1690,24 +1693,164 @@ local function new(Action, args)
     end
 end
 
+--
+local function sort_list(action_list)
+    --local max_str = tostring(#action_list)
+    local sorted_list = {}
+    local function add_deps(action)
+        local function add_deps_of_type(type)
+            local deps = action.depends[type]
+            if deps then
+                for _, pkg_new in ipairs(deps) do
+                    local a = get(pkg_new)
+                    --TRACE("ADD_DEPS", type, a and rawget(a, "action"), origin.name, origin.pkg_new, origin.pkg_new and rawget(origin.pkg_new, "is_installed"))
+                    if a and not rawget(a, "planned") and a.pkg_new and not rawget(a.pkg_new, "is_installed") then
+                        add_deps(a)
+                    end
+                end
+            end
+        end
+        if not rawget(action, "planned") then
+            local p_n = action.pkg_new
+            local buildrequired = p_n and not action.use_pkgfile
+            if buildrequired then
+                TRACE("BUILDREQUIRED!", p_n.name)
+                add_deps_of_type("pkg")
+                add_deps_of_type("build")
+                add_deps_of_type("special")
+                assert(not rawget(action, "planned"), "Dependency loop for: " .. (rawget(action, "name") or "<nil>"))
+            end
+            local providerequired = action.do_provide
+            local installrequired = action.do_install
+            if providerequired or installrequired then
+                add_deps_of_type("run")
+                table.insert(sorted_list, action)
+                action.listpos = #sorted_list
+                action.planned = true
+                action.providerequired = providerequired
+                action.installrequired = installrequired
+                action.is_provide = true -- XXX TEMPORARY ???
+                action.name = action.name or ("Provide " .. action.short_name)
+                Msg.show {"[" .. tostring(#sorted_list) .. "]", action.name}
+            else
+                Msg.show {"SKIPPING", tostring(action)}
+            end
+        end
+    end
+
+    Msg.show {start = true, "Sort", #action_list, "actions"}
+    for _, a in ipairs(action_list) do
+        Msg.show {start = true}
+        add_deps(a)
+    end
+    TRACE("SORT->", #action_list, #sorted_list)
+    -- assert (#action_list == #sorted_list, "action_list items have been lost: " .. #action_list .. " vs. " .. #sorted_list)
+    return sorted_list
+end
+
+--
+local function perform_actions(action_list)
+    if tasks_count() == 0 then
+        -- ToDo: suppress if no updates had been requested on the command line
+        Msg.show {start = true, "No installations or upgrades required"}
+    else
+        show_statistics(action_list)
+        if Options.fetch_only then
+            if Msg.read_yn("y", "Fetch and check distfiles required for these upgrades now?") then
+                Distfile.fetch_finish()
+                --check_fetch_success() -- display list of missing or wrong distfiles, if any
+            end
+        else
+            Progress.clear()
+            if Msg.read_yn("y", "Perform these upgrades now?") then
+                -- perform the planned tasks in the order recorded in action_list
+                Param.phase = "build"
+                Msg.show {start = true}
+                Progress.set_max(tasks_count())
+                --
+                if Options.jailed then
+                    Jail.create()
+                end
+                perform_upgrades(action_list)
+                -- if Options.hide_build then -- shell_pipe ("cat > /dev/tty", BUILDLOG)
+                if Options.jailed then
+                    Jail.destroy()
+                end
+                Progress.clear()
+                if Options.repo_mode then
+                    perform_repo_update()
+                else
+                    Param.phase = "install"
+                    --[[
+                    -- XXX fold into perform_upgrades()???
+                    -- new action verb required???
+                    -- or just a plain install from package???)
+                    if #DELAYED_INSTALL_LIST > 0 then -- NYI to be implemented in a different way
+
+                        perform_delayed_installations()
+                    end
+                    --]]
+                end
+            end
+            if tasks_count() == 0 then
+                Msg.show {start = true, "All requested actions have been completed"}
+            end
+            Progress.clear()
+            Param.phase = ""
+        end
+    end
+    return true
+end
+
+--
+local function report_results(action_list)
+    local function reportlines(cond, msg, field)
+        for _, action in ipairs(action_list) do
+            if cond(action) then
+                if msg then
+                    Msg.show{start = true, msg}
+                    msg = nil
+                end
+                --TRACE("ACTION", action)
+                Msg.show{action.short_name .. ": ".. action[field] or ""}
+            end
+        end
+    end
+    local function installed_filter(action)
+        return rawget(action, "buildstate") and rawget(action.buildstate, "install")
+    end
+    local function packaged_filter(action)
+        return rawget(action, "buildstate") and rawget(action.buildstate, "package")
+    end
+    local function ignored_filter(action)
+        return rawget(action, "ignore")
+    end
+    local function failed_filter(action)
+        return rawget(action, "failed_msg") and not ignored_filter(action)
+    end
+    --TRACE("REPORT_RESULTS")
+    Msg.show{start = true, "Build results:"}
+    --TRACE("REPORT_RESULT", a)
+    reportlines(failed_filter, "Build failures", "failed_msg")
+    reportlines(ignored_filter, "Ignored packages", "failed_msg")
+    reportlines(packaged_filter, "Package files created", "short_name")
+    reportlines(installed_filter, "Packages installed", "name")
+end
+
 -------------------------------------------------------------------------------------
 --
 return {
     new = new,
     get = get,
-    describe = describe,
-    --execute = execute,
     packages_delete_stale = packages_delete_stale,
-    -- register_delayed_installs = register_delayed_installs,
-    --sort_list = sort_list,
+    sort_list = sort_list,
     check_licenses = check_licenses,
     check_conflicts = check_conflicts,
-    --port_options = port_options,
     dump_cache = dump_cache,
     list = list,
     tasks_count = tasks_count,
-    show_statistics = show_statistics,
-    perform_upgrades = perform_upgrades,
+    perform_actions = perform_actions,
+    report_results = report_results,
     log = log,
 }
 

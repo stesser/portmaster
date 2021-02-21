@@ -710,10 +710,12 @@ local function perform_install_or_upgrade(action)
             action:log {level = 1, "Deinstall old version", p_o.name}
             local out, err, exitcode = p_o:deinstall()
 --            register_deinstallation(p_o, exitcode == 0) -- allow automatic packages to be deleted after last dependency is gone
+            --[[ ignore deinstall failure - may be caused by file to be deleted missing
             if exitcode ~= 0 then
                 -- XXX try to recover from failed deinstallation - reinstall backup package?
                 fail(action, "Failed to deinstall old version", err)
             end
+            --]]
         end
     end
     local function recover_precious()

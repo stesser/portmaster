@@ -1607,15 +1607,15 @@ local function action_list_add(action)
             if action.do_upgrade or action.do_provide then
                 local listpos = rawget(action, "listpos")
                 if not listpos then
-                    listpos = #ACTION_LIST + 1
-                    action.listpos = listpos
-                    Msg.show {listpos, describe(action)}
                     if not action.skip_install and (action.do_provide or action.do_install) then
                         RunnableLock = RunnableLock or Lock:new("RunnableLock") -- XXX dead-lock due to double locking !!!
                         -- >>>> RunnableLock(p_n.name)
                         RunnableLock:acquire{p_n.name} -- acquire exclusive lock until package is runnable
                         TRACE("RUNNABLE_LOCK_ACQUIRE", p_n.name)
                     end
+                    listpos = #ACTION_LIST + 1
+                    action.listpos = listpos
+                    Msg.show {listpos, describe(action)}
                 end
                 TRACE("ACTION_LIST_ADD", action.listpos, action.short_name)
                 ACTION_LIST[listpos] = action

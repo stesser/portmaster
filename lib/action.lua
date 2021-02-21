@@ -288,26 +288,6 @@ local function portdb_update_origin(action)
     return true
 end
 
---[=[
--- check for build conflicts immediately before a port build is started
-local function check_build_conflicts(action)
-    local origin = action.o_n
-    local build_conflicts = origin.build_conflicts
-    local result = {}
-    --
-    for i, pattern in ipairs(pattern_list) do
-        for j, pkgname in ipairs(PkgDb.query {
-            table = true,
-            glob = true,
-            "%n-%v",
-            pattern
-        }) do table.insert(result, pkgname) end
-    end
-    -- ]]
-    return result
-end
---]=]
-
 -- create package file from staging area of previously built port
 local function package_create(action)
     local o_n = action.pkg_new and action.pkg_new.origin
@@ -1812,8 +1792,25 @@ Conflicts:
 
 --]]
 
+--[=[
+-- check for build conflicts immediately before a port build is started
+local function check_build_conflicts(action)
+    local origin = action.o_n
+    local build_conflicts = origin.build_conflicts
+    local result = {}
+    --
+    for i, pattern in ipairs(pattern_list) do
+        for j, pkgname in ipairs(PkgDb.query {
+            table = true,
+            glob = true,
+            "%n-%v",
+            pattern
+        }) do table.insert(result, pkgname) end
+    end
+    -- ]]
+    return result
+end
 
---[[
 -- delete build dependencies after dependent ports have been built
 local function perform_post_build_deletes(origin)
     local origins = DEP_DEL_AFTER_BUILD[origin.name]
@@ -1852,9 +1849,7 @@ local function perform_delayed_installation(action)
            "Installation of " .. p_n.name .. " from " .. pkgfile .. " failed")
     Msg.success_add(taskmsg)
 end
---]]
 
---[[
 -------------------------------------------------------------------------------------
 -- update changed port origin in the package db and move options file
 local function perform_origin_change(action)
@@ -1888,9 +1883,7 @@ local function perform_pkg_rename(action)
     action.done = true
     return not failed(action)
 end
---]]
 
---[=[
 --
 local function action_enrich(action)
     --[[

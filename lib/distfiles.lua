@@ -181,7 +181,7 @@ end
 local function fetch_finish()
    --TRACE("FETCH_FINISH")
    if fetch_lock then
-      Exec.finish_spawned(fetch, "Finish background fetching and checking of distribution files")
+      Exec.finish_spawned(dist_fetch, "Finish background fetching and checking of distribution files")
       fetch_lock:destroy()
       fetch_lock = false -- prevent further use as a table
    end

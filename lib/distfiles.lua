@@ -31,7 +31,6 @@ local Lock = require("portmaster.lock")
 local Param = require("portmaster.param")
 
 -------------------------------------------------------------------------------------
-local DISTINFO_CACHE = {}
 
 --[[
 TIMESTAMP = 1587747990
@@ -63,41 +62,45 @@ local function parse_distinfo(origin)
 end
 
 --
+local DISTINFO_CACHE = {}
+
 local function generate_distinfo(origin)
    local result = {}
+   --TRACE("GENERATE_DISTINFO:", origin.name, origin.distfiles or {})
    for _, v in ipairs(origin.distfiles or {}) do
       v = string.match(v, "^(.*):") or v
-      result[v] = {}
+      result[v] = rawget(DISTINFO_CACHE, v) or {}
    end
-   --TRACE("GENERATE_DISTINFO", origin.name, result)
+   --TRACE("GENERATE_DISTINFO->", origin.name, result)
    return result
 end
 
 -- perform "make checksum", analyse status message and write success status to file (meant to be executed in a background task)
-local fetch_lock
+local FetchLock
 
 local function dist_fetch(origin)
    local function update_distinfo_cache(distinfo)
       local port = origin.port
       for file, di in pairs(distinfo) do
-         --TRACE("UPDATE_DISTINFO_CACHE", file)
+         --TRACE("UPDATE_DISTINFO_CACHE", file, DISTINFO_CACHE[file], di)
          local di_c = DISTINFO_CACHE[file]
          if di_c and next(di) then
             --TRACE("DI", di, di_c)
             assert(di.SIZE == di_c.SIZE and di.SHA256 == di_c.SHA256 and di.TIMESTAMP == di_c.TIMESTAMP,
-                  "Distinfo mismatch for " .. file .. " between " .. port .. " and " .. di.port[1])
-            table.insert(di_c.port, port)
+                  "Distinfo mismatch for " .. file .. " between " .. port .. " and " .. di.ports[1])
+            table.insert(di_c.ports, port)
          else
-            di_c = {SIZE = di.SIZE, SHA256 = di.SHA256, TIMESTAMP = di.TIMESTAMP, port = {port}}
+            di_c = {SIZE = di.SIZE, SHA256 = di.SHA256, TIMESTAMP = di.TIMESTAMP, ports = {port}}
             DISTINFO_CACHE[file] = di_c
          end
+         --TRACE("UPDATE_DISTINFO_CACHE->", file, DISTINFO_CACHE[file])
       end
    end
    local function fetch_required(filenames)
       local unchecked = {}
       table.sort(filenames)
       for _, file in ipairs(filenames) do
-         --TRACE("FETCH_REQUIRED?", file)
+         --TRACE("FETCH_REQUIRED?", file, DISTINFO_CACHE[file])
          if DISTINFO_CACHE[file].checked == nil then
             --TRACE("FETCH_REQUIRED!", file)
             table.insert(unchecked, file)
@@ -121,12 +124,11 @@ local function dist_fetch(origin)
    local unchecked = fetch_required(distfiles)
    if #unchecked > 0 then
       unchecked.tag = port.name
-      fetch_lock = fetch_lock or Lock:new("FetchLock")
+      FetchLock = FetchLock or Lock:new("FetchLock")
       -- >>>> FetchLock(unchecked)
-      fetch_lock:acquire(unchecked)
+      FetchLock:acquire(unchecked)
       local really_unchecked = fetch_required(unchecked) -- fetch again since we may have been blocked and sleeping
       if #really_unchecked > 0 then
-         setall(distinfo, "fetching", true)
          --TRACE("FETCH_MISSING", really_unchecked)
          local lines, err, exitcode = origin:port_make{
             as_root = Param.distdir_ro,
@@ -145,13 +147,13 @@ local function dist_fetch(origin)
             if files then
                success = false
                for _, file in ipairs(split_words(files)) do
+                  --TRACE("DISTINFO_CACHE", "checked", false, file)
                   DISTINFO_CACHE[file].checked = false
                end
             end
          end
-         setall(distinfo, "fetching", false)
       end
-      fetch_lock:release(unchecked)
+      FetchLock:release(unchecked)
       -- <<<< FetchLock(unchecked)
    end
    --TRACE("FETCH->", port, success)
@@ -165,14 +167,14 @@ end
 
 --
 local function fetch_wait(origin)
-   if fetch_lock then
+   if FetchLock then
       local distfiles = origin.distfiles
       --TRACE("FETCH_WAIT", distfiles)
       distfiles.shared = true
       distfiles.tag = origin.name
       -- >>>> FetchLock(distfiles, SHARED)
-      fetch_lock:acquire(distfiles)
-      fetch_lock:release(distfiles) -- release immediately
+      FetchLock:acquire(distfiles)
+      FetchLock:release(distfiles) -- release immediately
       -- <<<< FetchLock(distfiles, SHARED)
    end
 end
@@ -180,10 +182,10 @@ end
 --
 local function fetch_finish()
    --TRACE("FETCH_FINISH")
-   if fetch_lock then
+   if FetchLock then
       Exec.finish_spawned(dist_fetch, "Finish background fetching and checking of distribution files")
-      fetch_lock:destroy()
-      fetch_lock = false -- prevent further use as a table
+      FetchLock:destroy()
+      FetchLock = false -- prevent further use as a table
    end
 end
 

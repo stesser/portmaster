@@ -28,6 +28,10 @@ SUCH DAMAGE.
 -------------------------------------------------------------------------------------
 local Exec = require("portmaster.exec")
 local Param = require("portmaster.param")
+local Trace = require("portmaster.trace")
+
+-------------------------------------------------------------------------------------
+local TRACE = Trace.trace
 
 -------------------------------------------------------------------------------------
 -- query package DB for passed origin (with optional flavor) or passed package name

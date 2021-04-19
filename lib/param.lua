@@ -28,6 +28,10 @@ SUCH DAMAGE.
 -------------------------------------------------------------------------------------
 local CMD = require("portmaster.cmd")
 local P = require("posix")
+local Trace = require("portmaster.trace")
+
+-------------------------------------------------------------------------------------
+local TRACE = Trace.trace
 
 local geteuid = P.geteuid
 local getpwuid = P.getpwuid
@@ -126,19 +130,20 @@ local function __tty_columns(param, k)
 end
 
 local function __ncpu(param, k)
-    --[[
-    local pipe = io.popen(CMD.sysctl .. " -n hw.ncpu") -- do not rely on Exec.pkg!!!
-    local ncpu = pipe:read("*n")
-    pipe:close()
-    --]]
-    return tonumber(os.getenv("_SMP_CPUS"))
+    local ncpu = tonumber(os.getenv("_SMP_CPUS"))
+    if not ncpu then
+        local pipe = io.popen(CMD.sysctl .. " -n hw.ncpu") -- do not rely on Exec.pkg!!!
+        ncpu = pipe:read("*n")
+        pipe:close()
+    end
+    return ncpu
 end
 
 -- maximum number of make jobs - twice the number of CPU threads?
 local function __maxjobs(param, k)
     local overcommit = 1
     local offset = 2
-    return math.floor(param.ncpu * overcommit + offset)
+    return math.floor(__ncpu() * overcommit + offset)
 end
 
 local function __uid(param, k)

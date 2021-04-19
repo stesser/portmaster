@@ -34,6 +34,10 @@ local getpid = P_US.getpid
 
 local Param = require("portmaster.param")
 local CMD = require("portmaster.cmd")
+local Trace = require("portmaster.trace")
+
+-------------------------------------------------------------------------------------
+local TRACE = Trace.trace
 
 -------------------------------------------------------------------------------------
 -- set sane defaults and cache some buildvariables in the environment

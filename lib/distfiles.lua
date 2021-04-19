@@ -29,9 +29,12 @@ SUCH DAMAGE.
 local Exec = require("portmaster.exec")
 local Lock = require("portmaster.lock")
 local Param = require("portmaster.param")
+local Trace = require("portmaster.trace")
 
 -------------------------------------------------------------------------------------
+local TRACE = Trace.trace
 
+-------------------------------------------------------------------------------------
 --[[
 TIMESTAMP = 1587747990
 SHA256 (bash/bash-5.0.tar.gz) = b4a80f2ac66170b2913efbfb9f2594f1f76c7b1afd11f799e22035d63077fb4d
@@ -76,7 +79,7 @@ local function generate_distinfo(origin)
 end
 
 -- perform "make checksum", analyse status message and write success status to file (meant to be executed in a background task)
-local FetchLock
+FetchLock = Lock:new("FetchLock")
 
 local function dist_fetch(origin)
    local function update_distinfo_cache(distinfo)
@@ -124,7 +127,6 @@ local function dist_fetch(origin)
    local unchecked = fetch_required(distfiles)
    if #unchecked > 0 then
       unchecked.tag = port.name
-      FetchLock = FetchLock or Lock:new("FetchLock")
       -- >>>> FetchLock(unchecked)
       FetchLock:acquire(unchecked)
       local really_unchecked = fetch_required(unchecked) -- fetch again since we may have been blocked and sleeping

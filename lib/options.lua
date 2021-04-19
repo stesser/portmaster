@@ -29,6 +29,10 @@ SUCH DAMAGE.
 local Excludes = require("portmaster.excludes")
 local Msg = require("portmaster.msg")
 local Param = require("portmaster.param")
+local Trace = require("portmaster.trace")
+
+-------------------------------------------------------------------------------
+local TRACE = Trace.trace
 
 -------------------------------------------------------------------------------------
 local P = require "posix"
@@ -209,7 +213,14 @@ local function rcfile_tryload(filename)
 end
 
 -- set package format option with check for supported values
-local VALID_FORMATS = {tar = true, tgz = true, tbz = true, txz = true, zstd = true}
+local VALID_FORMATS = {
+    tar = true,
+    tgz = true,
+    tbz = true,
+    txz = true,
+    zstd = true,
+    bsd = true,
+}
 
 local function set_package_format(var, fmt)
     assert(VALID_FORMATS[fmt], "invalid package format '" .. fmt .. "'")
@@ -811,6 +822,7 @@ local function opt_value_rc(...)
     return table.concat(result, "\n")
 end
 
+--[[
 -- name of restart file dependent on tty name or pid
 local function restart_file_name()
     local id
@@ -883,7 +895,6 @@ do return end
     Msg.show {"Restart information has been written to", filename}
 end
 
---[[
 -- register upgrade in the restart case where no dependency checks have been performed
 local function register_upgrade_restart(dep_type, o_o, o_n,
                                         pkgname_old, pkgname_new, pkgfile, ...)
@@ -977,7 +988,7 @@ end
 --]]
 
 Options.init = init
-Options.save = save
+-- Options.save = save
 -- Options.restart_file_load = restart_file_load
 
 return Options

@@ -26,6 +26,11 @@ SUCH DAMAGE.
 --]]
 
 -------------------------------------------------------------------------------------
+local Trace = require("portmaster.trace")
+
+-------------------------------------------------------------------------------------
+local TRACE = Trace.trace
+
 --
 local EXCLUDED_PKG = {}
 local EXCLUDED_PKG_PREFIX = {}

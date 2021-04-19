@@ -29,6 +29,10 @@ SUCH DAMAGE.
 local LocksTable = {} -- table containing all created lock tables
 local tasks_blocked = 0 -- number of coroutines blocked by wait_cond
 local BlockedTasks = {} -- table of all currently blocked lock requests
+local Trace = require("portmaster.trace")
+
+-------------------------------------------------------------------------------
+local TRACE = Trace.trace
 
 local function tracelockstate(lock)
     --TRACE("LocksTable(" .. lock.name .. ")", lock)

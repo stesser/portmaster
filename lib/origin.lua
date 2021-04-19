@@ -31,10 +31,12 @@ local Options = require("portmaster.options")
 local Distfile = require("portmaster.distfiles")
 local Exec = require("portmaster.exec")
 local Param = require("portmaster.param")
+local Trace = require("portmaster.trace")
 
 -------------------------------------------------------------------------------------
 local P_US = require("posix.unistd")
 local access = P_US.access
+local TRACE = Trace.trace
 
 -------------------------------------------------------------------------------------
 -- return port name without flavor
@@ -235,14 +237,14 @@ local function dump_cache()
     local t = ORIGINS_CACHE
     for i, v in ipairs(table.keys(t)) do
         if t[v] then
-            --TRACE("ORIGINS_CACHE", i, v, t[v])
+            TRACE("ORIGINS_CACHE", i, v, t[v])
         else
-            --TRACE("ORIGINS_CACHE", i, v, "ALIAS", ORIGIN_ALIAS[v])
+            TRACE("ORIGINS_CACHE", i, v, "ALIAS", ORIGIN_ALIAS[v])
         end
     end
-    local t = ORIGIN_ALIAS
+    t = ORIGIN_ALIAS
     for i, v in ipairs(table.keys(t)) do
-        --TRACE("ORIGIN_ALIAS", i, v, t[v])
+        TRACE("ORIGIN_ALIAS", i, v, t[v])
     end
 end
 
@@ -258,6 +260,8 @@ local __port_vars_table = {
     "IGNORE",
     "IS_INTERACTIVE",
     "NO_BUILD",
+    "MAKE_JOBS_NUMBER",
+    "MAKE_JOBS_NUMBER_LIMIT",
     "MAKE_JOBS_UNSAFE",
     "DISABLE_MAKE_JOBS",
     "LICENSE",
@@ -335,8 +339,8 @@ local function __port_vars(origin, k, recursive)
         origin.distinfo_file = t.DISTINFO_FILE
         set_bool(origin, "is_interactive", t.IS_INTERACTIVE)
         set_bool(origin, "no_build", t.NO_BUILD)
-        origin.make_jobs_number = t.MAKE_JOBS_NUMBER
-        origin.make_jobs_number_limit = t.MAKE_JOBS_NUMBER_LIMIT
+        origin.make_jobs_number = tonumber(t.MAKE_JOBS_NUMBER)
+        origin.make_jobs_number_limit = tonumber(t.MAKE_JOBS_NUMBER_LIMIT) or origin.make_jobs_number
         set_bool(origin, "make_jobs_unsafe", t.MAKE_JOBS_UNSAFE)
         set_bool(origin, "disable_make_jobs", t.DISABLE_MAKE_JOBS)
         set_table(origin, "license", t.LICENSE)

@@ -29,83 +29,87 @@ SUCH DAMAGE.
 
 -------------------------------------------------------------------------------------
 local Action = require("portmaster.action")
-local Msg = require("portmaster.msg")
 local Options = require("portmaster.options")
 local Exec = require("portmaster.exec")
-local PkgDb = require("portmaster.pkgdb")
 local Param = require("portmaster.param")
+local Trace = require("portmaster.trace")
 
 -------------------------------------------------------------------------------------
 local P_US = require("posix.unistd")
 local access = P_US.access
+local TRACE = Trace.trace
 
+-------------------------------------------------------------------------------------
 --
 local function add_action(args)
     Exec.spawn(Action.new, Action, args) -- XXX need to protect against simultanouos spawns for the same pkg_new !!!
-    TRACE ("ADD_ACTION_SPAWNED", table.keys(args))
+    TRACE("ADD_ACTION_SPAWNED", args)
 end
+
+--local REQ_FOR_TABLE = { build = {}, run = {} }
 
 --
 local function add_missing_deps(action_list) -- XXX need to also add special dependencies, somewhat similar to build dependencies
     -- verify run dependencies of up-to-date ports exist and are not downlevel, too!!!
-    local dep_table
-    local function check_depends(a, type)
-        local deps = a.pkg_new and a.pkg_new.depends[type] or {} -- [dep_var_name] or {}
-        TRACE("DEPS", type, a.pkg_new, deps)
-        for _, dep in ipairs(deps) do
-            deps = dep_table[dep] or {}
-            deps[type] = true
-            dep_table[dep] = deps
+    local build_dep_table -- table indexed by [pkgname]
+    local run_dep_table   -- table indexed by [pkgname]
+    local function add_depends(a, type, is_build_dep, is_run_dep)
+        local deps = a.pkg_new and a.pkg_new.depends[type]
+        if deps then
+            local pkg_name = a.pkg_new.name
+            TRACE("DEPS", type, pkg_name, deps)
+            for _, dep_pkg in ipairs(deps) do
+                build_dep_table[dep_pkg] = build_dep_table[dep_pkg] or is_build_dep
+                run_dep_table[dep_pkg] = run_dep_table[dep_pkg] or is_run_dep
+            end
         end
     end
     local function process_depends(deps)
-        for dep, types in pairs(deps) do
-            TRACE("PROCESS_DEPENDS", dep, table.concat(table.keys(types), "/"))
-            local p = Package.get(dep)
-            for type, _ in pairs(types) do
-                local dep_stat_var = "is_" .. type .. "_dep" -- rename is_build_dep --> is_dep.build
-                if not (p.is_installed or p[dep_stat_var]) or Param.force or Param.jailed then -- XXX is_installed --> status.installed
-                    local app_dep_hdr = "Add " .. dep .. " as " .. type .. " dependency"
-                    Msg.show {level = 2, start = true and false, app_dep_hdr}
-                    --app_dep_hdr = nil
-                    p[dep_stat_var] = true
-                    --Msg.show{level = 2, "Add", type, "dependency", p.name}
-                end
-            end
+        for dep_pkg, is_build_dep in pairs(build_dep_table) do
+            local is_run_dep = run_dep_table[dep_pkg]
+            TRACE("PROCESS_DEPENDS", dep_pkg, is_build_dep, is_run_dep)
+            local p = Package.get(dep_pkg)
             add_action{
                 pkg_new = p,
+                is_run_dep = is_run_dep,
+                is_build_dep = is_build_dep,
             }
         end
     end
     local start_elem = 1
     while start_elem <= #action_list do
-        dep_table = {}
+        build_dep_table = {}
+        run_dep_table = {}
         local last_elem = #action_list
         for i = start_elem, last_elem do
             local a = action_list[i]
             TRACE("ADD_MISSING_DEPS", i, #action_list, a)
-            if rawget(a, "pkg_new") and rawget(a.pkg_new, "is_installed") and not Options.force and not Options.jailed then
-                --check_depends(a, "pkg")
-                check_depends(a, "run")
+            if not (a.is_locked or a.ignore) and a.plan.build then
+                --was: Options.force or Options.jailed or not (rawget(a, "pkg_new") and rawget(a.pkg_new, "is_installed")) then
+                add_depends(a, "pkg", true, false)
+                add_depends(a, "build", true, false)
+                add_depends(a, "special", true, false)
+                add_depends(a, "run", rawget(a, "is_build_dep"), true)
             else
-                check_depends(a, "pkg")
-                check_depends(a, "build")
-                check_depends(a, "special")
-                check_depends(a, "run")
+                add_depends(a, "run", false, true)
             end
         end
-        process_depends(dep_table)
+        process_depends()
+        --TRACE("WAIT(NEW)START")
         Exec.finish_spawned(Action.new)
+        --TRACE("WAIT(NEW)END")
         start_elem = last_elem + 1
     end
 end
 
 --
 local function ports_update(filters)
-    local pkgs, rest = Package:installed_pkgs(), {}
+    local pkgs, rest = Package:all_pkgs(), {}
     for _, filter in ipairs(filters) do
-        for _, pkg in ipairs(pkgs) do
+        for pkgname, pkg in pairs(pkgs) do
+            TRACE("PORT_UPDATE?", pkg)
             local selected, force = filter(pkg)
+            TRACE("PORT_UPDATE->", pkg, selected, force)
             if selected then
                 add_action{
                     is_user = true,
@@ -113,7 +117,7 @@ local function ports_update(filters)
                     pkg_old = pkg
                 }
             else
-                table.insert(rest, pkg)
+                rest[pkgname] = pkg
             end
         end
         pkgs, rest = rest, {}
@@ -145,14 +149,14 @@ local function add_multiple(args)
     for _, v in ipairs(args) do
         if string.match(v, "/") and access(path_concat(Param.portsdir, v, "Makefile"), "r") then
             local o = Origin:new(v)
-            local p = o.pkg_new
+            local p = o.pkg_new -- SLOW !!!
             if p then
-            p.origin = o
-            add_action{
-                is_user = true,
-                force = Options.force,
-                pkg_new = p
-            }
+                p.origin = o
+                add_action{
+                    is_user = true,
+                    force = Options.force,
+                    pkg_new = p
+                }
             end
         end
     end
@@ -177,22 +181,24 @@ local function add_multiple(args)
    --]]
 end
 
+--[[
 -- process all outdated ports (may upgrade, install, change, or delete ports)
 -- process all ports with old ABI or linked against outdated shared libraries
+local current_libs
+
 local function add_all_outdated()
-    local function load_current_libs()
-        local t = {}
-        for _, lib in ipairs(PkgDb.query {table = true, "%b"}) do
-            t[lib] = true
-        end
-        return t
-    end
     -- filter return values are: match, force
     local function filter_old_abi(pkg)
-        return pkg.abi ~= Param.abi and pkg.abi ~= Param.abi_noarch, false -- true XXX
+        return pkg.installed_abi ~= Param.abi and pkg.installed_abi ~= Param.abi_noarch, false -- true XXX
     end
-    local current_libs
     local function filter_old_shared_libs(pkg)
+        local function load_current_libs()
+            local t = {}
+            for _, lib in ipairs(PkgDb.query {table = true, "%b"}) do
+                t[lib] = true
+            end
+            return t
+        end
         if pkg.shared_libs then
             current_libs = current_libs or load_current_libs()
             for i, lib in pairs(pkg.shared_libs) do
@@ -205,6 +211,7 @@ local function add_all_outdated()
         end
     end
     local function filter_is_required(pkg)
+        TRACE("IS_REQUIRED?", pkg)
         return not pkg.is_automatic or pkg.num_depending > 0, false
     end
     local function filter_pass_all()
@@ -212,11 +219,23 @@ local function add_all_outdated()
     end
 
     ports_update {
-        filter_old_abi,
+--        filter_old_abi,
         --filter_old_shared_libs, -- currently a NOP since both sets of libraries are obtained with pkg query %b
-        filter_is_required,
+--        filter_is_required,
         filter_pass_all,
     }
+end
+--]]
+
+--
+local function add_all_installed()
+    for _, pkg in pairs(Package:all_pkgs()) do
+        add_action{
+            is_user = true,
+            force = Options.force,
+            pkg_old = pkg
+        }
+    end
 end
 
 --
@@ -242,14 +261,22 @@ local function execute()
     --]]
 
     -- end of scan phase, all required actions are known at this point, builds may start
+    Action.start_phase("build")
     Action.perform_actions(action_list)
+    Action.start_phase("finish")
 
     Action.report_results(action_list)
 end
 
+local function init()
+    Action.block_phase("build")
+    Action.block_phase("finish")
+end
+
 return {
     add_multiple = add_multiple,
-    add_all_outdated = add_all_outdated,
+    add_all_installed = add_all_installed,
+    init = init,
     execute = execute,
 }
 

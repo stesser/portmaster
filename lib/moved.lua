@@ -1,7 +1,7 @@
 --[[
 SPDX-License-Identifier: BSD-2-Clause-FreeBSD
 
-Copyright (c) 2019, 2020 Stefan Eßer <se@freebsd.org>
+Copyright (c) 2019-2021 Stefan Eßer <se@freebsd.org>
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions
@@ -25,11 +25,17 @@ OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 SUCH DAMAGE.
 --]]
 
+-- ToDo: integrate back into Origin module
+
 -------------------------------------------------------------------------------------
 local Msg = require("portmaster.msg")
 local Param = require("portmaster.param")
 local Posix = require("posix")
 local Origin = require("portmaster.origin")
+local Trace = require("portmaster.trace")
+
+-------------------------------------------------------------------------------
+local TRACE = Trace.trace
 
 -------------------------------------------------------------------------------------
 local MOVED_CACHE  -- table indexed by old origin (as text) and giving struct with new origin (as text), date and reason for move

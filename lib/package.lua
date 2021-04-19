@@ -34,6 +34,7 @@ local Msg = require("portmaster.msg")
 local Exec = require("portmaster.exec")
 local CMD = require("portmaster.cmd")
 local Param = require("portmaster.param")
+local Trace = require("portmaster.trace")
 
 -------------------------------------------------------------------------------------
 local P = require("posix")
@@ -47,6 +48,8 @@ local stat_isreg = P_SS.S_ISREG
 
 local P_US = require("posix.unistd")
 local access = P_US.access
+
+local TRACE = Trace.trace
 
 -------------------------------------------------------------------------------------
 -- the Package class describes a package with optional package file
@@ -393,6 +396,7 @@ local function check_default_version(origin_name, pkgname)
 end
 
 -------------------------------------------------------------------------------------
+--local PACKAGES_VERSIONS = {}
 local PACKAGES_CACHE = {} -- should be local with iterator ...
 local PACKAGES_CACHE_LOADED = false -- should be local with iterator ...
 -- setmetatable (PACKAGES_CACHE, {__mode = "v"})
@@ -470,7 +474,7 @@ local function packages_cache_load()
         end
         table.insert(o.old_pkgs, pkgname)
         p.origin = o
-        p.abi = abi
+        p.installed_abi = abi
         p.flavor = f
         p.is_automatic = automatic == "1"
         p.is_locked = locked == "1"
@@ -575,32 +579,21 @@ local function get(pkgname)
 end
 
 --
-local function installed_pkgs()
+local function all_pkgs()
     packages_cache_load()
-    local result = {}
-    for k, v in pairs(PACKAGES_CACHE) do
-        if v.is_installed or Options.jailed then
-            table.insert(result, PACKAGES_CACHE[k])
-        end
-    end
-    return result
+    return PACKAGES_CACHE
 end
 
 -- wait for dependencies to become available
 local function pkgs_from_origin_tables(...)
     local pkgs = {}
     local tables = {...}
-    --TRACE("TABLES", tables)
     for _, t in ipairs(tables) do
-        --TRACE("DEP_PORTS", t)
         if t then
             for _, v in ipairs(t) do
-                --TRACE("DEP_COND", v)
                 local origin = string.match(v, "^[^:]+:(.+)")
-                --TRACE("DEP_PORT", v, origin)
                 if not string.match(origin, ":") then -- ignore special depends
                     local o_n = Origin:new(origin)
-                    --TRACE("PKG_FROM_ORIGIN_TABLES", origin, o_n)
                     local p_n = o_n and o_n.pkg_new
                     if p_n then
                         local pkgname = o_n.pkg_new.name
@@ -629,7 +622,7 @@ local function __index(pkg, k)
         if not o_depends then
             return {}
         end
-        TRACE("O_DEPENDS", o_n.name, o_depends)
+        --TRACE("O_DEPENDS", o_n.name, o_depends)
         local p_depends = {
             build = pkgs_from_origin_tables(
                 o_depends.extract,
@@ -646,22 +639,12 @@ local function __index(pkg, k)
                 o_depends.run
             ),
         }
-        TRACE("P_DEPENDS", pkg.name, p_depends)
+        local pkgname = pkg.name
+        p_depends.build.tag = pkgname
+        p_depends.pkg.tag = pkgname
+        p_depends.run.tag = pkgname
+        --TRACE("P_DEPENDS", pkgname, p_depends)
         return p_depends
-    end
-    local function __pkg_vars(pkg, k)
-        local function set_field(field, v)
-            if v == "" then
-                v = false
-            end
-            pkg[field] = v
-        end
-        local t = PkgDb.query {table = true, "%q\n%k\n%a\n%#r", pkg.name_base}
-        set_field("abi", t[1])
-        set_field("is_locked", t[2] == "1")
-        set_field("is_automatic", t[3] == "1")
-        set_field("num_depending", tonumber(t[4]))
-        return pkg[k]
     end
     local function __origin_from_pkg(pkg, k)
         TRACE("ORIGIN_FROM_PKG", k, pkg)
@@ -687,28 +670,37 @@ local function __index(pkg, k)
             return filename {subdir = "portmaster-backup", ext = Param.backup_format, pkg}
         end
     end
+    local function __default_true()
+       return true
+    end
+    local function __default_false()
+       return false
+    end
+    local function __default_zero()
+        return 0
+    end
     local dispatch = {
-        abi = __pkg_vars,
-        is_automatic = __pkg_vars,
-        is_locked = __pkg_vars,
-        num_depending = __pkg_vars,
+        installed_abi = __default_false,
+        is_automatic = __default_true,
+        is_locked = __default_false,
+        num_depending = __default_zero,
         num_dependencies = load_num_dependencies,
-        -- flavor = get_attribute,
-        -- FreeBSD_version = get_attribute,
+        -- flavor = get_attribute, -- batch loaded at start
+        -- FreeBSD_version = get_attribute, -- batch loaded at start
         name_base = pkg_basename,
         name_base_major = pkg_strip_minor,
         version = pkg_version,
         pkgfile = pkg_lookup,
         bakfile = pkg_lookup,
         pkgfile_abi = __get_abi,
-        -- bakfile_abi = file_get_abi,
-        shared_libs = false, -- batch loaded at start
-        req_shared_libs = false, -- batch loaded at start
-        is_installed = false, -- set for files in package db
+        -- bakfile_abi = file_get_abi, -- UNUSED XXX
+        --shared_libs = false, -- batch loaded at start
+        --req_shared_libs = false, -- batch loaded at start
+        --is_installed = false, -- set for files loaded from package db
         depends = __depends,
         pkg_filename = __pkg_filename,
         bak_filename = __pkg_filename,
-        origin = __origin_from_pkg,
+        --origin = __origin_from_pkg, -- UNUSED XXX
     }
 
     --TRACE("INDEX(p)", pkg, k)
@@ -736,8 +728,8 @@ end
 -- DEBUGGING: DUMP INSTANCES CACHE
 local function dump_cache()
     local t = PACKAGES_CACHE
-    for _, v in ipairs(table.keys(t)) do
-        --TRACE("PACKAGES_CACHE", v, t[v])
+    for k, v in pairs(t) do
+        TRACE("PACKAGES_CACHE", k, v)
     end
 end
 
@@ -751,7 +743,6 @@ local mt = {
 
 -- create new Package object or return existing one for given name
 local function new(Package, name)
-    -- local TRACE = print -- TESTING
     -- assert (type (name) == "string", "Package:new (" .. type (name) .. ")")
     if name then
         local P = PACKAGES_CACHE[name]
@@ -760,6 +751,13 @@ local function new(Package, name)
             P.__class = Package
             setmetatable(P, mt)
             PACKAGES_CACHE[name] = P
+            --[[
+            local basename = pkg_basename(P) -- XXX EXPERIMENTAL PACKAGE VERSIONS TABLE
+            local v = PACKAGES_VERSIONS[basename] or {}
+            v[#v + 1] = name
+            PACKAGES_VERSIONS[basename] = v
+            --TRACE("V", basename, v)
+            --]]
             --TRACE("NEW Package", name)
         else
             --TRACE("NEW Package", name, "(cached)")
@@ -774,7 +772,7 @@ return {
     name = false,
     new = new,
     get = get,
-    installed_pkgs = installed_pkgs,
+    all_pkgs = all_pkgs,
     backup_delete = backup_delete,
     -- backup_create = backup_create,
     delete_old = delete_old,
@@ -796,18 +794,3 @@ return {
     filename = filename,
     compare_versions = compare_versions,
 }
-
---[[
-   Instance variables of class Package:
-   - abi = abi of package as currently installed
-   - categories = table of registered categories of this package
-   - files = table of installed files of this package
---   - pkg_filename = name of the package file
---   - bak_filename = name of the backup file
-   - shlibs = table of installed shared libraries of this package
-   - is_automatic = boolean value whether this package has been automaticly installed
-   - is_locked = boolean value whether this package is locked
-   - num_dependencies = the number of packages required to run this package
-   - num_depending = the number of other packages that depend on this one
-   - origin = the origin string this package has been built from
---]]

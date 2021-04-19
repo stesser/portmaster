@@ -58,6 +58,10 @@ local Msg = require("portmaster.msg")
 local Lock = require("portmaster.lock")
 local CMD = require("portmaster.cmd")
 local Param = require("portmaster.param")
+local Trace = require("portmaster.trace")
+
+-------------------------------------------------------------------------------------
+local TRACE = Trace.trace
 
 -------------------------------------------------------------------------------------
 local P = require("posix")
@@ -408,9 +412,8 @@ local function run(args)
             TRACE("EXEC->", exitcode, "STDOUT=", stdout, "STDERR=", stderr)
         end
         --TRACE("EXEC:STDOUT", tostring(stdout))
-        if stdout == nil and exitcode == 0 then
-            stdout = task_result
-        elseif stdout then
+        stdout = stdout or ""
+        if stdout then
             if args.table then
                 stdout = split_lines(stdout)
             elseif args.split then
@@ -423,7 +426,7 @@ end
 
 ---------------------------------------------------------------------------------------
 -- restrict accesses to the package db to prevent lock timeouts
-local PkgDbLock
+local PkgDbLock = Lock:new("PkgDbLock", 1)
 
 -- run make command
 local function make(args)
@@ -437,7 +440,6 @@ local function make(args)
     local lock_args
     if rd_lock or wr_lock then
         lock_args = {weight = 1, shared = not wr_lock}
-        PkgDbLock = PkgDbLock or Lock:new("PkgDbLock", 1)
         PkgDbLock:acquire(lock_args)
     end
     local stdout, stderr, exitcode = run(args)
@@ -465,9 +467,8 @@ local function pkg(args)
     local out, err, exitcode
     table.insert(args, 1, CMD.pkg)
     local shared = args.safe
-    PkgDbLock = PkgDbLock or Lock:new("PkgDbLock", 1)
     for i = 1, 10 do
-        --TRACE("PKG<-", args)
+        TRACE("PKG<-", i, shared, args[#args-1], args[#args])
         PkgDbLock:acquire{weight = 1, shared = shared}
         out, err, exitcode = run(args) -- XXX retry if exitcode indicates lock timeout occurred
         --TRACE("PKG->", args, exitcode, out, err)

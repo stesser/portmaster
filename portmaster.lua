@@ -68,6 +68,10 @@ local CMD = require("portmaster.cmd")
 local Param = require("portmaster.param")
 local Moved = require("portmaster.moved")
 local Environment = require("portmaster.environment")
+local Trace = require("portmaster.trace")
+
+-------------------------------------------------------------------------------------
+local TRACE = Trace.trace
 
 -------------------------------------------------------------------------------------
 stdin = io.stdin
@@ -82,7 +86,7 @@ local function exit_cleanup(exitcode)
     exitcode = exitcode or 0
     Progress.clear()
     Distfile.fetch_finish()
-    Options.save()
+    --Options.save()
     Msg.success_show()
     if tracefd then
         io.close(tracefd)
@@ -98,61 +102,6 @@ function fail(...)
     Msg.show {"Aborting update"}
     exit_cleanup(1)
     -- not reached
-end
-
---
-local STARTTIMESECS = os.time()
-local tracefd
-local table_expand_level = 3
-
-function TRACE(...)
-    local function as_string(v)
-        v = tostring(v)
-        if v == "" or string.find(v, " ") then
-            return "'" .. v .. "'"
-        end
-        return v
-    end
-    local function table_to_string(t, level, indent)
-        local indent2 = indent .. " "
-        if level <= 0 then
-            return tostring(t)
-        end
-        local result = {}
-        for k, v in pairs(t) do
-            if type(k) ~= "string" or string.sub(k, 1, 1) ~= "_" then
-                k = type(k) == "table" and table_to_string(k, 1, "") or as_string(k)
-                v = type(v) == "table" and table_to_string(v, level - 1, indent2) or as_string(v)
-                result[#result + 1] = k .. " = " .. v
-            end
-        end
-        if #result == 0 then
-            return "{}"
-        elseif #result == 1 then
-            return "{" .. result[1] .. "}"
-        else
-            return "{\n" .. indent2 .. table.concat(result, ",\n" .. indent2) .. "\n" .. indent .. "}"
-        end
-    end
-    if tracefd then
-        local t = {...}
-        local sep = ""
-        local tracemsg = ""
-        for i = 1, #t do
-            local v
-            if type(t[i]) == "table" then
-                v = table_to_string(t[i], table_expand_level, " ")
-            else
-                v = as_string(t[i])
-            end
-            tracemsg = tracemsg .. sep .. v
-            sep = " "
-        end
-        local dbginfo = debug.getinfo(3, "Sl") or debug.getinfo(2, "Sl")
-        tracefd:write(tostring(os.time() - STARTTIMESECS) .. "	" .. (dbginfo.short_src or "(main)") .. ":" ..
-                          dbginfo.currentline .. "\t" .. tracemsg .. "\n")
-        tracefd:flush()
-    end
 end
 
 -- abort script execution with an internal error message on unexpected error
@@ -445,8 +394,7 @@ end
 -- offer to delete old distfiles that are no longer required by any port
 local function clean_stale_distfiles ()
     Msg.show {start = true, "Gathering list of distribution files of all installed ports ..."}
-    local packages = Package.installed_pkgs()
-    for _, pkg in ipairs(packages) do
+    for _, pkg in pairs(Package.all_pkgs()) do
         Exec.spawn (fetch_distinfo, pkg)
     end
     Exec.finish_spawned(fetch_distinfo)
@@ -534,7 +482,7 @@ end
 --
 local function list_origins()
     local origins = {}
-    for k, pkg in ipairs(Package:installed_pkgs()) do
+    for k, pkg in pairs(Package:all_pkgs()) do
         if pkg.num_depending == 0 and not pkg.is_automtic then
             local o = pkg.origin
             if o then
@@ -607,14 +555,14 @@ local function list_ports(mode)
         end
         listdata[pkg_old.name] = result or ""
     end
-    local pkg_list = Package:installed_pkgs()
+    local pkg_list = Package:all_pkgs()
     Msg.show {start = true, "List of installed packages by category:"}
     for _, f in ipairs(filter) do
         local descr = f[1]
         local test = f[2]
         local rest = {}
         local count = 0
-        for _, pkg_old in ipairs(pkg_list) do
+        for _, pkg_old in pairs(pkg_list) do
             if test(pkg_old) then
                 count = count + 1
             end
@@ -622,7 +570,7 @@ local function list_ports(mode)
         if count > 0 then
             Msg.show{start = true, count, descr}
             listdata = {}
-            for _, pkg_old in ipairs(pkg_list) do
+            for pkgname, pkg_old in pairs(pkg_list) do
                 if test(pkg_old) then
                     if mode == "verbose" then
                         Exec.spawn(check_version, pkg_old)
@@ -630,7 +578,7 @@ local function list_ports(mode)
                         listdata[pkg_old.name] = ""
                     end
                 else
-                    table.insert(rest, pkg_old)
+                    rest[pkgname] = pkg_old
                 end
             end
             Exec.finish_spawned()
@@ -644,7 +592,7 @@ local function list_ports(mode)
             pkg_list = rest
         end
     end
-    assert(pkg_list[1] == nil, "not all packages covered in tests")
+    assert(next(pkg_list) == nil, "not all packages covered in tests")
 end
 
 -------------------------------------------------------------------------------------
@@ -655,7 +603,7 @@ local function main()
     -- load option definitions from table
     local args = Options.init()
     if Options.developer_mode then
-        tracefd = io.open("/tmp/pm.log", "w")
+        Trace.init("/tmp/pm.log")
     end
 
     -- do not ask for confirmation if not connected to a terminal
@@ -678,13 +626,15 @@ local function main()
     -- plan tasks based on parameters passed on the command line
     Param.phase = "scan"
 
+    Strategy.init()
+
     if Options.replace_origin then
         if #args ~= 1 then
             error("exactly one port or packages required with -o")
         end
         ports_add_changed_origin("force", args, Options.replace_origin) -- XXX NYI
     elseif Options.all then
-        Strategy.add_all_outdated()
+        Strategy.add_all_installed()
     elseif Options.all_old_abi then
         ports_add_all_old_abi() -- XXX create from ports_add_all_outdated() ??? NYI
     end

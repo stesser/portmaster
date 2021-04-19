@@ -27,6 +27,10 @@ SUCH DAMAGE.
 
 -------------------------------------------------------------------------------------
 local Param = require("portmaster.param")
+local Trace = require("portmaster.trace")
+
+-------------------------------------------------------------------------------
+local TRACE = Trace.trace
 
 -------------------------------------------------------------------------------------
 local stdout = io.stdout
@@ -81,7 +85,7 @@ end
 local columns
 
 local function show(args)
-    -- TRACE ("MSG_SHOW", table.unpack (table.keys (args)), table.unpack (args))
+    --TRACE("MSG_SHOW", args)
     local function empty_line()
         if not State.empty_line then
             stdout:write("\n")

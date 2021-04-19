@@ -1,7 +1,7 @@
 --[[
 SPDX-License-Identifier: BSD-2-Clause-FreeBSD
 
-Copyright (c) 2019, 2020 Stefan Eßer <se@freebsd.org>
+Copyright (c) 2019-2021 Stefan Eßer <se@freebsd.org>
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions
@@ -30,10 +30,12 @@ local Options = require("portmaster.options")
 local Exec = require("portmaster.exec")
 local CMD = require("portmaster.cmd")
 local Param = require("portmaster.param")
+local Trace = require("portmaster.trace")
 
 -------------------------------------------------------------------------------------
 local P_US = require("posix.unistd")
 local rmdir = P_US.rmdir
+local TRACE = Trace.trace
 
 -- ---------------------------------------------------------------------------
 -- fstype, mount point, option (size, ro/rw for fstype="null", or linrdlink for Linux "fdesc")

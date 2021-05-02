@@ -46,6 +46,7 @@ local function init()
     setenv("PID", getpid())
     setenv("LANG", "C")
     setenv("LC_CTYPE", "C")
+    setenv("TZ", "UTC")
     setenv("CASE_SENSITIVE_MATCH", "yes")
     setenv("LOCK_RETRIES", "120")
     setenv("DEV_WARNING_WAIT", "0") -- prevent delays for messages that are not displayed, anyway

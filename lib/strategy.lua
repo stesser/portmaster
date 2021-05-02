@@ -33,6 +33,8 @@ local Options = require("portmaster.options")
 local Exec = require("portmaster.exec")
 local Param = require("portmaster.param")
 local Trace = require("portmaster.trace")
+local Origin = require("portmaster.origin")
+local Package = require("portmaster.package")
 
 -------------------------------------------------------------------------------------
 local P_US = require("posix.unistd")
@@ -106,7 +108,7 @@ end
 local function ports_update(filters)
     local pkgs, rest = Package:all_pkgs(), {}
     for _, filter in ipairs(filters) do
-        for pkgname, pkg in pairs(pkgs) do
+        for _, pkg in ipairs(pkgs) do
             TRACE("PORT_UPDATE?", pkg)
             local selected, force = filter(pkg)
             TRACE("PORT_UPDATE->", pkg, selected, force)
@@ -117,7 +119,7 @@ local function ports_update(filters)
                     pkg_old = pkg
                 }
             else
-                rest[pkgname] = pkg
+                rest[#rest+1] = pkg
             end
         end
         pkgs, rest = rest, {}
@@ -229,7 +231,9 @@ end
 
 --
 local function add_all_installed()
-    for _, pkg in pairs(Package:all_pkgs()) do
+    local all_pkgs = Package:all_pkgs()
+    for _, pkg in ipairs(all_pkgs) do
+        TRACE("ADD_ALL_INSTALLED:", pkg.name)
         add_action{
             is_user = true,
             force = Options.force,

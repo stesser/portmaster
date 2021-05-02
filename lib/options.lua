@@ -39,7 +39,6 @@ local P = require "posix"
 local getopt = P.getopt
 
 local P_US = require("posix.unistd")
-local getpid = P_US.getpid
 local ttyname = P_US.ttyname
 
 -------------------------------------------------------------------------------------
@@ -683,7 +682,7 @@ VALID_OPTS = {
     },
     thorough = {
         letter = "t",
-        descr = "check all dependencies and de_install unused automatic packages",
+        descr = "check all dependencies and de-install unused automatic packages",
         func = function(o, v)
             opt_set(o, v)
         end,
@@ -767,6 +766,19 @@ local function init()
             end
         end
         current_i = i
+    end
+
+    -- do not ask for confirmation if not connected to a terminal
+    if not ttyname(0) then
+        local tty = io.open("/dev/tty", "r")
+        if not tty then
+            Options.no_confirm = true
+        end
+    end
+
+    -- disable setting the terminal title if output goes to a pipe or file
+    if not ttyname(2) then
+        Options.no_term_title = true
     end
 
     -- check for incompatible options and adjust them

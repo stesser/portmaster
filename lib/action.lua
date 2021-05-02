@@ -62,10 +62,11 @@ local function tasks_count()
     return #ACTION_LIST
 end
 
---
+--[[
 local function origin_changed(o_o, o_n) -- move to Origin package !!!
     return o_o and o_o.name ~= "" and o_o ~= o_n and o_o.name ~= string.match(o_n.name, "^([^%%]+)%%")
 end
+--]]
 
 --
 local function action_set(action, verb)
@@ -118,7 +119,7 @@ local function describe(action)
         assert(n_old == 1)
         local p_o = old_pkgs[1]
         local reason = rawget (p_o.origin, "reason") or
-            "Port directory " .. p_o.origin.port .. " has been deleted"
+            ("Port directory " .. p_o.origin.port .. " has been deleted")
         text = "Deinstall " .. p_o.name .. " (" .. reason .. ")"
     elseif action.plan.upgrade then
         local verb
@@ -1090,7 +1091,7 @@ local function show_statistics(action_list)
     end
     num_tasks = tasks_count()
     if num_tasks > 0 then
-        count_actions(action_list)
+        count_actions()
         Msg.show {start = true, "Statistic of planned actions:"}
         local txt = format_install_msg(NUM.deletes, "will be deleted")
         if txt then
@@ -1554,7 +1555,7 @@ local function __index(action, k)
             return not Options.no_post_clean
         end
         local function __check_save_sharedlibs()
-            return Options.save_shared
+            return Options.save_shared and true
         end
         return {
             upgrade = __upgrade_needed,                             -- package is to be installed/upgraded
@@ -1661,8 +1662,8 @@ local mt = {
 --
 local function action_list_add(action)
     TRACE("ACTION_LIST_ADD", action)
-    local old_pkgs = action.old_pkgs
-    local p_n = action.pkg_new
+    --local old_pkgs = action.old_pkgs
+    --local p_n = action.pkg_new
     --if p_n or action.plan.deinstall_old then
     if action.plan.upgrade then
         TRACE("IGNORE?", action.short_name, action.ignore)
@@ -1708,8 +1709,8 @@ local function cache_add(action)
         local p_o = action.old_pkgs[1] -- only 1 old package allowed if p_n == nil
         if p_o then
             cached_action = ACTION_CACHE[p_o.name]
-            ACTION_CACHE[p_o.name] = nil
             if cached_action then
+                ACTION_CACHE[p_o.name] = nil
                 cached_action.short_name = nil
             end
         end
@@ -1721,7 +1722,7 @@ local function cache_add(action)
         end
         TRACE("CACHE_ADD_MERGE", rawget(action, "listpos"), rawget(cached_action, "listpos"), action, cached_action)
         action.old_pkgs = table.union(action.old_pkgs, cached_action.old_pkgs)
-        -- merge force, req_for[], is_user, ... ??? XXX
+
     end
     check_config_allow(action)
     ACTION_CACHE[action.short_name] = action

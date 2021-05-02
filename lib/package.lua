@@ -26,7 +26,7 @@ SUCH DAMAGE.
 --]]
 
 -------------------------------------------------------------------------------------
--- local Origin = require ("portmaster.origin")
+local Origin = require ("portmaster.origin")
 local Excludes = require("portmaster.excludes")
 local Options = require("portmaster.options")
 local PkgDb = require("portmaster.pkgdb")
@@ -401,6 +401,12 @@ local PACKAGES_CACHE = {} -- should be local with iterator ...
 local PACKAGES_CACHE_LOADED = false -- should be local with iterator ...
 -- setmetatable (PACKAGES_CACHE, {__mode = "v"})
 
+--
+local function get(pkgname)
+    return PACKAGES_CACHE[pkgname]
+end
+
+--
 local function shared_libs_cache_load()
     Msg.show {level = 2, start = true, "Load list of shared libraries provided by packages"}
     local p = {}
@@ -409,7 +415,7 @@ local function shared_libs_cache_load()
         local pkgname, lib = string.match(line, "^(%S+) (%S+%.so%..*)")
         if pkgname then
             if pkgname ~= rawget(p, "name") then
-                p = Package.get(pkgname) -- fetch cached package record
+                p = get(pkgname) -- fetch cached package record
                 p.shared_libs = {}
             end
             table.insert(p.shared_libs, lib)
@@ -427,7 +433,7 @@ local function req_shared_libs_cache_load()
         local pkgname, lib = string.match(line, "^(%S+) (%S+%.so%..*)")
         if pkgname then
             if pkgname ~= rawget(p, "name") then
-                p = Package.get(pkgname) -- fetch cached package record
+                p = get(pkgname) -- fetch cached package record
                 p.req_shared_libs = {}
             end
             table.insert(p.req_shared_libs, lib)
@@ -491,7 +497,7 @@ local function packages_cache_load()
     for _, line in ipairs(lines) do
         local pkgname, dep_pkg = string.match(line, "(%S+) (%S+)")
         if pkgname ~= rawget(p, "name") then
-            p = Package.get(pkgname) -- fetch cached package record
+            p = get(pkgname) -- fetch cached package record
             p.dep_pkgs = {}
         end
         p.num_depending = p.num_depending + 1
@@ -573,15 +579,14 @@ local function compare_versions(p1, p2)
     end
 end
 
---
-local function get(pkgname)
-    return PACKAGES_CACHE[pkgname]
-end
-
---
+-- return a copy of the packages cache as a table
 local function all_pkgs()
     packages_cache_load()
-    return PACKAGES_CACHE
+    local result = {}
+    for k, p in pairs(PACKAGES_CACHE) do
+        result[#result+1] = p
+    end
+    return result
 end
 
 -- wait for dependencies to become available

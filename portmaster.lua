@@ -41,7 +41,6 @@ local stat_isdir = P_SS.S_ISDIR
 local P_US = require("posix.unistd")
 local access = P_US.access
 local chdir = P_US.chdir
-local ttyname = P_US.ttyname
 
 --[[
 function trace (event, line)
@@ -56,7 +55,6 @@ local R = require("std.strict")
 -- local _debug = require 'std._debug'(true)
 
 Package = require("portmaster.package")
-Origin = require("portmaster.origin")
 local Options = require("portmaster.options")
 local Msg = require("portmaster.msg")
 local Progress = require("portmaster.progress")
@@ -74,10 +72,6 @@ local Trace = require("portmaster.trace")
 local TRACE = Trace.trace
 
 -------------------------------------------------------------------------------------
-stdin = io.stdin
-tracefd = nil
-
--------------------------------------------------------------------------------------
 -- clean up when script execution ends
 local function exit_cleanup(exitcode)
     if CMD.stty then
@@ -88,9 +82,7 @@ local function exit_cleanup(exitcode)
     Distfile.fetch_finish()
     --Options.save()
     Msg.success_show()
-    if tracefd then
-        io.close(tracefd)
-    end
+    Trace.init() -- implies close of trace file
     os.exit(exitcode)
     -- not reached
 end
@@ -354,26 +346,6 @@ local function delete_empty_directories(path, as_root)
     end
 end
 
--- # delete package files that do not belong to any currently installed port (except portmaster backup packages)
-local function clean_stale_package_files() -- move to new PackageFile module ???
-    error("NYI") -- WIP
-    Package.packages_cache_load() -- fetch if not already cached
-    chdir(Param.packages)
-    local files = scan_files("")
-    local bak_files = {}
-    local pkg_files = {}
-    for i, f in ipairs(files) do
-        local subdir, name, ext = string.match(f, "([^/]*)/(.*)%.(t...?)")
-        print(subdir, name, ext)
-        if subdir then
-            if not Package.get(name) then
-                print ("rm", f)
-            else
-            end
-        end
-    end
-end
-
 -------------------------------------------------------------------------------------
 --
 local distinfo_cache = {}
@@ -394,7 +366,7 @@ end
 -- offer to delete old distfiles that are no longer required by any port
 local function clean_stale_distfiles ()
     Msg.show {start = true, "Gathering list of distribution files of all installed ports ..."}
-    for _, pkg in pairs(Package.all_pkgs()) do
+    for _, pkg in ipairs(Package.all_pkgs()) do
         Exec.spawn (fetch_distinfo, pkg)
     end
     Exec.finish_spawned(fetch_distinfo)
@@ -482,7 +454,7 @@ end
 --
 local function list_origins()
     local origins = {}
-    for k, pkg in pairs(Package:all_pkgs()) do
+    for _, pkg in ipairs(Package:all_pkgs()) do
         if pkg.num_depending == 0 and not pkg.is_automtic then
             local o = pkg.origin
             if o then
@@ -534,16 +506,16 @@ local function list_ports(mode)
         local reason
         if not pkgname_new then
             local o_n = Moved.new_origin(o_o)
-            --TRACE("MOVED??", o_o, o_n)
+            TRACE("MOVED??", o_o, o_n)
             if o_n ~= o_o then
-                reason = o_o.reason
+                reason = rawget(o_o, "reason")
                 if o_n then
                     pkg_new = o_n.pkg_new
                     pkgname_new = pkg_new and pkg_new.name
                 end
             end
         end
-        local result
+        local result = ""
         if not pkgname_new then
             if reason then
                 result = "has been removed: " .. reason
@@ -553,7 +525,13 @@ local function list_ports(mode)
         elseif pkgname_new ~= pkg_old.name then
             result = "needs update to " .. pkgname_new
         end
-        listdata[pkg_old.name] = result or ""
+        if o_o and rawget(o_o, "expiration_date") then
+            if result and result ~= "" then
+                result = result .. " and "
+            end
+            result = result .. "will be removed: " .. o_o.expiration_date .. ": " .. o_o.deprecated
+        end
+        listdata[pkg_old.name] = result
     end
     local pkg_list = Package:all_pkgs()
     Msg.show {start = true, "List of installed packages by category:"}
@@ -562,7 +540,7 @@ local function list_ports(mode)
         local test = f[2]
         local rest = {}
         local count = 0
-        for _, pkg_old in pairs(pkg_list) do
+        for _, pkg_old in ipairs(pkg_list) do
             if test(pkg_old) then
                 count = count + 1
             end
@@ -570,7 +548,7 @@ local function list_ports(mode)
         if count > 0 then
             Msg.show{start = true, count, descr}
             listdata = {}
-            for pkgname, pkg_old in pairs(pkg_list) do
+            for _, pkg_old in ipairs(pkg_list) do
                 if test(pkg_old) then
                     if mode == "verbose" then
                         Exec.spawn(check_version, pkg_old)
@@ -578,7 +556,7 @@ local function list_ports(mode)
                         listdata[pkg_old.name] = ""
                     end
                 else
-                    rest[pkgname] = pkg_old
+                    rest[#rest+1] = pkg_old
                 end
             end
             Exec.finish_spawned()
@@ -606,20 +584,7 @@ local function main()
         Trace.init("/tmp/pm.log")
     end
 
-    -- do not ask for confirmation if not connected to a terminal
-    if not ttyname(0) then
-        stdin = io.open("/dev/tty", "r")
-        if not stdin then
-            Options.no_confirm = true
-        end
-    end
-
-    -- disable setting the terminal title if output goes to a pipe or file
-    if not ttyname(2) then
-        Options.no_term_title = true
-    end
-
-    -- initialize environment variables based on globals set in prior functions
+     -- initialize environment variables based on globals set in prior functions
     Environment.init()
 
     -------------------------------------------------------------------------------------
@@ -667,7 +632,7 @@ local function main()
     end
     -- if Options.clean_compat_libs then clean_stale_compat_libraries () end -- NYI
     if Options.clean_packages then
-        clean_stale_package_files()
+        Packages.clean_stale_files()
     end
     if Options.deinstall_unused then
         packages_delete_stale() -- XXX NYI

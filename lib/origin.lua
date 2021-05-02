@@ -285,6 +285,8 @@ local __port_vars_table = {
     "DIST_SUBDIR",
     "OPTIONS_FILE",
     "WRKDIR",
+    "DEPRECATED",
+    "EXPIRATION_DATE",
 }
 
 local function __port_vars(origin, k, recursive)
@@ -292,7 +294,7 @@ local function __port_vars(origin, k, recursive)
         local function adjustname(origin, new_name)
             --TRACE("ORIGIN_SETALIAS", origin.name, new_name)
             ORIGIN_ALIAS[origin.name] = new_name
-            local o = Origin.get(new_name)
+            local o = get(new_name)
             if o then -- origin with alias has already been seen, move fields over and continue with new table
                 o.flavors = rawget(origin, "flavors")
                 o.pkg_new = rawget(origin, "pkg_new")
@@ -365,6 +367,13 @@ local function __port_vars(origin, k, recursive)
         origin.dist_subdir = t.DIST_SUBDIR
         origin.options_file = t.OPTIONS_FILE
         origin.wrkdir = t.WRKDIR
+        origin.deprecated = t.DEPRECATED
+        origin.expiration_date = t.EXPIRATION_DATE
+        if  origin.expiration_date then
+            local year, month, day = string.match(origin.expiration_date, "(%d+)-(%d+)-(%d+)")
+            -- calculate UNIX time of end of expiration time (midnight UTC of last day)
+            origin.expiration_secs = os.time{year=year, month = month, day=day, hour = 0, minute = 0} + 24 * 3600
+        end
     end
     return rawget(origin, k)
 end
@@ -394,19 +403,20 @@ local function __port_depends(origin, k) -- XXX rename special_depends_var to ??
         },
     }
     local t = depends_table[k]
-    assert(t, "non-existing dependency " .. k or "<nil>" .. " requested")
-    local ut = {}
+    local seen = {}
+    local result = {}
     for _, v in ipairs(t) do
         for _, d in ipairs(origin.depends[v] or {}) do
             local pattern = k == "special_depends" and "^[^:]+:([^:]+:%S+)" or "^[^:]+:([^:]+)$"
             --TRACE("PORT_DEPENDS", k, d, pattern)
             local o = string.match(d, pattern)
-            if o then
-                ut[o] = true
+            if o and not seen[o] then
+                seen[o] = true
+                result[#result+1] = o
             end
         end
     end
-    return table.keys(ut)
+    return result
 end
 
 --
@@ -417,17 +427,21 @@ local function __port_conflicts(origin, k)
     }
     local t = conflicts_table[k]
     assert(t, "non-existing conflict type " .. k or "<nil>" .. " requested")
-    local ut = {}
+    local seen = {}
+    local result = {}
     for _, v in ipairs(t) do
-        local t = origin[v]
+        local conflicts = origin[v]
         --TRACE("CHECK_C?", origin.name, k, v)
-        if t then
-            for _, d in ipairs(t) do
-                ut[d] = true
+        if conflicts then
+            for _, d in ipairs(conflicts) do
+                if not seen[d] then
+                    result[#result+1] = d
+                    seen[d] = true
+                end
             end
         end
     end
-    return table.keys(ut)
+    return result
 end
 
 -- strip any implicit default flavor -- XXX and strip pseudo-flavor too ???
@@ -471,12 +485,6 @@ local __index_dispatch = {
     path = path,
     port = port,
     port_exists = check_port_exists,
-    --fetch_depends = __port_depends,
-    --extract_depends = __port_depends,
-    --patch_depends = __port_depends,
-    --build_depends = __port_depends,
-    --run_depends = __port_depends,
-    --pkg_depends = __port_depends,
     special_depends = __port_depends,
     depends = __port_vars,
     conflicts_build_var = __port_vars,
@@ -555,7 +563,6 @@ return {
     port_make = port_make,
     port_var = port_var,
     portdb_path = portdb_path,
-    --wait_checksum = wait_checksum,
     dump_cache = dump_cache,
     check_license = check_license,
 }

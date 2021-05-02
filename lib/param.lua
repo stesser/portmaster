@@ -112,20 +112,20 @@ local function __systemabi(param, k)
 end
 
 local function __package_fmt(param, k)
-    return "tbz" -- only used as fallback
+    return "tbz" -- only used as fallback default value
 end
 
 local function __backup_fmt(param, k)
-    return "tbz" -- only used as fallback
+    return "tbz" -- only used as fallback default value
 end
 
 local function __tty_columns(param, k)
     if ttyname(0) then
-	local pipe = io.popen(CMD.stty .. " size") -- do not rely on Exec.pkg!!!
-	local lines = pipe:read("*n")
-	local columns = pipe:read("*n")
-	pipe:close()
-	return columns
+        local pipe = io.popen(CMD.stty .. " size") -- do not rely on Exec.pkg!!!
+        local lines = pipe:read("*n")
+        local columns = pipe:read("*n")
+        pipe:close()
+	    return columns
     end
 end
 

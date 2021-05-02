@@ -27,6 +27,7 @@ SUCH DAMAGE.
 
 -------------------------------------------------------------------------------------
 local Param = require("portmaster.param")
+--local Package = require("portmaster.package")
 local Trace = require("portmaster.trace")
 
 -------------------------------------------------------------------------------
@@ -188,7 +189,8 @@ local function success_show()
     if #packages > 0 or #SUCCESS_MSGS > 0 then
         -- preserve current stdout and locally replace by pipe to "more" ???
         for i, pkgname in ipairs(packages) do
-            local pkgmsg = PkgDb.query {table = true, "%M", pkgname} -- replace by access to field in pkg XXX
+            local pkg = Package.get(pkgname)
+            local pkgmsg = pkg.message
             if pkgmsg then
                 show {start = true}
                 show {"Post-install message for", pkgname .. ":"}
@@ -228,9 +230,11 @@ end
 
 -------------------------------------------------------------------------------------
 -- wait for new-line, ignore any input given
+local tty = io.open("/dev/tty", "r")
+
 local function read_nl(prompt)
     show {prompt = true, prompt}
-    stdin:read("*l")
+    tty:read("*l")
 end
 
 -- print $prompt and read checked user input
@@ -256,7 +260,7 @@ local function read_answer(prompt, default, choices)
         end
         while true do
             show {prompt = true, prompt, opt_list, display_default .. ": "}
-            reply = stdin:read()
+            reply = tty:read()
             if reply == "" then
                 reply = default
             end

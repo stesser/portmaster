@@ -318,6 +318,7 @@ local function __port_vars(origin, k, recursive)
             adjustname(origin, o.name)
         end
     end
+    --[[
     local function set_pkgname(origin, var, pkgname)
         if pkgname then
             local p = Package:new(pkgname)
@@ -326,6 +327,7 @@ local function __port_vars(origin, k, recursive)
             origin[var] = p
         end
     end
+    --]]
     local t = origin:port_var(__port_vars_table)
     --TRACE("PORT_VAR(" .. origin.name .. ", " .. k .. ")", t)
     if t then
@@ -334,7 +336,8 @@ local function __port_vars(origin, k, recursive)
         origin.is_broken = t.BROKEN
         origin.is_forbidden = t.FORBIDDEN
         origin.is_ignore = t.IGNORE
-        set_pkgname(origin, "pkg_new", t.PKGNAME)
+        --set_pkgname(origin, "pkg_new", t.PKGNAME)
+        origin.pkgname = t.PKGNAME
         origin.flavor = t.FLAVOR
         set_table(origin, "flavors", t.FLAVORS)
         check_origin_alias(origin) ---- SEARCH FOR AND MERGE WITH POTENTIAL ALIAS
@@ -479,9 +482,7 @@ local __index_dispatch = {
     port_options = __port_vars,
     categories = __port_vars,
     options_file = __port_vars,
-    -- pkg_old = Package.packages_cache_load,
     pkg_new = __port_vars,
-    -- old_pkgs = PkgDb.pkgname_from_origin,
     path = path,
     port = port,
     port_exists = check_port_exists,

@@ -54,7 +54,8 @@ local R = require("std.strict")
 
 -- local _debug = require 'std._debug'(true)
 
-Package = require("portmaster.package")
+-------------------------------------------------------------------------------------
+--local Package = require("portmaster.package")
 local Options = require("portmaster.options")
 local Msg = require("portmaster.msg")
 local Progress = require("portmaster.progress")
@@ -366,7 +367,7 @@ end
 -- offer to delete old distfiles that are no longer required by any port
 local function clean_stale_distfiles ()
     Msg.show {start = true, "Gathering list of distribution files of all installed ports ..."}
-    for _, pkg in ipairs(Package.all_pkgs()) do
+    for _, pkg in ipairs(Strategy.all_pkgs()) do
         Exec.spawn (fetch_distinfo, pkg)
     end
     Exec.finish_spawned(fetch_distinfo)
@@ -454,7 +455,7 @@ end
 --
 local function list_origins()
     local origins = {}
-    for _, pkg in ipairs(Package:all_pkgs()) do
+    for _, pkg in ipairs(Strategy.all_pkgs()) do
         if pkg.num_depending == 0 and not pkg.is_automtic then
             local o = pkg.origin
             if o then
@@ -533,7 +534,7 @@ local function list_ports(mode)
         end
         listdata[pkg_old.name] = result
     end
-    local pkg_list = Package:all_pkgs()
+    local pkg_list = Strategy.all_pkgs() -- directly use Cache.load_package() ??? --> returns table, not list !!!
     Msg.show {start = true, "List of installed packages by category:"}
     for _, f in ipairs(filter) do
         local descr = f[1]

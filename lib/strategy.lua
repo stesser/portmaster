@@ -104,9 +104,19 @@ local function add_missing_deps(action_list) -- XXX need to also add special dep
     end
 end
 
+-- return a copy of the packages cache as a table
+local function all_pkgs()
+    local pkgs = Package:packages_cache_load()
+    local result = {}
+    for k, p in pairs(pkgs) do
+        result[#result+1] = p
+    end
+    return result
+end
+
 --
 local function ports_update(filters)
-    local pkgs, rest = Package:all_pkgs(), {}
+    local pkgs, rest = all_pkgs(), {}
     for _, filter in ipairs(filters) do
         for _, pkg in ipairs(pkgs) do
             TRACE("PORT_UPDATE?", pkg)
@@ -140,7 +150,8 @@ local function add_multiple(args)
             if string.match(pkg.name_base, v .. "$") then
                 return true, Options.force
             end
-            if pkg.origin and (string.match(pkg.origin.name, v) or string.match(pkg.origin.port, v)) then
+            --if pkg.origin and (string.match(pkg.origin.name, v) or string.match(pkg.origin.port, v)) then
+            if string.match(pkg.origin_name, v) then
                 return true, Options.force
             end
         end
@@ -231,7 +242,7 @@ end
 
 --
 local function add_all_installed()
-    local all_pkgs = Package:all_pkgs()
+    local all_pkgs = all_pkgs()
     for _, pkg in ipairs(all_pkgs) do
         TRACE("ADD_ALL_INSTALLED:", pkg.name)
         add_action{
@@ -282,6 +293,7 @@ return {
     add_all_installed = add_all_installed,
     init = init,
     execute = execute,
+    all_pkgs = all_pkgs,
 }
 
 --[[

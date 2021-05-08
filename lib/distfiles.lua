@@ -79,7 +79,7 @@ local function generate_distinfo(origin)
 end
 
 -- perform "make checksum", analyse status message and write success status to file (meant to be executed in a background task)
-FetchLock = Lock:new("FetchLock")
+local FetchLock = Lock:new("FetchLock")
 
 local function dist_fetch(origin)
    local function update_distinfo_cache(distinfo)

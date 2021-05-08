@@ -80,26 +80,6 @@ local function file_valid_abi(file)
     return abi == Param.abi or abi == Param.abi_noarch
 end
 
--- return package version
-local function pkg_version(pkg)
-    local v = (string.match(pkg.name, ".*-([^-]+)"))
-    --TRACE("VERSION", pkg.name, v)
-    return v
-end
-
--- return package basename without version
-local function pkg_basename(pkg)
-    return (string.match(pkg.name, "(%S+)-"))
-end
-
--- return package name with only the first part of the version number
-local function pkg_strip_minor(pkg)
-    local major = string.match(pkg_version(pkg), "([^.]+)%.%S+")
-    local result = pkg_basename(pkg) .. "-" .. (major or "")
-    --TRACE("STRIP_MINOR", pkg.name, result)
-    return result
-end
-
 -------------------------------------------------------------------------------------
 -- remove from shlib backup directory all shared libraries replaced by new versions
 -- preserve currently installed shared libraries // <se> check name of control variable
@@ -318,12 +298,6 @@ local function file_search(pkg)
     return file_search_in(pkg, "All") or file_search_in(pkg, "package-backup")
 end
 
--- lookup package file
-local function pkg_lookup(pkg, k)
-    local subdir = k == "pkgfile" and "All" or "portmaster-backup"
-    return file_search_in(pkg, subdir)
-end
-
 -- delete backup package file
 local function backup_delete(pkg)
     local g = filename {subdir = "portmaster-backup", ext = ".t?*", pkg}
@@ -444,7 +418,7 @@ local function req_shared_libs_cache_load()
 end
 
 -- load a list of of origins with flavor for currently installed flavored packages
-local function packages_cache_load()
+local function packages_cache_load(Package)
     if PACKAGES_CACHE_LOADED then
         return
     end
@@ -453,7 +427,7 @@ local function packages_cache_load()
     Msg.show {level = 2, start = true, "Load list of installed packages ..."}
     local lines = PkgDb.query {table = true, "%At %Av %n-%v"}
     if lines then
-        for _, line in pairs(lines) do
+        for _, line in ipairs(lines) do
             local tag, value, pkgname = string.match(line, "(%S+) (%S+) (%S+)")
             if tag == "flavor" then
                 pkg_flavor[pkgname] = value
@@ -474,19 +448,21 @@ local function packages_cache_load()
             origin_name = check_default_version(origin_name, pkgname)
         end
         local p = Package:new(pkgname)
+        --[[
         local o = Origin:new(origin_name)
         if not rawget(o, "old_pkgs") then
             o.old_pkgs = {}
         end
         table.insert(o.old_pkgs, pkgname)
         p.origin = o
+        --]]
+        p.origin_name = origin_name
         p.installed_abi = abi
         p.flavor = f
         p.is_automatic = automatic == "1"
         p.is_locked = locked == "1"
         p.is_installed = not Options.jailed
         p.num_depending = 0
-        --p.dep_pkgs = {}
         p.fbsd_version = pkg_fbsd_version[pkgname]
         pkg_count = pkg_count + 1
     end
@@ -508,87 +484,10 @@ local function packages_cache_load()
     shared_libs_cache_load()
     req_shared_libs_cache_load()
     PACKAGES_CACHE_LOADED = true
+    return PACKAGES_CACHE
 end
 
---
-local special_revs = {pl = true, alpha = true, beta = true, pre = true, rc = true}
-local special_vals = {["*"] = -2, pl = -1, [""] = 0}
-
-local function split_version_string(pkgname)
-    local function alpha_tonumber(s)
-        s = string.lower(s)
-        return special_vals[s] or string.byte(s, 1, 1) - 96 -- subtract one less than ASCII "a" == 0x61 == 97
-    end
-    local result = {}
-    local function store_results(n1, a1, n2)
-        local rn = #result
-        --TRACE("SPLIT_VERSION-STORE_RESULTS", n1, a1, n2)
-        result[rn+1] = n1 ~= "" and tonumber(n1) or -1
-        result[rn+2] = alpha_tonumber(a1)
-        result[rn+3] = n2 ~= "" and tonumber(n2) or 0
-    end
-    local version = string.match(pkgname, "[%a%d%._,]*%*?$")
-    --TRACE("SPLIT_VERSION_STRING", pkgname, version)
-    local s, revision, epoch = string.match (version, "([^_,]*)_?([^,]*),?(.*)")
-    version = s or version
-    for n1, a1, n2 in string.gmatch(version, "(%d*)([%a%*]*)(%d*)") do
-        if special_revs[a1] then
-            store_results(n1, "", "")
-            n1 = ""
-        end
-        store_results(n1, a1, n2)
-    end
-    result.epoch = tonumber(epoch) or 0
-    result.revision = tonumber(revision) or 0
-    --TRACE("SPLIT_VERSION_STRING->", result)
-    return result
-end
-
--- return 0 for v1 == v2, positive result for v1 higher than v2, negative result else
-local function compare_versions(p1, p2)
-    local function compare_lists(t1, t2)
-        local n1 = #t1
-        local n2 = #t2
-        local n = n1 > n2 and n1 or n2
-        for i = 1, n do
-            local delta = (t1[i] or 0) - (t2[i] or 0)
-            if delta ~= 0 then
-                return delta
-            end
-        end
-        return 0
-    end
-    --TRACE("COMPARE_VERSIONS", p1 and p1.name, p2 and p2.name)
-    if p1 and p2 then
-        local result = 0
-        local vs1 = p1.version
-        local vs2 = p2.version
-        if vs1 ~= vs2 then
-            local v1 = split_version_string(vs1)
-            local v2 = split_version_string(vs2)
-            result = v1.epoch - v2.epoch
-            if result == 0 then
-                result = compare_lists(v1, v2)
-                if result == 0 then
-                    result = v1.revision - v2.revision
-                end
-            end
-        end
-        --TRACE("COMPARE_VERSIONS->", p1 and p1.name, p2 and p2.name, result)
-        return result
-    end
-end
-
--- return a copy of the packages cache as a table
-local function all_pkgs()
-    packages_cache_load()
-    local result = {}
-    for k, p in pairs(PACKAGES_CACHE) do
-        result[#result+1] = p
-    end
-    return result
-end
-
+-------------------------------------------------------------------------------------
 -- wait for dependencies to become available
 local function pkgs_from_origin_tables(...)
     local pkgs = {}
@@ -675,6 +574,11 @@ local function __index(pkg, k)
             return filename {subdir = "portmaster-backup", ext = Param.backup_format, pkg}
         end
     end
+    -- lookup package file
+    local function __pkg_lookup(pkg, k)
+        local subdir = k == "pkgfile" and "All" or "portmaster-backup"
+        return file_search_in(pkg, subdir)
+    end
     local function __default_true()
        return true
     end
@@ -684,6 +588,29 @@ local function __index(pkg, k)
     local function __default_zero()
         return 0
     end
+    -- return package version
+    local function __pkg_version(pkg, v)
+        local version = (string.match(pkg.name, ".*-([^-]+)"))
+        --TRACE("VERSION", pkg.name, v)
+        return version
+    end
+    -- return package basename without version
+    local function __pkg_basename(pkg, v)
+        return (string.match(pkg.name, "(%S+)-"))
+    end
+    -- return package name with only the first part of the version number
+    local function __pkg_strip_minor(pkg, v)
+        local major = string.match(pkg.version, "([^.]+)%.%S+")
+        local result = pkg.name_base .. "-" .. (major or "")
+        --TRACE("STRIP_MINOR", pkg.name, result)
+        return result
+    end
+    local function __origin_name()
+        TRACE("GET ORIGIN_NAME", rawget(pkg, "origin"), pkg)
+        if rawget(pkg, "origin") then
+            return pkg.origin.name
+        end
+    end
     local dispatch = {
         installed_abi = __default_false,
         is_automatic = __default_true,
@@ -692,11 +619,12 @@ local function __index(pkg, k)
         num_dependencies = load_num_dependencies,
         -- flavor = get_attribute, -- batch loaded at start
         -- FreeBSD_version = get_attribute, -- batch loaded at start
-        name_base = pkg_basename,
-        name_base_major = pkg_strip_minor,
-        version = pkg_version,
-        pkgfile = pkg_lookup,
-        bakfile = pkg_lookup,
+        origin_name = __origin_name,
+        name_base = __pkg_basename,
+        name_base_major = __pkg_strip_minor,
+        version = __pkg_version,
+        pkgfile = __pkg_lookup,
+        bakfile = __pkg_lookup,
         pkgfile_abi = __get_abi,
         -- bakfile_abi = file_get_abi, -- UNUSED XXX
         --shared_libs = false, -- batch loaded at start
@@ -705,7 +633,6 @@ local function __index(pkg, k)
         depends = __depends,
         pkg_filename = __pkg_filename,
         bak_filename = __pkg_filename,
-        --origin = __origin_from_pkg, -- UNUSED XXX
     }
 
     --TRACE("INDEX(p)", pkg, k)
@@ -777,7 +704,6 @@ return {
     name = false,
     new = new,
     get = get,
-    all_pkgs = all_pkgs,
     backup_delete = backup_delete,
     -- backup_create = backup_create,
     delete_old = delete_old,
@@ -797,5 +723,4 @@ return {
     packages_cache_load = packages_cache_load,
     dump_cache = dump_cache,
     filename = filename,
-    compare_versions = compare_versions,
 }

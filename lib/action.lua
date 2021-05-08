@@ -26,6 +26,7 @@ SUCH DAMAGE.
 --]]
 -------------------------------------------------------------------------------------
 local Origin = require("portmaster.origin")
+local Package = require("portmaster.package")
 local Options = require("portmaster.options")
 local PkgDb = require("portmaster.pkgdb")
 local Msg = require("portmaster.msg")
@@ -35,6 +36,7 @@ local CMD = require("portmaster.cmd")
 local Param = require("portmaster.param")
 local Moved = require("portmaster.moved")
 local Excludes = require("portmaster.excludes")
+local Versions = require("portmaster.versions")
 local Jail = require("portmaster.jail")
 local Progress = require("portmaster.progress")
 local Distfile = require("portmaster.distfiles")
@@ -118,8 +120,9 @@ local function describe(action)
     if action.plan.deinstall then
         assert(n_old == 1)
         local p_o = old_pkgs[1]
-        local reason = rawget (p_o.origin, "reason") or
-            ("Port directory " .. p_o.origin.port .. " has been deleted")
+        local origin = action.origin_old
+        local reason = rawget (origin, "reason") or
+            ("Port directory " .. origin.port .. " has been deleted")
         text = "Deinstall " .. p_o.name .. " (" .. reason .. ")"
     elseif action.plan.upgrade then
         local verb
@@ -135,7 +138,7 @@ local function describe(action)
             verb = "???UNDEF???"
         end
         if n_old == 0 then
-            text = verb .. " " .. p_n.name .. " from " .. p_n.origin.name
+            text = verb .. " " .. p_n.name .. " from " .. p_n.origin_name
         else
             text = verb .. " "
             for i, p_o in ipairs(old_pkgs) do
@@ -143,15 +146,15 @@ local function describe(action)
                     text = text .. ", "
                 end
                 text = text .. p_o.name
-                if p_o.origin.name ~= p_n.origin.name then
-                    text = text .. " (" .. p_o.origin.name .. ")"
+                if p_o.origin_name ~= p_n.origin_name then
+                    text = text .. " (" .. p_o.origin_name .. ")"
                 end
             end
             text = text .. " to " .. p_n.name
             if action.use_pkgfile then
                 text = text .. " from " .. p_n.pkg_filename
             else
-                text = text .. " from " .. p_n.origin.name
+                text = text .. " from " .. p_n.origin_name
             end
         end
     end
@@ -290,7 +293,7 @@ local function portdb_update_origin(action)
     local o_o = action.old_pkgs[1].origin -- XXX should be called with specific origin !!!
     local portdb_dir_old = o_o:portdb_path()
     if is_dir(portdb_dir_old) and access(portdb_dir_old .. "/options", "r") then
-        local o_n = action.pkg_new.origin
+        local o_n = action.origin
         if o_n then
             local portdb_dir_new = o_n:portdb_path()
             if is_dir(portdb_dir_new) then
@@ -314,7 +317,7 @@ end
 
 -- create package file from staging area of previously built port
 local function package_create(action)
-    local o_n = action.pkg_new and action.pkg_new.origin
+    local o_n = action.origin
     local pkgname = action.pkg_new.name
     local pkgfile = action.pkg_new.pkg_filename -- (Param.packages .. "All", pkgname, Param.package_format)
     --TRACE("PACKAGE_CREATE", o_n, pkgname, pkgfile)
@@ -369,7 +372,7 @@ end
 
 -- check conflicts of new port with installed packages (empty table if no conflicts found)
 local function conflicting_pkgs(action, mode)
-    local o_n = action.pkg_new and action.pkg_new.origin
+    local o_n = action.origin
     if o_n and o_n.build_conflicts and o_n.build_conflicts[1] then
         local result = {}
         local make_target = mode == "build_conflicts" and "check-build-conflicts" or "check-conflicts"
@@ -405,7 +408,7 @@ end
 
 -- de-install (possibly partially installed) port after installation failure
 local function deinstall_failed_port(action)
-    local o_n = action.pkg_new.origin
+    local o_n = action.origin
     action:log {"Installation from", o_n.name, "failed, deleting partially installed package"}
     local out, err, exitcode =
         o_n:port_make {
@@ -490,7 +493,7 @@ local function perform_install_or_upgrade(action)
             local must_clean = access(origin.wrkdir, "r")
             if must_clean then
                 local need_root = not access(origin.wrkdir, "w") or not access(path_up(origin.wrkdir), "w")
-                --TRACE("DO_CLEAN_AS", origin.name, need_root)
+                --TRACE("DO_CLEAN_AS", origin_name, need_root)
                 return origin:port_make {
                     log = true,
                     jailed = true,
@@ -525,7 +528,7 @@ local function perform_install_or_upgrade(action)
         --TRACE("SPECIAL:", #special_depends, special_depends[1])
         if #special_depends > 0 then
             --TRACE("SPECIAL_DEPENDS", special_depends)
-            -- local special_depends = action.pkg_new.origin.special_depends
+            -- local special_depends = action.origin.special_depends
             for _, origin_target in ipairs(special_depends) do
                 -- print ("SPECIAL_DEPENDS", origin_target)
                 local target = target_part(origin_target)
@@ -1146,14 +1149,14 @@ local function determine_origin_old(action, k)
         local basename = p_n.name_base_major
         local o_n = p_n.origin
         for _, pkgname in ipairs(o_n.old_pkgs) do
-            local p_o = Package.get(pkgname)
+            local p_o = Package.get(pkgname) -- XXX get() has been deleted
             if p_o and p_o.name_base_major == basename then
                 action.pkg_old = p_o
             end
         end
         basename = p_n.name_base
         for _, pkgname in ipairs(o_n.old_pkgs) do
-            local p_o = Package.get(pkgname)
+            local p_o = Package.get(pkgname) -- XXX get() has been deleted
             if p_o and p_o.name_base == basename then
                 action.pkg_old = p_o
             end
@@ -1163,10 +1166,10 @@ end
 
 --
 local function determine_o_o(action, k)
-    -- print ("OO:", action.pkg_old, (rawget (action, "pkg_old") and (action.pkg_old).origin or "-"), action.pkg_new, (rawget (action, "pkg_new") and (action.pkg_new.origin or "-")))
+    -- print ("OO:", action.pkg_old, (rawget (action, "pkg_old") and (action.pkg_old).origin or "-"), action.pkg_new, (rawget (action, "pkg_new") and (action.origin or "-")))
     local old_pkgs = action.old_pkgs -- XXX support more than 1 old package !!!
     local p_o = old_pkgs[1] -- should be tested in a loop !!! XXX
-    local o = p_o and rawget(p_o, "origin") or action.pkg_new and action.pkg_new.origin -- XXX NOT EXACT
+    local o = p_o and rawget(p_o, "origin") or action.pkg_new and action.origin -- XXX NOT EXACT
     return o
 end
 
@@ -1199,7 +1202,7 @@ local function compare_versions_old_new(action)
                 if p_n.origin and f ~= p_n.origin.flavor then
                     return -1 -- flavor mismatch requires update
                 end
-                return Package.compare_versions(p_o, p_n)
+                return Versions.compare(p_o, p_n)
             end
         end
     end
@@ -1212,7 +1215,7 @@ local function check_config_allow(action, recursive)
     if not action.pkg_new then
         return
     end
-    local origin = action.pkg_new.origin
+    local origin = action.origin
     local function check_ignore(name, field)
         --TRACE("CHECK_IGNORE", origin.name, name, field, rawget(origin, field))
         if rawget(origin, field) then
@@ -1370,6 +1373,20 @@ local function __index(action, k)
             build = rawget(action, "is_build_dep")
         }
     end
+    local function determine_origin() -- XXX incomplete ???
+        local p_n = action.pkg_new
+        if p_n then
+            local origin = Origin:new(p_n.origin_name)
+            return origin
+        end
+    end
+    local function determine_origin_old() -- XXX incomplete ???
+        local p_o = action.old_pkgs and action.old_pkgs[1]
+        if p_o then
+            local origin = Origin:new(p_o.origin_name)
+            return origin
+        end
+    end
     local function determine_pkg_new() -- XXX conflicts check required???
         TRACE("DETERMINE_PKG_NEW", action)
         local p_n
@@ -1377,7 +1394,8 @@ local function __index(action, k)
             local o_o = p_o.origin
             TRACE("DETERMINE_PKG_NEW(o_o)-1", o_o)
             if o_o and o_o.port_exists then
-                p_n = o_o.pkg_new
+                --p_n = o_o.pkg_new
+                p_n = o_o.pkg_new or Package:new(o_o.pkgname)
                 TRACE("DETERMINE_PKG_NEW(o_o)-1.1", o_o.name, p_o.name_base, p_n and p_n.name_base)
                 if p_n and p_n.name_base == p_o.name_base then
                     TRACE("DETERMINE_PKG_NEW->", p_n.name)
@@ -1385,15 +1403,16 @@ local function __index(action, k)
                 end
             end
         end
-        local pkgs = {}
         for _, p_o in ipairs(action.old_pkgs or {}) do
             local o_o = p_o.origin
             TRACE("DETERMINE_PKG_NEW(o_o)-2", o_o)
             local o_n = o_o and Moved.new_origin(o_o)
             if o_n and o_n.port_exists then
-                p_n = o_n.pkg_new
+                p_n = o_n.pkg_new or Package:new(o_n.pkgname)
+TRACE("XXX1", p_n)
                 if p_n then
                     local basename = p_n.name_base
+TRACE("XXX2", basename)
                     for _, p_o in ipairs(action.old_pkgs) do
                         if p_o.name_base == basename then
                             TRACE("DETERMINE_PKG_NEW->", p_n.name)
@@ -1557,6 +1576,7 @@ local function __index(action, k)
         local function __check_save_sharedlibs()
             return Options.save_shared and true
         end
+        TRACE("PLAN", action)
         return {
             upgrade = __upgrade_needed,                             -- package is to be installed/upgraded
             build = __build_needed,                                 -- build from port required
@@ -1606,6 +1626,8 @@ local function __index(action, k)
     local dispatch = {
         name = __get_name,
         short_name = __short_name,
+        origin = determine_origin,
+        origin_old = determine_origin_old,
         pkg_new = determine_pkg_new,
         --pkg_old = determine_pkg_old,
         vers_cmp = compare_versions_old_new,
@@ -1675,7 +1697,7 @@ local function action_list_add(action)
                 action.listpos = listpos
                 Msg.show {listpos, describe(action)}
                 if not action.plan.nothing and action.plan.build then
-                    action.pkg_new.origin:fetch()
+                    action.origin:fetch()
                 end
             end
             TRACE("ACTION_LIST_ADD", action.listpos, action.short_name)
@@ -1720,9 +1742,11 @@ local function cache_add(action)
         if rawget(cached_action, "listpos") then
             action, cached_action = cached_action, action -- exchange to update the cached action record
         end
-        TRACE("CACHE_ADD_MERGE", rawget(action, "listpos"), rawget(cached_action, "listpos"), action, cached_action)
+        local p_n = rawget(action, "pkg_new")
+        local c_p_n = rawget(cached_action, "pkg_new")
+        TRACE("CACHE_ADD_MERGE", (p_n and p_n.name or ""), rawget(action, "listpos"), (c_p_n and c_p_n.name or ""), rawget(cached_action, "listpos"), action, cached_action)
         action.old_pkgs = table.union(action.old_pkgs, cached_action.old_pkgs)
-
+        action.plan = table.union(action.plan, cached_action.plan)
     end
     check_config_allow(action)
     ACTION_CACHE[action.short_name] = action
@@ -2054,9 +2078,9 @@ local function perform_origin_change(action)
         fail ("Too many old packages passed to package rename function")
     end
     local p_o = action.old_pkgs[1]
-    action:log {"Change origin of", p_o.name, "from", p_o.origin.name, "to", action.pkg_new.origin.name}
-    if PkgDb.update_origin(action.o_o, action.pkg_new.origin, p_o.name) then
-        portdb_update_origin(action.o_o, action.pkg_new.origin)
+    action:log {"Change origin of", p_o.name, "from", p_o.origin_name, "to", action.origin_name}
+    if PkgDb.update_origin(action.o_o, action.origin, p_o.name) then
+        portdb_update_origin(action.o_o, action.origin)
         action.done = true
         return true
     end

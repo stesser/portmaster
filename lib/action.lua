@@ -42,6 +42,7 @@ local Progress = require("portmaster.progress")
 local Distfile = require("portmaster.distfiles")
 local Trace = require("portmaster.trace")
 local Filepath = require("portmaster.filepath")
+local Util = require("portmaster.util")
 
 -------------------------------------------------------------------------------------
 --local P_US = require("posix.unistd")
@@ -1333,7 +1334,7 @@ end
 -- DEBUGGING: DUMP INSTANCES CACHE
 local function dump_cache()
     local t = ACTION_CACHE
-    for _, v in ipairs(table.keys(t)) do
+    for _, v in ipairs(Util.table_keys(t)) do
         --TRACE("ACTION_CACHE", v, t[v])
     end
 end
@@ -1759,8 +1760,8 @@ local function cache_add(action)
         local p_n = rawget(action, "pkg_new")
         local c_p_n = rawget(cached_action, "pkg_new")
         TRACE("CACHE_ADD_MERGE", (p_n and p_n.name or ""), rawget(action, "listpos"), (c_p_n and c_p_n.name or ""), rawget(cached_action, "listpos"), action, cached_action)
-        action.old_pkgs = table.union(action.old_pkgs, cached_action.old_pkgs)
-        action.plan = table.union(action.plan, cached_action.plan)
+        action.old_pkgs = Util.table_union(action.old_pkgs, cached_action.old_pkgs)
+        action.plan = Util.table_union(action.plan, cached_action.plan)
     end
     check_config_allow(action)
     ACTION_CACHE[action.short_name] = action
@@ -2054,7 +2055,7 @@ local function perform_post_build_deletes(origin)
         for i, origin in pairs(origins) do
             if package_deinstall_unused(origin) then del_done = true end
         end
-        origins = del_done and table.keys(DELAYED_DELETES)
+        origins = del_done and Util.table_keys(DELAYED_DELETES)
     end
 end
 

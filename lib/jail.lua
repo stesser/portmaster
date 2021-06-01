@@ -31,6 +31,7 @@ local Exec = require("portmaster.exec")
 local CMD = require("portmaster.cmd")
 local Param = require("portmaster.param")
 local Trace = require("portmaster.trace")
+local Util = require("portmaster.util")
 
 -------------------------------------------------------------------------------------
 local P_US = require("posix.unistd")
@@ -182,7 +183,7 @@ local MOUNT_PROCS = {
 
 --
 local function mount_all(jaildir)
-    local dirs = table.keys(JAIL_FS)
+    local dirs = Util.table_keys(JAIL_FS)
     table.sort(dirs) -- make sure parent dirs come before sub dirs
     local df_lines = Exec.run{
         table = true,

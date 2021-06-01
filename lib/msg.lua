@@ -185,7 +185,7 @@ end
 
 -- display all package messages that are new or have changed
 local function success_show()
-    local packages = table.keys(PKGMSG) -- only add to PKGMSG if repo_mode is true XXX
+    local packages = Util.table_keys(PKGMSG) -- only add to PKGMSG if repo_mode is true XXX
     if #packages > 0 or #SUCCESS_MSGS > 0 then
         -- preserve current stdout and locally replace by pipe to "more" ???
         for i, pkgname in ipairs(packages) do

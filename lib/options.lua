@@ -55,12 +55,12 @@ local VALID_OPTS = {}
 -- print the long options ordered by associated short option followed by sorted list of longopts without short option
 local function print_longopts()
     local result = {}
-    local longopts = table.keys(LONGOPT)
+    local longopts = Util.table_keys(LONGOPT)
     table.sort(longopts)
     for _, v in ipairs(longopts) do
         table.insert(result, LONGOPT[v])
     end
-    longopts = table.keys(VALID_OPTS)
+    longopts = Util.table_keys(VALID_OPTS)
     table.sort(longopts)
     for _, v in ipairs(longopts) do
         if VALID_OPTS[v].letter == nil then
@@ -883,7 +883,7 @@ do return end
         Options.all_options_change = nil
     end
 
-    local opts = table.keys(VALID_OPTS)
+    local opts = Util.table_keys(VALID_OPTS)
     table.sort(opts)
     for _, k in ipairs(opts) do
         local t = VALID_OPTS[k]

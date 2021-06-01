@@ -124,7 +124,7 @@ function table:index(val)
 end
 
 -- return union of tables
-function table.union(...)
+function Util.table_union(...)
     local k = {}
     for _, t in ipairs({...}) do
         for _, v in pairs(t) do
@@ -298,7 +298,7 @@ local function list_stale_libraries()
             compatlibs[lib] = true
         end
     end
-    return table.keys(compatlibs)
+    return Util.table_keys(compatlibs)
 end
 
 -- delete stale compat libraries (i.e. those no longer required by any installed port)
@@ -356,7 +356,7 @@ local function list_origins()
             end
         end
     end
-    local list = table.keys(origins)
+    local list = Util.table_keys(origins)
     table.sort(list)
     Msg.show{verbatim = true, table.concat(list, "\n"), "\n"}
 end
@@ -450,7 +450,7 @@ local function list_ports(mode)
                 end
             end
             Exec.finish_spawned()
-            local pkgnames = table.keys(listdata)
+            local pkgnames = Util.table_keys(listdata)
             --TRACE("PKGNAMES", #pkgnames)
             table.sort(pkgnames)
             for _, pkg_old in ipairs(pkgnames) do

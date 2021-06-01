@@ -59,9 +59,49 @@ local function strpfx(str, pattern)
     return str:sub(1, #pattern) == pattern
 end
 
+-- return list of all keys of a table -- UTIL
+local function table_keys(table)
+    local result = {}
+    for k, _ in pairs(table) do
+        if type(k) ~= "number" then
+            result[#result + 1] = k
+        end
+    end
+    return result
+end
+
+--[[
+-- return index of element equal to val or nil if not found
+local function table_index(table, val)
+    for i, v in ipairs(table) do
+        if v == val then
+            return i
+        end
+    end
+end
+--]]
+
+-- return union of tables
+local function table_union(...)
+    local k = {}
+    for _, t in ipairs({...}) do
+        for _, v in pairs(t) do
+            k[v] = true
+        end
+    end
+    local result = {}
+    for v, _ in pairs(k) do
+        result[#result + 1] = v
+    end
+    return result
+end
+
 return {
 	split_lines = split_lines,
 	split_words = split_words,
 	chomp = chomp,
 	strpfx = strpfx,
+    table_keys = table_keys,
+    --table_index = table_index,
+    table_union = table_union,
 }

@@ -123,7 +123,7 @@ local function dist_fetch(origin)
    if rawget(origin, "distinfo") then
       local distinfo = generate_distinfo()
       update_distinfo_cache(distinfo)
-      local distfiles = table.keys(distinfo) -- or {} ???
+      local distfiles = Util.table_keys(distinfo) -- or {} ???
       origin.distfiles = distfiles
       local unchecked = fetch_required(distfiles)
       if #unchecked > 0 then

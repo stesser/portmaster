@@ -360,7 +360,7 @@ end
 
 -- execute command according to passed flags argument
 local function run(args)
-    TRACE("run", "[" .. table.concat(table.keys(args), ",") .. "]", table.unpack(args))
+    TRACE("run", "[" .. table.concat(Util.table_keys(args), ",") .. "]", table.unpack(args))
     if Param.jailbase and args.jailed then
         table.insert(args, 1, CMD.chroot)
         table.insert(args, 2, Param.jailbase)

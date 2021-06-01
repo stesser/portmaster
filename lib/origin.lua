@@ -236,7 +236,7 @@ end
 -- DEBUGGING: DUMP INSTANCES CACHE
 local function dump_cache()
     local t = ORIGINS_CACHE
-    for i, v in ipairs(table.keys(t)) do
+    for i, v in ipairs(Util.table_keys(t)) do
         if t[v] then
             TRACE("ORIGINS_CACHE", i, v, t[v])
         else
@@ -244,7 +244,7 @@ local function dump_cache()
         end
     end
     t = ORIGIN_ALIAS
-    for i, v in ipairs(table.keys(t)) do
+    for i, v in ipairs(Util.table_keys(t)) do
         TRACE("ORIGIN_ALIAS", i, v, t[v])
     end
 end

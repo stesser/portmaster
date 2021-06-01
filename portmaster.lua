@@ -64,7 +64,7 @@ local Environment = require("portmaster.environment")
 local Trace = require("portmaster.trace")
 local Origin = require("portmaster.origin")
 local Filepath = require("portmaster.filepath")
---local Util = require("portmaster.util")
+local Util = require("portmaster.util")
 
 -------------------------------------------------------------------------------------
 local TRACE = Trace.trace

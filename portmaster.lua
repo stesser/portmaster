@@ -33,13 +33,7 @@ SUCH DAMAGE.
 local P = require("posix")
 local glob = P.glob
 
-local P_SS = require("posix.sys.stat")
-local lstat = P_SS.lstat
-local stat_isdir = P_SS.S_ISDIR
--- local stat_isreg = P_SS.S_ISREG
-
 local P_US = require("posix.unistd")
-local access = P_US.access
 local chdir = P_US.chdir
 
 --[[
@@ -55,7 +49,7 @@ local R = require("std.strict")
 -- local _debug = require 'std._debug'(true)
 
 -------------------------------------------------------------------------------------
---local Package = require("portmaster.package")
+local Package = require("portmaster.package")
 local Options = require("portmaster.options")
 local Msg = require("portmaster.msg")
 local Progress = require("portmaster.progress")
@@ -68,6 +62,9 @@ local Param = require("portmaster.param")
 local Moved = require("portmaster.moved")
 local Environment = require("portmaster.environment")
 local Trace = require("portmaster.trace")
+local Origin = require("portmaster.origin")
+local Filepath = require("portmaster.filepath")
+--local Util = require("portmaster.util")
 
 -------------------------------------------------------------------------------------
 local TRACE = Trace.trace
@@ -89,7 +86,7 @@ local function exit_cleanup(exitcode)
 end
 
 -- abort script execution with an error message
-function fail(...)
+local function fail(...)
     Msg.show {start = true, "ERROR:", ...}
     -- Msg.show {"Fix the issue and use '" .. PROGRAM, "-R' to restart"}
     Msg.show {"Aborting update"}
@@ -98,77 +95,11 @@ function fail(...)
 end
 
 -- abort script execution with an internal error message on unexpected error
-function fail_bug(...)
+local function fail_bug(...)
     Msg.show {"INTERNAL ERROR:", ...}
     Msg.show {"Aborting update"}
     exit_cleanup(10)
     -- not reached
-end
-
--- remove trailing new-line, if any (UTIL)
-function chomp(str)
-    if str and str:byte(-1) == 10 then
-        return str:sub(1, -2)
-    end
-    return str
-end
-
--------------------------------------------------------------------------------------
--- split string on word boundaries and return as table
-function split_words(str)
-    if str then
-        local result = {}
-        for word in string.gmatch(str, "%S+") do
-            table.insert(result, word)
-        end
-        return result
-    end
-end
-
--- split string on line boundaries and return as table
-function split_lines(str)
-    local result = {}
-    for line in string.gmatch(str, "([^\n]*)\n?") do
-        table.insert(result, line)
-    end
-    return result
-end
-
---
-function set_str(self, field, v)
-    self[field] = v ~= "" and v or false
-end
-
---
-function set_bool(self, field, v)
-    self[field] = (v and v ~= "" and v ~= "0") and true or false
-end
-
---
-function set_table(self, field, v)
-    self[field] = v ~= "" and split_words(v) or false
-end
-
-------------------------------------------------------------------------------------- (UTIL)
--- test whether the second parameter is a prefix of the first parameter (UTIL)
-function strpfx(str, pattern)
-    return str:sub(1, #pattern) == pattern
-end
-
--- return flavor part of origin with flavor if present
-function flavor_part(origin)
-    return (string.match(origin, "%S+@([^:]+)"))
-end
-
--- remove flavor part of origin to obtain a file system path
-function dir_part(origin)
-    return (string.match(origin, "^[^:@]+"))
-end
-
--- optional make target component of port dependency or "install" if none
-function target_part(dep)
-    local target = string.match(dep, "%S+:(%a+)")
-    return target or "install"
 end
 
 -------------------------------------------------------------------------------------
@@ -207,57 +138,15 @@ function table.union(...)
     return result
 end
 
--- directory name part of file path
-function dirname(filename)
-    return string.match(filename, ".*/") or "."
-end
-
--- concatenate file path, first element must not be empty
-function path_concat(result, ...)
-    --TRACE("PATH_CONCAT", result, ...)
-    if result ~= "" then
-        for _, v in ipairs({...}) do
-            local sep = string.sub(result, -1) ~= "/" and string.sub(v, 1, 1) ~= "/" and "/" or ""
-            result = result .. sep .. v
-        end
-        --TRACE("PATH_CONCAT->", result)
-        return result
-    end
-end
-
--- go directory levels up
-function path_up(result, level)
-    level = level or 1
-    for _ = 1, level do
-        if result == "/" then
-                break
-        end
-        result = string.gsub(result, "/[^/]+$", "")
-    end
-    return result
-end
-
--- check whether path points to a directory
-function is_dir(path)
-    if path then
-        local st, err = lstat(path)
-        --TRACE("IS_DIR?", st, err)
-        if st and access(path, "x") then
-            --TRACE("IS_DIR", path, stat_isdir(st.st_mode))
-            return stat_isdir(st.st_mode) ~= 0
-        end
-    end
-end
-
 --
 local function scan_files(dir)
     --TRACE("SCANFILES", dir)
     local result = {}
     assert(dir, "empty directory argument")
-    local files = glob(path_concat(dir, "*"))
+    local files = (Filepath:new(dir) + "*").files
     if files then
         for _, f in ipairs(files) do
-            if is_dir(f) then
+            if Filepath.is_dir(f) then
                 for _, ff in ipairs(scan_files(f)) do
                     table.insert(result, ff)
                 end
@@ -274,10 +163,10 @@ local function scan_dirs(dir)
     --TRACE("SCANDIRS", dir)
     local result = {}
     assert(dir, "empty directory argument")
-    local files = glob(path_concat(dir, "*"))
+    local files = (Filepath:new(dir) + "*").files
     if files then
         for _, f in ipairs(files) do
-            if is_dir(f) then
+            if Filepath.is_dir(f) then
                 table.insert(result, f)
                 for _, ff in ipairs(scan_dirs(f)) do
                     table.insert(result, ff)
@@ -319,8 +208,8 @@ local function batch_delete(files, as_root)
         }
     end
     for _, file in ipairs(files) do
-        if is_dir(file) then
-            batch_delete(glob(file .. "/*", false, as_root))
+        if Filepath.is_dir(file) then
+            batch_delete(glob(file .. "/*", false), as_root)
             Exec.run{
                 as_root = true,
                 log = true,
@@ -404,7 +293,7 @@ local function list_stale_libraries()
         CMD.ldconfig, "-r"
     }
     for _, line in ipairs(ldconfig_lines) do
-        local lib = line:match(" => " .. path_concat (Param.local_lib_compat, "(.*)"))
+        local lib = line:match(" => " .. (Param.local_lib_compat + "(.*)").name)
         if lib and not activelibs[lib] then
             compatlibs[lib] = true
         end
@@ -500,18 +389,18 @@ local function list_ports(mode)
     local listdata
     local function check_version(pkg_old)
         --TRACE("CHECK_VERSION_SPAWNED", pkg_old.name)
-        local o_o = pkg_old.origin
+        local o_o = Origin:new(pkg_old.origin_name)
         assert(o_o, "no origin for package " .. pkg_old.name)
-        local pkg_new = o_o.pkg_new
+        local pkg_new = Package:new(o_o.pkgname)
         local pkgname_new = pkg_new and pkg_new.name
         local reason
         if not pkgname_new then
             local o_n = Moved.new_origin(o_o)
-            TRACE("MOVED??", o_o, o_n)
+            TRACE("MOVED??", o_o.name, o_n and o_n.name or "<nil>")
             if o_n ~= o_o then
                 reason = rawget(o_o, "reason")
                 if o_n then
-                    pkg_new = o_n.pkg_new
+                    pkg_new = Package:new(o_n.pkgname)
                     pkgname_new = pkg_new and pkg_new.name
                 end
             end
@@ -534,7 +423,7 @@ local function list_ports(mode)
         end
         listdata[pkg_old.name] = result
     end
-    local pkg_list = Strategy.all_pkgs() -- directly use Cache.load_package() ??? --> returns table, not list !!!
+    local pkg_list = Strategy.all_pkgs()
     Msg.show {start = true, "List of installed packages by category:"}
     for _, f in ipairs(filter) do
         local descr = f[1]

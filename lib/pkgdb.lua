@@ -28,6 +28,7 @@ SUCH DAMAGE.
 -------------------------------------------------------------------------------------
 local Exec = require("portmaster.exec")
 local Param = require("portmaster.param")
+local Util = require("portmaster.util")
 local Trace = require("portmaster.trace")
 
 -------------------------------------------------------------------------------------
@@ -101,7 +102,7 @@ end
 
 -- return system ABI
 local function system_abi()
-    local abi = chomp(Exec.pkg{
+    local abi = Util.chomp(Exec.pkg{
         safe = true,
         "config", "abi"
     })

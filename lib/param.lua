@@ -28,19 +28,20 @@ SUCH DAMAGE.
 -------------------------------------------------------------------------------------
 local CMD = require("portmaster.cmd")
 local P = require("posix")
-local Trace = require("portmaster.trace")
+--local Trace = require("portmaster.trace")
+local Filepath = require("portmaster.filepath")
 
 -------------------------------------------------------------------------------------
-local TRACE = Trace.trace
+--local TRACE = Trace.trace
 
 local geteuid = P.geteuid
 local getpwuid = P.getpwuid
-local access = P.access
+--local access = P.access
 local ttyname = P.ttyname
 
 local Param = {}
 
-local globalmakevars = {
+local globalmakedirvars = {
         "LOCALBASE",
         "PORTSDIR",
         "DISTDIR",
@@ -48,116 +49,131 @@ local globalmakevars = {
         "PKG_DBDIR",
         "PORT_DBDIR",
         "WRKDIRPREFIX",
+}
+
+local globalmakevars = {
         "DISABLE_LICENSES",
         "TRY_BROKEN",
         "DISABLE_MAKE_JOBS",
 }
 
-local function __globalmakevars(param, k)
-    local pipe = io.popen(CMD.make .. " -f /usr/share/mk/bsd.port.mk -V " .. table.concat(globalmakevars, " -V "))
-    for _, v in ipairs(globalmakevars) do
-        Param[string.lower(v)] = pipe:read("*l")
-    end
-    pipe:close()
-    return Param[k]
-end
-
-local function __local_lib(param, k)
-   return path_concat(Param.localbase, "lib")
-end
-
-local function __local_lib_compat(param, k)
-   return path_concat(Param.local_lib, "compat/pkg")
-end
-
-local function __jailbase(param, k)
-   return -- "/tmp/PMJAIL"
-end
-
-local function __packages_backup(param, k)
-   return "/usr/packages/portmaster-backup"
-end
-
-local function __tmpdir(param, k)
-   return os.getenv("TMPDIR") or "/tmp"
-end
-
-local function __distdir_ro(param, k)
-   return not access(Param.distdir, "rw")
-end
-
-local function __packages_ro(param, k)
-   return not access(Param.packages, "rw")
-end
-
-local function __pkg_dbdir_ro(param, k)
-   return not access(Param.port_dbdir, "rw")
-end
-
-local function __port_dbdir_ro(param, k)
-   return not access(Param.pkg_dbdir, "rw")
-end
-
-local function __wrkdir_ro(param, k)
-   return not access(Param.pkg_wrkdir, "rw")
-end
-
-local function __systemabi(param, k)
-    local pipe = io.popen(CMD.pkg .. " config abi") -- do not rely on Exec.pkg!!!
-    local abi = pipe:read("*l")
-    pipe:close()
-    param.abi_noarch = string.match(abi, "^[%a]+:[%d]+:") .. "*"
-    param.abi = abi
-    return param[k]
-end
-
-local function __package_fmt(param, k)
-    return "tbz" -- only used as fallback default value
-end
-
-local function __backup_fmt(param, k)
-    return "tbz" -- only used as fallback default value
-end
-
-local function __tty_columns(param, k)
-    if ttyname(0) then
-        local pipe = io.popen(CMD.stty .. " size") -- do not rely on Exec.pkg!!!
-        local lines = pipe:read("*n")
-        local columns = pipe:read("*n")
-        pipe:close()
-	    return columns
-    end
-end
-
-local function __ncpu(param, k)
-    local ncpu = tonumber(os.getenv("_SMP_CPUS"))
-    if not ncpu then
-        local pipe = io.popen(CMD.sysctl .. " -n hw.ncpu") -- do not rely on Exec.pkg!!!
-        ncpu = pipe:read("*n")
-        pipe:close()
-    end
-    return ncpu
-end
-
--- maximum number of make jobs - twice the number of CPU threads?
-local function __maxjobs(param, k)
-    local overcommit = 1
-    local offset = 2
-    return math.floor(__ncpu() * overcommit + offset)
-end
-
-local function __uid(param, k)
-    return geteuid()
-end
-
-local function __user(param, k)
-    local pw_entry = getpwuid(param.uid)
-    param.user = pw_entry.pw_name
-    param.home = pw_entry.pw_dir
-    return param[k]
-end
-
 local function __index(param, k)
+    local function __globalmakevars()
+        local pipe = io.popen(CMD.make .. " -f /usr/share/mk/bsd.port.mk -V " .. table.concat(globalmakedirvars, " -V "))
+        for _, v in ipairs(globalmakedirvars) do
+            Param[string.lower(v)] = Filepath:new(pipe:read("*l"))
+        end
+        pipe:close()
+        pipe = io.popen(CMD.make .. " -f /usr/share/mk/bsd.port.mk -V " .. table.concat(globalmakevars, " -V "))
+        for _, v in ipairs(globalmakevars) do
+            Param[string.lower(v)] = pipe:read("*l")
+        end
+        pipe:close()
+        return Param[k]
+    end
+
+    local function __local_lib()
+        return Param.localbase + "lib"
+        --return path_concat(Param.localbase, "lib")
+    end
+
+    local function __local_lib_compat()
+        return Param.local_lib + "compat" + "pkg"
+        --return path_concat(Param.local_lib, "compat/pkg")
+    end
+
+    local function __jailbase()
+    return -- "/tmp/PMJAIL"
+    end
+
+    local function __packages_backup()
+    return Filepath:new("/usr/packages/portmaster-backup")
+    end
+
+    local function __tmpdir()
+    return Filepath:new(os.getenv("TMPDIR") or "/tmp")
+    end
+
+    local function __distdir_ro()
+        return not Param.distdir.is_writeable
+    --return not access(Param.distdir, "rw")
+    end
+
+    local function __packages_ro()
+        return not Param.packages.is_writeable
+        --return not access(Param.packages, "rw")
+    end
+
+    local function __pkg_dbdir_ro()
+        return not Param.port_dbdir.is_writeable
+        --return not access(Param.port_dbdir, "rw")
+    end
+
+    local function __port_dbdir_ro()
+        return not Param.pkg_dbdir.is_writeable
+        --return not access(Param.pkg_dbdir, "rw")
+    end
+
+    local function __wrkdir_ro()
+        return not Param.pkg_wrkdir.is_writeable
+        --return not access(Param.pkg_wrkdir, "rw")
+    end
+
+    local function __systemabi()
+        local pipe = io.popen(CMD.pkg .. " config abi") -- do not rely on Exec.pkg!!!
+        local abi = pipe:read("*l")
+        pipe:close()
+        param.abi_noarch = string.match(abi, "^[%a]+:[%d]+:") .. "*"
+        param.abi = abi
+        return param[k]
+    end
+
+    local function __package_fmt()
+        return "tbz" -- only used as fallback default value
+    end
+
+    local function __backup_fmt()
+        return "tbz" -- only used as fallback default value
+    end
+
+    local function __tty_columns()
+        if ttyname(0) then
+            local pipe = io.popen(CMD.stty .. " size") -- do not rely on Exec.pkg!!!
+            local lines = pipe:read("*n")
+            local columns = pipe:read("*n")
+            pipe:close()
+            return columns
+        end
+    end
+
+    local function __ncpu()
+        local ncpu = tonumber(os.getenv("_SMP_CPUS"))
+        if not ncpu then
+            local pipe = io.popen(CMD.sysctl .. " -n hw.ncpu") -- do not rely on Exec.pkg!!!
+            ncpu = pipe:read("*n")
+            pipe:close()
+        end
+        return ncpu
+    end
+
+    -- maximum number of make jobs - twice the number of CPU threads?
+    local function __maxjobs()
+        local overcommit = 1
+        local offset = 2
+        return math.floor(__ncpu() * overcommit + offset)
+    end
+
+    local function __uid()
+        return geteuid()
+    end
+
+    local function __user()
+        local pw_entry = getpwuid(param.uid)
+        param.user = pw_entry.pw_name
+        param.home = Filepath:new(pw_entry.pw_dir)
+        return param[k]
+    end
+
     local dispatch = {
         abi = __systemabi,
         abi_noarch = __systemabi,
@@ -189,7 +205,7 @@ local function __index(param, k)
         wrkdirprefix = __globalmakevars,
     }
 
-    --TRACE("INDEX(param)", param, k)
+    --TRACE("INDEX(param)", )
     local w = rawget(param, k)
     if w == nil then
         rawset(param, k, false)

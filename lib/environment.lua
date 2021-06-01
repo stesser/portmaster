@@ -42,7 +42,8 @@ local TRACE = Trace.trace
 -------------------------------------------------------------------------------------
 -- set sane defaults and cache some buildvariables in the environment
 local function init()
-    setenv("PATH", "/bin:/sbin:/usr/bin:/usr/sbin:" .. Param.localbase .. "/bin:" .. Param.localbase .. "/sbin")
+    TRACE("ENVIRON/PARAM=", Param, Param.localbase)
+    setenv("PATH", "/bin:/sbin:/usr/bin:/usr/sbin:" .. Param.localbase.name .. "/bin:" .. Param.localbase.name .. "/sbin")
     setenv("PID", getpid())
     setenv("LANG", "C")
     setenv("LC_CTYPE", "C")
@@ -51,9 +52,11 @@ local function init()
     setenv("LOCK_RETRIES", "120")
     setenv("DEV_WARNING_WAIT", "0") -- prevent delays for messages that are not displayed, anyway
     local portsdir = Param.portsdir
-    local scriptsdir = path_concat(portsdir, "Mk/Scripts")
-    local envvars = "SCRIPTSDIR='" .. scriptsdir .. "' PORTSDIR='" .. portsdir .. "' MAKE='" .. CMD.make .. "'"
-    local cmdline = table.concat({CMD.env, envvars, CMD.sh, path_concat(scriptsdir, "ports_env.sh")}, " ")
+    --local scriptsdir = path_concat(portsdir, "Mk/Scripts")
+    local scriptsdir = portsdir + "Mk" + "Scripts"
+    local envvars = "SCRIPTSDIR='" .. scriptsdir.name .. "' PORTSDIR='" .. portsdir.name .. "' MAKE='" .. CMD.make .. "'"
+    local cmdline = table.concat({CMD.env, envvars, CMD.sh, (scriptsdir + "ports_env.sh").name}, " ")
+    TRACE("ENVIRON/PIPE:", cmdline)
     local pipe = io.popen(cmdline)
     for line in pipe:lines() do
         local var, value = line:match("^export ([%w_]+)=(.+)")

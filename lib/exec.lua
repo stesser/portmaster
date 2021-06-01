@@ -58,6 +58,7 @@ local Msg = require("portmaster.msg")
 local Lock = require("portmaster.lock")
 local CMD = require("portmaster.cmd")
 local Param = require("portmaster.param")
+local Util = require("portmaster.util")
 local Trace = require("portmaster.trace")
 
 -------------------------------------------------------------------------------------
@@ -155,7 +156,7 @@ local function tasks_poll(timeout)
         local count = t and #t or 0
         local text
         if count > 0 then
-            t[count] = chomp(t[count])
+            t[count] = Util.chomp(t[count])
             text = table.concat(t, "")
         end
         --TRACE("FETCH_RESULT", pid, fd, n, text and #text or 0)
@@ -233,7 +234,7 @@ local function finish_spawned (f, msg) -- if f is provided then only spawns of t
         local pid = tasks_poll(Lock.blocked_tasks() > 0 and 100 or -1)
         if pid then
             --TRACE("FINISH_SPAWNED->", pid)
-            task_result(pid)
+            task_result(pid) -- XXX argument pid is unused !!! -- results are thrown away ...
         end
         counter = counter + 1
         if counter % 100 == 0 then
@@ -300,7 +301,12 @@ local function task_create (args)
 end
 
 -- create coroutine that will allow processes to be executed in the background
+local nospawn = false -- = true
+
 local function spawn(f, ...)
+    if nospawn then
+        return f(...)
+    end
     local function wrapper(f, ...)
         tasks_spawned = tasks_spawned + 1
         tasks_spawned_with[f] = (tasks_spawned_with[f] or 0) + 1
@@ -415,9 +421,9 @@ local function run(args)
         stdout = stdout or ""
         if stdout then
             if args.table then
-                stdout = split_lines(stdout)
+                stdout = Util.split_lines(stdout)
             elseif args.split then
-                stdout = split_words(stdout)
+                stdout = Util.split_words(stdout)
             end
         end
         return stdout, stderr, exitcode

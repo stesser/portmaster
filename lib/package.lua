@@ -35,6 +35,7 @@ local Exec = require("portmaster.exec")
 local CMD = require("portmaster.cmd")
 local Param = require("portmaster.param")
 local Trace = require("portmaster.trace")
+local Filepath = require("portmaster.filepath")
 
 -------------------------------------------------------------------------------------
 local P = require("posix")
@@ -64,9 +65,9 @@ local function filename(args)
     if string.sub(extension, 1, 1) ~= "." then
         extension = "." .. extension
     end
-    local result = path_concat(base, subdir, pkgname .. extension)
+    local result = base + subdir + (pkgname .. extension)
     --TRACE("FILENAME->", result, base, subdir, pkgname, extension)
-    return result
+    return result.name
 end
 
 -- fetch ABI from package file
@@ -93,7 +94,7 @@ local function shlibs_backup(pkg)
             CMD.ldconfig, "-r"
         }
         for _, line in ipairs(ldconfig_lines) do
-            local libpath, lib = string.match(line, " => (" .. Param.local_lib .. "*(lib.*%.so%..*))")
+            local libpath, lib = string.match(line, " => (" .. Param.local_lib.name .. "*(lib.*%.so%..*))")
             if lib then
                 local stat = lstat(libpath)
                 local mode = stat and stat.st_mode
@@ -138,9 +139,9 @@ local function shlibs_backup_remove_stale(pkg)
     if pkg_libs then
         local deletes = {}
         for _, lib in ipairs(pkg_libs) do
-            local backup_lib = Param.local_lib_compat .. lib
-            if access(backup_lib, "r") then
-                table.insert(deletes, backup_lib)
+            local backup_lib = Param.local_lib_compat + lib
+            if backup_lib.is_readable then
+                table.insert(deletes, backup_lib.name)
             end
         end
         if #deletes > 0 then
@@ -228,24 +229,24 @@ end
 -- create category links and a lastest link
 local function category_links_create(pkg_new, categories)
     local extension = Param.package_format
-    local source = filename {base = "..", ext = extension, pkg_new}
+    local source = filename {base = Filepath:new(".."), ext = extension, pkg_new}
     table.insert(categories, "Latest")
     for _, category in ipairs(categories) do
-        local destination = path_concat (Param.packages, category)
-        if not is_dir(destination) then
+        local destination = Param.packages + category
+        if not destination.is_dir then
             Exec.run{
                 as_root = Param.packages_ro,
                 log = true,
-                CMD.mkdir, "-p", destination
+                CMD.mkdir, "-p", destination.name
             }
         end
         if category == "Latest" then -- skip if/since automatically created???
-            destination = path_concat (destination, pkg_new.name_base .. "." .. extension)
+            destination = destination + pkg_new.name_base .. "." .. extension
         end
         Exec.run{
             as_root = Param.packages_ro,
             log = true,
-            CMD.ln, "-sf", source, destination
+            CMD.ln, "-sf", source.name, destination.name
         }
     end
 end
@@ -282,15 +283,18 @@ end
 
 -- search package file in directory
 local function file_search_in(pkg, subdir)
-    local file
-    for _, f in ipairs(glob(filename {subdir = subdir, ext = ".t?*", pkg}) or {}) do
-        if file_valid_abi(f) then
-            if not file or stat(file).st_mtime < stat(f).st_mtime then -- newer than previously checked package file?
-                file = f
+    local files = Filepath:new(filename {subdir = subdir, ext = ".t?*", pkg}).files
+    if files then
+        local file
+        for _, f in ipairs(files) do
+            if file_valid_abi(f) then
+                if not file or stat(file).st_mtime < stat(f).st_mtime then -- newer than previously checked package file?
+                    file = f
+                end
             end
         end
+        return file
     end
-    return file
 end
 
 -- search package file
@@ -498,11 +502,9 @@ local function pkgs_from_origin_tables(...)
                 local origin = string.match(v, "^[^:]+:(.+)")
                 if not string.match(origin, ":") then -- ignore special depends
                     local o_n = Origin:new(origin)
-                    local p_n = o_n and o_n.pkg_new
-                    if p_n then
-                        local pkgname = o_n.pkg_new.name
+                    local pkgname = o_n and o_n.pkgname
+                    if pkgname then
                         pkgs[#pkgs + 1] = pkgname
-                        p_n.origin = p_n.origin or o_n
                     end
                 end
             end
@@ -515,7 +517,7 @@ end
 
 --
 local function __newindex(pkg, n, v)
-    --TRACE("SET(p)", pkg.name, n, v)
+    TRACE("SET(p)", pkg.name, n, v)
     rawset(pkg, n, v)
 end
 
@@ -667,7 +669,7 @@ end
 
 local mt = {
     __index = __index,
-    __newindex = __newindex, -- DEBUGGING ONLY
+    --__newindex = __newindex, -- DEBUGGING ONLY
     __tostring = function(self)
         return self.name
     end,

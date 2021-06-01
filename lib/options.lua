@@ -30,6 +30,7 @@ local Excludes = require("portmaster.excludes")
 local Msg = require("portmaster.msg")
 local Param = require("portmaster.param")
 local Trace = require("portmaster.trace")
+local Util = require("portmaster.util")
 
 -------------------------------------------------------------------------------
 local TRACE = Trace.trace
@@ -194,7 +195,7 @@ local function rcfile_tryload(filename)
             if opt then
                 if OLD_RC_COMPAT[opt] then
                     opt = OLD_RC_COMPAT[opt]
-                elseif strpfx(opt, "PM_") then
+                elseif Util.strpfx(opt, "PM_") then
                     error("unsupported old option")
                 else
                     opt = string.lower(opt:gsub("-", "_"))
@@ -668,7 +669,7 @@ VALID_OPTS = {
         param = "port",
         descr = "force building of dependent ports",
         func = function(o, v)
-            ports_add_recursive(v, Options.replace_origin)
+            ports_add_recursive(v, Options.replace_origin) -- XXX function has not yet been defined !!!
             opt_clear("replace_origin")
         end,
     },
@@ -739,7 +740,7 @@ local function init()
     rcfile_tryload("/usr/local/etc/portmaster.rc")
 
     -- Read a local one next, and allow the command line to override later
-    rcfile_tryload(path_concat(Param.home, "/.portmasterrc"))
+    rcfile_tryload((Param.home + ".portmasterrc").name)
 
     -- options processing
     local longopt_i = 0

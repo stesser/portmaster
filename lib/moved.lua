@@ -87,10 +87,10 @@ local function moved_cache_load()
     if not MOVED_CACHE then
         MOVED_CACHE = {}
         MOVED_CACHE_REV = {}
-        local filename = path_concat(Param.portsdir, "MOVED") -- allow override with configuration parameter ???
-        local movedfile = io.open(filename, "r")
+        local file = Param.portsdir + "MOVED" -- allow override with configuration parameter ???
+        local movedfile = io.open(file.name, "r")
         if movedfile then
-            Msg.show {level = 2, start = true, "Load list of renamed or removed ports from", filename}
+            Msg.show {level = 2, start = true, "Load list of renamed or removed ports from", file.name}
             for line in movedfile:lines() do
                 register_moved(string.match(line, "^([^#][^|]+)|([^|]*)|([^|]+)|([^|]+)"))
             end
@@ -125,8 +125,8 @@ local function lookup_new_origin(origin)
                 local newflavor = flavor ~= o_f and flavor or n_f
                 local r = date .. ": " .. reason
                 --TRACE("MOVED->", o(newport, newflavor), r)
-                local path = path_concat(Param.portsdir, newport, "Makefile")
-                if not newport or Posix.access(path, "r") then
+                local path = Param.portsdir + newport + "Makefile"
+                if not newport or path.is_readable then
                     return newport, newflavor, r
                 end
                 return locate_move(newport, newflavor, i + 1)

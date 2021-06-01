@@ -37,15 +37,13 @@ local Origin = require("portmaster.origin")
 local Package = require("portmaster.package")
 
 -------------------------------------------------------------------------------------
-local P_US = require("posix.unistd")
-local access = P_US.access
 local TRACE = Trace.trace
 
 -------------------------------------------------------------------------------------
 --
 local function add_action(args)
-    Exec.spawn(Action.new, Action, args) -- XXX need to protect against simultanouos spawns for the same pkg_new !!!
     TRACE("ADD_ACTION_SPAWNED", args)
+    Exec.spawn(Action.new, Action, args) -- XXX need to protect against simultanouos spawns for the same pkg_new !!!
 end
 
 --local REQ_FOR_TABLE = { build = {}, run = {} }
@@ -160,7 +158,7 @@ local function add_multiple(args)
     --TRACE("PORTS_ADD_MULTIPLE->", pattern_table)
     ports_update {filter_match} -- filter return values are: match, force
     for _, v in ipairs(args) do
-        if string.match(v, "/") and access(path_concat(Param.portsdir, v, "Makefile"), "r") then
+        if string.match(v, "/") and (Param.portsdir + v + "Makefile").is_readable then
             local o = Origin:new(v)
             local p = o.pkg_new -- SLOW !!!
             if p then
@@ -175,7 +173,7 @@ local function add_multiple(args)
     end
     --[[
    for i, name_glob in ipairs (args) do
-      local filenames = glob (path_concat (Param.portsdir, name_glob, "Makefile"))
+      local filenames = (Param.portsdir + name_glob + "Makefile").files
       if filenames then
 	 for j, filename in ipairs (filenames) do
 	    if access (filename, "r") then
@@ -242,8 +240,8 @@ end
 
 --
 local function add_all_installed()
-    local all_pkgs = all_pkgs()
-    for _, pkg in ipairs(all_pkgs) do
+    local installed_pkgs = all_pkgs()
+    for _, pkg in ipairs(installed_pkgs) do
         TRACE("ADD_ALL_INSTALLED:", pkg.name)
         add_action{
             is_user = true,

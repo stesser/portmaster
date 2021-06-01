@@ -30,6 +30,7 @@ local Exec = require("portmaster.exec")
 local Lock = require("portmaster.lock")
 local Param = require("portmaster.param")
 local Trace = require("portmaster.trace")
+local Util = require("portmaster.util")
 
 -------------------------------------------------------------------------------------
 local TRACE = Trace.trace
@@ -67,21 +68,20 @@ end
 --
 local DISTINFO_CACHE = {}
 
-local function generate_distinfo(origin)
-   local result = {}
-   --TRACE("GENERATE_DISTINFO:", origin.name, origin.distfiles or {})
-   for _, v in ipairs(origin.distfiles or {}) do
-      v = string.match(v, "^(.*):") or v
-      result[v] = rawget(DISTINFO_CACHE, v) or {}
-   end
-   --TRACE("GENERATE_DISTINFO->", origin.name, result)
-   return result
-end
-
 -- perform "make checksum", analyse status message and write success status to file (meant to be executed in a background task)
 local FetchLock = Lock:new("FetchLock")
 
 local function dist_fetch(origin)
+   local function generate_distinfo()
+      local result = {}
+      TRACE("GENERATE_DISTINFO:", origin.name, origin.distfiles or {})
+      for _, v in ipairs(origin.distfiles or {}) do
+         v = string.match(v, "^(.*):") or v
+         result[v] = rawget(DISTINFO_CACHE, v) or {}
+      end
+      TRACE("GENERATE_DISTINFO->", origin.name, result)
+      return result
+   end
    local function update_distinfo_cache(distinfo)
       local port = origin.port
       for file, di in pairs(distinfo) do
@@ -120,43 +120,45 @@ local function dist_fetch(origin)
    --TRACE("DIST_FETCH", origin and origin.name or "<nil>", origin and origin.distinfo_file or "<nil>")
    local port = origin.port
    local success = true
-   local distinfo = generate_distinfo(origin)
-   update_distinfo_cache(distinfo)
-   local distfiles = table.keys(distinfo) -- or {} ???
-   origin.distfiles = distfiles
-   local unchecked = fetch_required(distfiles)
-   if #unchecked > 0 then
-      unchecked.tag = port.name
-      -- >>>> FetchLock(unchecked)
-      FetchLock:acquire(unchecked)
-      local really_unchecked = fetch_required(unchecked) -- fetch again since we may have been blocked and sleeping
-      if #really_unchecked > 0 then
-         --TRACE("FETCH_MISSING", really_unchecked)
-         local lines, err, exitcode = origin:port_make{
-            as_root = Param.distdir_ro,
-            table = true,
-            "FETCH_BEFORE_ARGS=-v",
-            "NO_DEPENDS=1",
-            "DISABLE_CONFLICTS=1",
-            "DISABLE_LICENSES=1",
-            "DEV_WARNING_WAIT=0",
-            "checksum"
-         }
-         setall(distinfo, "checked", true)
-         for _, l in ipairs(lines) do
-            --TRACE("FETCH:", l)
-            local files = string.match(l, "Giving up on fetching files: (.*)")
-            if files then
-               success = false
-               for _, file in ipairs(split_words(files)) do
-                  --TRACE("DISTINFO_CACHE", "checked", false, file)
-                  DISTINFO_CACHE[file].checked = false
+   if rawget(origin, "distinfo") then
+      local distinfo = generate_distinfo()
+      update_distinfo_cache(distinfo)
+      local distfiles = table.keys(distinfo) -- or {} ???
+      origin.distfiles = distfiles
+      local unchecked = fetch_required(distfiles)
+      if #unchecked > 0 then
+         unchecked.tag = port.name
+         -- >>>> FetchLock(unchecked)
+         FetchLock:acquire(unchecked)
+         local really_unchecked = fetch_required(unchecked) -- fetch again since we may have been blocked and sleeping
+         if #really_unchecked > 0 then
+            --TRACE("FETCH_MISSING", really_unchecked)
+            local lines, err, exitcode = origin:port_make{
+               as_root = Param.distdir_ro,
+               table = true,
+               "FETCH_BEFORE_ARGS=-v",
+               "NO_DEPENDS=1",
+               "DISABLE_CONFLICTS=1",
+               "DISABLE_LICENSES=1",
+               "DEV_WARNING_WAIT=0",
+               "checksum"
+            }
+            setall(distinfo, "checked", true)
+            for _, l in ipairs(lines) do
+               --TRACE("FETCH:", l)
+               local files = string.match(l, "Giving up on fetching files: (.*)")
+               if files then
+                  success = false
+                  for _, file in ipairs(Util.split_words(files)) do
+                     --TRACE("DISTINFO_CACHE", "checked", false, file)
+                     DISTINFO_CACHE[file].checked = false
+                  end
                end
             end
          end
+         FetchLock:release(unchecked)
+         -- <<<< FetchLock(unchecked)
       end
-      FetchLock:release(unchecked)
-      -- <<<< FetchLock(unchecked)
    end
    --TRACE("FETCH->", port, success)
    return success
@@ -171,13 +173,15 @@ end
 local function fetch_wait(origin)
    if FetchLock then
       local distfiles = origin.distfiles
-      --TRACE("FETCH_WAIT", distfiles)
-      distfiles.shared = true
-      distfiles.tag = origin.name
-      -- >>>> FetchLock(distfiles, SHARED)
-      FetchLock:acquire(distfiles)
-      FetchLock:release(distfiles) -- release immediately
-      -- <<<< FetchLock(distfiles, SHARED)
+      if distfiles then
+         --TRACE("FETCH_WAIT", distfiles)
+         distfiles.shared = true
+         distfiles.tag = origin.name
+         -- >>>> FetchLock(distfiles, SHARED)
+         FetchLock:acquire(distfiles)
+         FetchLock:release(distfiles) -- release immediately
+         -- <<<< FetchLock(distfiles, SHARED)
+      end
    end
 end
 

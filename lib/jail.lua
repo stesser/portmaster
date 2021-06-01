@@ -183,7 +183,7 @@ local MOUNT_PROCS = {
 --
 local function mount_all(jaildir)
     local dirs = table.keys(JAIL_FS)
-    table.sort(dirs)
+    table.sort(dirs) -- make sure parent dirs come before sub dirs
     local df_lines = Exec.run{
         table = true,
         safe = true,
@@ -198,14 +198,14 @@ local function mount_all(jaildir)
             safe = true,
             CMD.realpath, dir
         }
-        local where = path_concat(jaildir, real_fs)
+        local where = jaildir + real_fs
         --TRACE("MOUNT", fs_type, jaildir, dir, mnt_point, real_fs, where, mount_opt or "<nil>")
-        if not is_dir(where) then
+        if not where.is_dir then
             Exec.run{
                 as_root = true,
-                CMD.mkdir, "-p", where
+                CMD.mkdir, "-p", where.name
             }
-            assert(is_dir(where)) -- assert that mount point directory has been created
+            assert(where.is_dir) -- assert that mount point directory has been created
         end
         local mount_proc = MOUNT_PROCS[fs_type]
         assert(mount_proc, "unknown file system type " .. fs_type .. " for " .. dir)
@@ -225,25 +225,25 @@ local function provide_file(jaildir, ...)
     local dir
     local files = {...}
     for _, file in ipairs(files) do
-        dir = path_concat(jaildir, dirname(file))
+        dir = (jaildir + file) - 1
         Exec.run{
-            CMD.mkdir, "-p", dir
+            CMD.mkdir, "-p", dir.name
         } -- use direct LUA function
         Exec.run{
-            CMD.cp, "-pR", file, dir
+            CMD.cp, "-pR", file, dir.name
         } -- copy with LUA
     end
 end
 
 -- create (partially filtered) copies of most relevant files from /etc in the jail (must be run under root account, currently)
 local function setup_etc(jaildir)
-    assert(jaildir and #jaildir > 0, "Empty jaildir in jail_create_etc")
-    assert(is_dir(path_concat(jaildir, "/etc")), "Destination directory " .. jaildir .. "/etc does not exist")
+    assert(jaildir and #jaildir.name > 0, "Empty jaildir in jail_create_etc")
+    assert((jaildir + "/etc").is_dir, "Destination directory " .. jaildir.name .. "/etc does not exist")
     -- create /etc/passwd and /etc/master.passwd
     local inpf = io.open("/etc/passwd", "r")
     assert(inpf)
-    local outf1 = io.open(path_concat(jaildir, "/etc/passwd"), "w+")
-    local outf2 = io.open(path_concat(jaildir, "/etc/master.passwd"), "w+")
+    local outf1 = io.open((jaildir + "/etc/passwd").name, "w+")
+    local outf2 = io.open((jaildir + "/etc/master.passwd").name, "w+")
     assert(outf1 and outf2)
     local gids = {}
     for line in inpf:lines() do
@@ -263,13 +263,13 @@ local function setup_etc(jaildir)
     outf1:close()
     outf2:close()
     Exec.run{
-        CMD.pwd_mkdb, "-d", path_concat(jaildir, "/etc"), path_concat(jaildir, "/etc/master.passwd")
+        CMD.pwd_mkdb, "-d", (jaildir + "/etc").name, (jaildir + "/etc/master.passwd").name
     }
 
     -- create /etc/group
     local inpf = io.open("/etc/group", "r")
     assert(inpf)
-    local outf1 = io.open(path_concat(jaildir, "/etc/group"), "w+")
+    local outf1 = io.open((jaildir + "/etc/group").name, "w+")
     assert(outf1)
     for line in inpf:lines() do
         local group, pwd, gid, groups = line:match("^([^#][^:]*):([^:]*):([^:]*):([^:]*)")

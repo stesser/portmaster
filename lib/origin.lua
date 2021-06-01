@@ -32,6 +32,7 @@ local Distfile = require("portmaster.distfiles")
 local Exec = require("portmaster.exec")
 local Param = require("portmaster.param")
 local Trace = require("portmaster.trace")
+local Util = require("portmaster.util")
 
 -------------------------------------------------------------------------------------
 local P_US = require("posix.unistd")
@@ -46,12 +47,12 @@ end
 
 -- return full path to the port directory
 local function path(origin)
-    return path_concat(Param.portsdir, port(origin))
+    return Param.portsdir + port(origin)
 end
 
 --
 local function check_port_exists(origin)
-    return access(path_concat(path(origin), "Makefile"), "r")
+    return (path(origin) + "Makefile").is_readable
 end
 
 -- return flavor of passed origin or nil
@@ -69,7 +70,7 @@ end
 local function portdb_path(origin)
     local dir = port(origin)
     --TRACE("PORTDB_PATH", origin.name, dir, path_concat(Param.port_dbdir, dir:gsub("/", "_")))
-    return path_concat(Param.port_dbdir, dir:gsub("/", "_"))
+    return Param.port_dbdir + dir:gsub("/", "_")
 end
 
 -- call make for origin with arguments used e.g. for variable queries (no state change)
@@ -87,11 +88,11 @@ local function port_make(origin, args)
             args.jailed = false
         end
         --]]
-        if not is_dir(dir) then
-            return "", "port directory " .. dir .. " does not exist", 20 -- ENOTDIR
+        if not dir.is_dir then
+            return "", "port directory " .. dir.name .. " does not exist", 20 -- ENOTDIR
         end
         table.insert(args, 1, "-C")
-        table.insert(args, 2, dir)
+        table.insert(args, 2, dir.name)
         local pf = pseudo_flavor(origin)
         if pf then
             args.env = args.env or {}
@@ -297,7 +298,7 @@ local function __port_vars(origin, k, recursive)
             local o = get(new_name)
             if o then -- origin with alias has already been seen, move fields over and continue with new table
                 o.flavors = rawget(origin, "flavors")
-                o.pkg_new = rawget(origin, "pkg_new")
+                o.pkgname = rawget(origin, "pkgname") -- XXX required ???
                 origin = o
             end
             ORIGINS_CACHE[origin.name] = false -- poison old value to cause error if accessed
@@ -310,13 +311,15 @@ local function __port_vars(origin, k, recursive)
         if default_flavor and not string.match(name, "@") then -- flavor and default_version do not mix !!! check required ???
             adjustname(origin, name .. "@" .. default_flavor)
         end
+        --[[
         -- check for existing package cache entry and its origin
-        local p = origin.pkg_new
+        local p = origin.pkgname
         local o = p and p.origin -- MERGE !!!
         --TRACE("CHECK_ORIGIN_ALIAS", origin and origin.name or "<nil>", o and o.name or "<nil>", p and p.name or "<nil>")
         if o and o.name ~= origin.name then
             adjustname(origin, o.name)
         end
+        --]]
     end
     --[[
     local function set_pkgname(origin, var, pkgname)
@@ -328,6 +331,12 @@ local function __port_vars(origin, k, recursive)
         end
     end
     --]]
+    local function set_table(self, field, v)
+        self[field] = v ~= "" and Util.split_words(v) or false
+    end
+    local function set_bool(self, field, v)
+        self[field] = (v and v ~= "" and v ~= "0") and true or false
+    end
     local t = origin:port_var(__port_vars_table)
     --TRACE("PORT_VAR(" .. origin.name .. ", " .. k .. ")", t)
     if t then
@@ -409,13 +418,15 @@ local function __port_depends(origin, k) -- XXX rename special_depends_var to ??
     local seen = {}
     local result = {}
     for _, v in ipairs(t) do
-        for _, d in ipairs(origin.depends[v] or {}) do
-            local pattern = k == "special_depends" and "^[^:]+:([^:]+:%S+)" or "^[^:]+:([^:]+)$"
-            --TRACE("PORT_DEPENDS", k, d, pattern)
-            local o = string.match(d, pattern)
-            if o and not seen[o] then
-                seen[o] = true
-                result[#result+1] = o
+        if origin.depends and origin.depends[v] then
+            for _, d in ipairs(origin.depends[v]) do
+                local pattern = k == "special_depends" and "^[^:]+:([^:]+:%S+)" or "^[^:]+:([^:]+)$"
+                --TRACE("PORT_DEPENDS", k, d, pattern)
+                local o = string.match(d, pattern)
+                if o and not seen[o] then
+                    seen[o] = true
+                    result[#result+1] = o
+                end
             end
         end
     end
@@ -462,7 +473,7 @@ end
 --
 local function __verify_origin(o)
     if o and o.name and o.name ~= "" then
-        return access(path_concat(o.path, "Makefile"), "r")
+        return (o.path + "Makefile").is_readable
     end
 end
 
@@ -474,6 +485,8 @@ local __index_dispatch = {
     is_forbidden = __port_vars,
     is_ignore = __port_vars,
     is_interactive = __port_vars,
+    make_jobs_number = __port_vars,
+    make_jobs_number_limit = __port_vars,
     license = __port_vars,
     flavors = __port_vars,
     flavor = port_flavor_get,
@@ -482,16 +495,17 @@ local __index_dispatch = {
     port_options = __port_vars,
     categories = __port_vars,
     options_file = __port_vars,
-    pkg_new = __port_vars,
-    path = path,
-    port = port,
-    port_exists = check_port_exists,
-    special_depends = __port_depends,
+    pkgname = __port_vars,
+    distfiles = __port_vars,
     depends = __port_vars,
     conflicts_build_var = __port_vars,
     conflicts_install_var = __port_vars,
     conflicts_var = __port_vars,
     wrkdir = __port_vars,
+    path = path,
+    port = port,
+    port_exists = check_port_exists,
+    special_depends = __port_depends,
     build_conflicts = __port_conflicts,
     install_conflicts = __port_conflicts,
     short_name = __short_name,

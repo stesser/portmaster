@@ -29,7 +29,7 @@ SUCH DAMAGE.
 local Param = require("portmaster.param")
 --local Package = require("portmaster.package")
 local Trace = require("portmaster.trace")
-
+local Util = require("portmaster.util")
 -------------------------------------------------------------------------------
 local TRACE = Trace.trace
 
@@ -164,7 +164,7 @@ local PKGMSG = {}
 
 --
 local function success_add(text, seconds)
-    if not strpfx(text, "Provide ") then -- XXX adapt test
+    if not Util.strpfx(text, "Provide ") then -- XXX adapt test
         table.insert(SUCCESS_MSGS, text)
         if seconds then
             seconds = "in " .. seconds .. " seconds"
@@ -176,7 +176,7 @@ end
 
 --
 local function failed_add(text)
-    if not strpfx(text, "Provide ") then -- XXX adapt test
+    if not Util.strpfx(text, "Provide ") then -- XXX adapt test
         table.insert(FAILED_MSGS, text)
         show {text}
         show {start = true}

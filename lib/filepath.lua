@@ -41,6 +41,7 @@ local Trace = require("portmaster.trace")
 -------------------------------------------------------------------------------------
 local P = require("posix")
 local glob = P.glob
+local dirent = P.dirent
 
 local P_SS = require("posix.sys.stat")
 local stat = P_SS.stat
@@ -56,19 +57,6 @@ local TRACE = Trace.trace
 local Filepath = {}
 
 -------------------------------------------------------------------------------------
--- concatenate file path, first element must not be empty
-local function path_concat(result, ...)
-    --TRACE("PATH_CONCAT", result, ...)
-    if result ~= "" then
-        for _, v in ipairs({...}) do
-            local sep = string.sub(result, -1) ~= "/" and string.sub(v, 1, 1) ~= "/" and "/" or ""
-            result = result .. sep .. v
-        end
-        --TRACE("PATH_CONCAT->", result)
-        return result
-    end
-end
-
 -- go directory levels up
 local function path_up(dir, level)
     local result = dir.name
@@ -100,10 +88,11 @@ local function delete(filepath)
     end
 end
 
---
-local function add(dir, ...)
-    --TRACE("ADD", dir, ...)
-    return Filepath:new(path_concat(dir.name, ...))
+local function __add(path, k)
+    --TRACE("ADD", path, k)
+    local basedir = path.name
+    local sep = #basedir > 0 and string.sub(basedir, -1) ~= "/" and string.sub(k, 1, 1) ~= "/" and "/" or ""
+    return Filepath:new(basedir .. sep .. k)
 end
 
 --
@@ -120,10 +109,26 @@ end
 
 Filepath.is_dir = is_dir
 
+local function is_reg(name)
+    TRACE("IS_REG?", name)
+    local st, err = lstat(name)
+    --TRACE("IS_REG->", name, st, err)
+    if st and access(name, "r") then
+        --TRACE("IS_REG", path, stat_isdir(st.st_mode))
+        return stat_isreg(st.st_mode) ~= 0
+    end
+    return false
+end
+
+Filepath.is_reg = is_reg
+
 -------------------------------------------------------------------------------------
 local function __index(path, k)
     local function __is_dir()
         return is_dir(path.name)
+    end
+    local function __is_reg()
+        return is_reg(path.name)
     end
     local function __readable()
         local name = path.name
@@ -147,20 +152,55 @@ local function __index(path, k)
         end
         return glob(name, 0) -- or {} ???
     end
-    local function __add()
-        return add
+    local function __find_files()
+        local result = {}
+        local function file_list(prefix, subdir)
+            local pathname = prefix .. (subdir and "/" .. subdir or "")
+            for f in dirent.files(pathname) do
+                if f ~= "." and f ~= ".." then
+                    local childdir = subdir and subdir .. "/" .. f or f
+                    if is_dir(prefix .. "/" .. childdir) then
+                        --TRACE("D1", childdir)
+                        file_list(prefix, childdir)
+                    else
+                        --TRACE("F1", childdir)
+                        table.insert(result, childdir)
+                    end
+                end
+            end
+        end
+        file_list(path.name)
+        --TRACE("FIND_FILES", result)
+        return result
     end
-    local function __sub()
-        return path_up
+    local function __find_dirs()
+        local result = {}
+        local function dir_list(prefix, subdir)
+            local pathname = prefix .. (subdir and "/" .. subdir or "")
+            for f in dirent.files(pathname) do
+                if f ~= "." and f ~= ".." then
+                    local childdir = subdir and subdir .. "/" .. f or f
+                    if is_dir(prefix .. "/" .. childdir) then
+                        --TRACE("D1", childdir)
+                        dir_list(prefix, childdir)
+                        table.insert(result, childdir)
+                    end
+                end
+            end
+        end
+        dir_list(path.name)
+        --TRACE("FIND_DIRS", result)
+        return result
     end
     local dispatch = {
         is_dir = __is_dir,
+        is_reg = __is_reg,
         is_readable = __readable,
         is_writeable = __writeable,
         is_deleteable = __deleteable,
         files = __files,
-        add = __add,
-        sub = __sub,
+        find_dirs = __find_dirs,
+        find_files = __find_files,
     }
 
     --TRACE("INDEX(f)", rawget(path, "name"), k)
@@ -179,7 +219,7 @@ end
 local mt = {
     __index = __index,
     --__newindex = __newindex, -- DEBUGGING ONLY
-    __add = add,
+    __add = __add,
     __sub = path_up,
     __tostring = function(self)
         return self.name

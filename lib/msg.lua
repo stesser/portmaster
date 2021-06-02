@@ -74,7 +74,7 @@ local function split_lines_at(str, maxcolumns)
                 if left then
                     table.insert(result, left)
                 end
-                line = right .. string.sub(line, maxcolumns + 1)
+                line = (right or "") .. string.sub(line, maxcolumns + 1)
             end
         end
         table.insert(result, line)

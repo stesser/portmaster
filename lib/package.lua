@@ -96,30 +96,27 @@ local function shlibs_backup(pkg)
         for _, line in ipairs(ldconfig_lines) do
             local libpath, lib = string.match(line, " => (" .. Param.local_lib.name .. "*(lib.*%.so%..*))")
             if lib then
-                local stat = lstat(libpath)
-                local mode = stat and stat.st_mode
-                if mode then
-                    --TRACE("SHLIBS_BACKUP+", libpath, lib, stat, mode)
-                    if stat_isreg(mode) then
-                        for _, l in ipairs(pkg_libs) do
-                            if l == lib then
-                                local backup_lib = Param.local_lib_compat .. lib
-                                if access(backup_lib, "r") then
-                                    Exec.run{
-                                        as_root = true,
-                                        log = true,
-                                        CMD.unlink, backup_lib
-                                    }
-                                end
-                                local out, err, exitcode = Exec.run{
+                local libfile = Filepath:new(libpath)
+                --TRACE("SHLIBS_BACKUP+", libpath, lib, stat, mode)
+                if libfile.is_reg then
+                    for _, l in ipairs(pkg_libs) do
+                        if l == lib then
+                            local backup_lib = Param.local_lib_compat + lib
+                            if access(backup_lib, "r") then
+                                Exec.run{
                                     as_root = true,
                                     log = true,
-                                    CMD.cp, libpath, backup_lib
+                                    CMD.unlink, backup_lib.name
                                 }
-                                --TRACE("SHLIBS_BACKUP", tostring(out), err)
-                                if exitcode ~= 0 then
-                                    return out, err
-                                end
+                            end
+                            local out, err, exitcode = Exec.run{
+                                as_root = true,
+                                log = true,
+                                CMD.cp, libpath, backup_lib.name
+                            }
+                            --TRACE("SHLIBS_BACKUP", tostring(out), err)
+                            if exitcode ~= 0 then
+                                return out, err
                             end
                         end
                     end
@@ -165,7 +162,7 @@ local function backup_old_package(package)
     local pkgname = package.name
     return Exec.pkg{
         as_root = Param.packages_ro,
-        "create", "-q", "-o", Param.packages_backup, "-f", Param.backup_format, pkgname
+        "create", "-q", "-o", Param.packages_backup.name, "-f", Param.backup_format, pkgname
     }
 end
 

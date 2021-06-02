@@ -52,7 +52,6 @@ local function init()
     setenv("LOCK_RETRIES", "120")
     setenv("DEV_WARNING_WAIT", "0") -- prevent delays for messages that are not displayed, anyway
     local portsdir = Param.portsdir
-    --local scriptsdir = path_concat(portsdir, "Mk/Scripts")
     local scriptsdir = portsdir + "Mk" + "Scripts"
     local envvars = "SCRIPTSDIR='" .. scriptsdir.name .. "' PORTSDIR='" .. portsdir.name .. "' MAKE='" .. CMD.make .. "'"
     local cmdline = table.concat({CMD.env, envvars, CMD.sh, (scriptsdir + "ports_env.sh").name}, " ")

@@ -44,8 +44,8 @@ SIZE (bash/bash-5.0.tar.gz) = 10135110
 
 -- return table indexed by filename
 local function parse_distinfo(origin)
+    --TRACE("PARSE_DISTINFO", origin)
     local di_filename = origin.distinfo_file
-    --TRACE("PARSE_DISTINFO", di_filename)
     local result = {}
     local di_file = io.open(di_filename, "r")
     if di_file then --  meta-ports do not have a distinfo file
@@ -199,4 +199,5 @@ return {
     fetch = fetch,
     fetch_finish = fetch_finish,
     fetch_wait = fetch_wait,
+    parse_distinfo = parse_distinfo,
 }

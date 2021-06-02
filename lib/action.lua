@@ -1707,16 +1707,18 @@ local function action_list_add(action)
         if not action.plan.nothing then
             TRACE("UPGRADE?", action.short_name, action.plan.upgrade, action.plan.provide)
             local listpos = rawget(action, "listpos")
-            if not listpos then
+            if listpos then
+                ACTION_LIST[listpos] = action
+            else
                 listpos = #ACTION_LIST + 1
                 action.listpos = listpos
+                ACTION_LIST[listpos] = action
                 Msg.show {listpos, describe(action)}
                 if not action.plan.nothing and action.plan.build then
                     action.origin:fetch()
                 end
             end
             TRACE("ACTION_LIST_ADD", action.listpos, action.short_name)
-            ACTION_LIST[listpos] = action
         end
     else
         -- error: action_list_add() called without old or new package

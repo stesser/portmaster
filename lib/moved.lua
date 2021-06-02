@@ -122,14 +122,18 @@ local function lookup_new_origin(origin)
             local o_p, o_f, n_p, n_f, date, reason = table.unpack(movedrec[i])
             if port == o_p and (not flavor or not o_f or flavor == o_f) then
                 local newport = n_p
-                local newflavor = flavor ~= o_f and flavor or n_f
                 local r = date .. ": " .. reason
-                --TRACE("MOVED->", o(newport, newflavor), r)
-                local path = Param.portsdir + newport + "Makefile"
-                if not newport or path.is_readable then
-                    return newport, newflavor, r
+                local newflavor = flavor ~= o_f and flavor or n_f
+                TRACE("MOVED->", o(newport, newflavor), r)
+                if newport then
+                    local path = Param.portsdir + newport + "Makefile"
+                    if path.is_readable then
+                        return newport, newflavor, r
+                    end
+                    return locate_move(newport, newflavor, i + 1)
+                else
+                    return nil, nil, r
                 end
-                return locate_move(newport, newflavor, i + 1)
             end
         end
         return port, flavor, nil

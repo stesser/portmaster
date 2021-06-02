@@ -103,9 +103,10 @@ local function fail_bug(...)
 end
 
 -------------------------------------------------------------------------------------
+--[[
 --
 local function scan_files(dir)
-    --TRACE("SCANFILES", dir)
+    TRACE("SCANFILES", dir)
     local result = {}
     assert(dir, "empty directory argument")
     local files = (Filepath:new(dir) + "*").files
@@ -141,6 +142,7 @@ local function scan_dirs(dir)
     end
     return result
 end
+--]]
 
 -- replace passed package or port with one built from the new origin
 local function ports_add_changed_origin(build_type, name, o_n) -- 3rd arg is NOT optional
@@ -163,8 +165,8 @@ end
 --]]
 
 -- ---------------------------------------------------------------------------
--- deletes files or whole sub-trees
-local function batch_delete(files, as_root)
+-- deletes files within a prefix path
+local function batch_delete(filepath, files, as_root)
     local function do_unlink(file, as_root)
         Exec.run{
             as_root = as_root,
@@ -173,30 +175,24 @@ local function batch_delete(files, as_root)
         }
     end
     for _, file in ipairs(files) do
-        if Filepath.is_dir(file) then
-            batch_delete(glob(file .. "/*", false), as_root)
-            Exec.run{
-                as_root = true,
-                log = true,
-                CMD.rmdir, file
-            }
-        else
-            Exec.spawn(do_unlink, file, as_root)
-        end
+        local fullpath = filepath + file
+        Exec.spawn(do_unlink, fullpath.name, as_root)
     end
     Exec.finish_spawned(do_unlink)
 end
 
 --
 local function delete_empty_directories(path, as_root)
-    local dirs = scan_dirs(path)
+    TRACE("DELETE_EMPTY_DIRS", path)
+    --local dirs = scan_dirs(path.name)
+    local dirs = path.find_dirs()
     if #dirs > 0 then
         table.sort(dirs, function (a, b) return a > b end)
     end
     for _, v in ipairs(dirs) do
         Exec.run{
             as_root = as_root,
-            CMD.rmdir, v
+            CMD.rmdir, (path + v).name
         }
     end
 end
@@ -205,28 +201,28 @@ end
 --
 local distinfo_cache = {}
 
-local function fetch_distinfo(pkg)
-   local o_o = pkg.origin
-   if o_o then
-      local f = o_o.distinfo_file
-      if f then
-         local t = Distfile.parse_distinfo(f)
-         for k, v in pairs(t) do
-            distinfo_cache[k] = v
-         end
-      end
-   end
-end
-
 -- offer to delete old distfiles that are no longer required by any port
 local function clean_stale_distfiles ()
+    local function fetch_distinfo(pkg) -- move to Cache module
+        local o_o = Origin:new(pkg.origin_name)
+        TRACE("FETCH_DISTINFO", pkg.name, pkg.origin_name, o_o)
+        if o_o then
+            local f = o_o.distinfo_file
+            if f then
+                local t = Distfile.parse_distinfo(o_o)
+                for k, v in pairs(t) do
+                    TRACE("DISTINFO_ADD", k, v)
+                    distinfo_cache[k] = v
+                end
+            end
+        end
+    end
     Msg.show {start = true, "Gathering list of distribution files of all installed ports ..."}
-    for _, pkg in ipairs(Strategy.all_pkgs()) do
+    for _, pkg in ipairs(Strategy.all_pkgs()) do -- move to Cache module
         Exec.spawn (fetch_distinfo, pkg)
     end
     Exec.finish_spawned(fetch_distinfo)
-    chdir(Param.distdir)
-    local distfiles = scan_files("")
+    local distfiles = Param.distdir.find_files
     local unused = {}
     for _, f in ipairs(distfiles) do
         if not distinfo_cache[f] then
@@ -237,7 +233,7 @@ local function clean_stale_distfiles ()
         Msg.show {"No stale distfiles found"}
     else
         local selected = Msg.ask_to_delete ("stale file", unused)
-        batch_delete(selected, Param.distdir_ro)
+        batch_delete(Param.distdir, selected, Param.distdir_ro)
         delete_empty_directories(Param.distdir, Param.distdir_ro)
     end
 end
@@ -271,10 +267,9 @@ local function clean_stale_libraries()
     Msg.show {start = true, "Scanning for stale shared library backups ..."}
     local stale_compat_libs = list_stale_libraries()
     if #stale_compat_libs > 0 then
-        chdir(Param.local_lib_compat)
         table.sort(stale_compat_libs)
         local selected = Msg.ask_to_delete("stale shared library backup", stale_compat_libs, false, true)
-        batch_delete(selected, true)
+        batch_delete(Param.local_lib_compat, selected, true)
     else
         Msg.show {"No stale shared library backups found."}
     end
@@ -290,7 +285,7 @@ local function portdb_purge()
         local subdir = origin:gsub("/", "_")
         origins[subdir] = origin
     end
-    assert(chdir(Param.port_dbdir), "cannot access directory " .. Param.port_dbdir)
+    assert(chdir(Param.port_dbdir.name), "cannot access directory " .. Param.port_dbdir)
     local stale_origins = {}
     for _, dir in ipairs(glob("*")) do
         if not origins[dir] then
@@ -299,7 +294,7 @@ local function portdb_purge()
     end
     if #stale_origins then
         local selected = Msg.ask_to_delete("stale port options file for", stale_origins)
-        batch_delete(selected, Param.port_dbdir_ro)
+        batch_delete(Param.port_dbdir, selected, Param.port_dbdir_ro)
     else
         Msg.show {"No stale entries found in", Param.port_dbdir}
     end

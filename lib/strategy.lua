@@ -54,7 +54,8 @@ local function add_missing_deps(action_list) -- XXX need to also add special dep
     local build_dep_table -- table indexed by [pkgname]
     local run_dep_table   -- table indexed by [pkgname]
     local function add_depends(a, type, is_build_dep, is_run_dep)
-        local deps = a.pkg_new and a.pkg_new.depends[type]
+        TRACE("ADD_DEPENDS", a.depends, type, is_build_dep, is_run_dep)
+        local deps = a.depends[type]
         if deps then
             local pkg_name = a.pkg_new.name
             TRACE("DEPS", type, pkg_name, deps)
@@ -78,6 +79,7 @@ local function add_missing_deps(action_list) -- XXX need to also add special dep
     end
     local start_elem = 1
     while start_elem <= #action_list do
+        TRACE("ADD_MISSING_DEPS:", start_elem, #action_list)
         build_dep_table = {}
         run_dep_table = {}
         local last_elem = #action_list
@@ -106,7 +108,7 @@ end
 local function all_pkgs()
     local pkgs = Package:packages_cache_load()
     local result = {}
-    for k, p in pairs(pkgs) do
+    for _, p in pairs(pkgs) do
         result[#result+1] = p
     end
     return result
@@ -265,13 +267,13 @@ local function execute()
     add_missing_deps(action_list)
 
     -- sort actions according to registered dependencies
-    action_list = Action.sort_list(action_list)
+--    action_list = Action.sort_list(action_list)
 
     --[[ DEBUGGING ONLY!!!
-    Origin.dump_cache ()
-    Package.dump_cache ()
-    Action.dump_cache ()
+    Origin.dump_cache()
+    Package.dump_cache()
     --]]
+    Action.dump_cache()
 
     -- end of scan phase, all required actions are known at this point, builds may start
     Action.start_phase("build")

@@ -1225,7 +1225,7 @@ local function check_config_allow(action, recursive)
     if not action.pkg_new then
         return
     end
-    local origin = action.origin
+    local origin = Origin:new(action.pkg_new.origin_name)
     local function check_ignore(name, field)
         TRACE("CHECK_IGNORE", origin.name, name, field, rawget(origin, field))
         if rawget(origin, field) then
@@ -1374,8 +1374,63 @@ local function __index(action, k)
         return math.floor(n <= limit and n or limit) -- convert from float to integer
     end
     local function __depends()
+        local function pkgs_from_origin_tables(...)
+            local pkgs = {}
+            local tables = {...}
+            for _, t in ipairs(tables) do
+                if t then
+                    for _, v in ipairs(t) do
+                        local origin = string.match(v, "^[^:]+:(.+)")
+                        if not string.match(origin, ":") then -- ignore special depends
+                            local o_n = Origin:new(origin)
+                            local pkgname = o_n and o_n.pkgname
+                            if pkgname then
+                                local p = Package.get(pkgname)
+                                if not p then
+                                    p = Package:new(pkgname)
+                                    p.origin_name = origin
+                                    p.origin = o_n
+                                end
+                                pkgs[#pkgs + 1] = pkgname
+                            end
+                        end
+                    end
+                end
+            end
+            pkgs.shared = true
+            --TRACE("PKGS_FROM_ORIGIN_TABLES->", pkgs, ...)
+            return pkgs
+        end
         local p_n = action.pkg_new
-        return p_n and p_n.depends or {}
+        local o_n = p_n and p_n.origin_name and Origin:new(p_n.origin_name)
+        local o_depends = o_n and o_n.depends
+        --TRACE("O_DEPENDS", o_n.name, o_depends)
+        if not o_depends then
+            TRACE("PKGS_FROM_ORIGIN_TABLE-NULL", p_n)
+            return {}
+        end
+        local p_depends = {
+            build = pkgs_from_origin_tables(
+                o_depends.extract,
+                o_depends.patch,
+                o_depends.fetch,
+                o_depends.build,
+                o_depends.lib
+            ),
+            pkg = pkgs_from_origin_tables(
+                o_depends.pkg
+            ),
+            run = pkgs_from_origin_tables(
+                o_depends.lib,
+                o_depends.run
+            ),
+        }
+        local pkgname = action.pkg_new.name
+        p_depends.build.tag = pkgname
+        p_depends.pkg.tag = pkgname
+        p_depends.run.tag = pkgname
+        --TRACE("P_DEPENDS", pkgname, p_depends)
+        return p_depends
     end
     local function __check_req_for()
         return {
@@ -1410,6 +1465,7 @@ local function __index(action, k)
                 TRACE("DETERMINE_PKG_NEW(o_o)-1.1", o_o.name, p_o.name_base, p_n and p_n.name_base)
                 if p_n and p_n.name_base == p_o.name_base then
                     TRACE("DETERMINE_PKG_NEW->", p_n.name)
+                    p_n.origin_name = o_o.name
                     return p_n
                 end
             end
@@ -1421,6 +1477,7 @@ local function __index(action, k)
             TRACE("DETERMINE_PKG_NEW(o_o)-3", o_o, o_n)
             if o_n and o_n.port_exists then
                 p_n = Package:new(o_n.pkgname)
+                p_n.origin_name = o_n.name
 TRACE("XXX1", p_n)
                 if p_n then
                     local basename = p_n.name_base
@@ -1616,7 +1673,7 @@ TRACE("XXX2", basename)
         return action.force -- XXX NYI
     end
     local function __check_skip_install() -- do not install to base system
-        TRACE("X", action)
+        --TRACE("X", action)
         if Options.skip_install or Options.jailed then
             if action.is_auto then
                 local req_for = action.req_for

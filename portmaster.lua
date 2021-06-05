@@ -30,12 +30,6 @@ SUCH DAMAGE.
 -------------------------------------------------------------------------------------
 --local dbg = require("debugger")
 
-local P = require("posix")
-local glob = P.glob
-
-local P_US = require("posix.unistd")
-local chdir = P_US.chdir
-
 --[[
 function trace (event, line)
    local s = debug.getinfo (2).short_src
@@ -44,7 +38,7 @@ end
 debug.sethook (trace, "l")
 --]]
 
-local R = require("std.strict")
+local _ = require("std.strict")
 
 -- local _debug = require 'std._debug'(true)
 
@@ -63,10 +57,8 @@ local Moved = require("portmaster.moved")
 local Environment = require("portmaster.environment")
 local Trace = require("portmaster.trace")
 local Origin = require("portmaster.origin")
-local Filepath = require("portmaster.filepath")
 local Util = require("portmaster.util")
 
--------------------------------------------------------------------------------------
 local TRACE = Trace.trace
 
 -------------------------------------------------------------------------------------
@@ -285,9 +277,9 @@ local function portdb_purge()
         local subdir = origin:gsub("/", "_")
         origins[subdir] = origin
     end
-    assert(chdir(Param.port_dbdir.name), "cannot access directory " .. Param.port_dbdir)
+    assert(Param.port_dbdir.name.is_dir, "cannot access directory " .. Param.port_dbdir.name)
     local stale_origins = {}
-    for _, dir in ipairs(glob("*")) do
+    for _, dir in ipairs(Param.port_dbdir.files) do
         if not origins[dir] then
             table.insert(stale_origins, dir)
         end
@@ -298,7 +290,6 @@ local function portdb_purge()
     else
         Msg.show {"No stale entries found in", Param.port_dbdir}
     end
-    chdir("/")
 end
 
 --

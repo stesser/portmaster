@@ -26,17 +26,9 @@ SUCH DAMAGE.
 --]]
 
 -------------------------------------------------------------------------------------
---[[
-local Origin = require ("portmaster.origin")
-local Excludes = require("portmaster.excludes")
-local Options = require("portmaster.options")
-local PkgDb = require("portmaster.pkgdb")
-local Msg = require("portmaster.msg")
-local Exec = require("portmaster.exec")
-local CMD = require("portmaster.cmd")
-local Param = require("portmaster.param")
---]]
 local Trace = require("portmaster.trace")
+
+local TRACE = Trace.trace
 
 -------------------------------------------------------------------------------------
 local P = require("posix")
@@ -52,22 +44,23 @@ local stat_isreg = P_SS.S_ISREG
 local P_US = require("posix.unistd")
 local access = P_US.access
 
-local TRACE = Trace.trace
-
 local Filepath = {}
 
 -------------------------------------------------------------------------------------
 -- go directory levels up
 local function path_up(dir, level)
-    local result = dir.name
     level = level or 1
     for _ = 1, level do
-        if result == "/" then
+        if dir == "/" then
                 break
         end
-        result = string.gsub(result, "/[^/]+$", "")
+        dir = string.gsub(dir, "/[^/]+$", "")
     end
-    return Filepath:new(result)
+    return dir
+end
+
+local function __path_up(dir, level)
+    return Filepath:new(path_up(dir.name, level))
 end
 
 --
@@ -111,7 +104,7 @@ Filepath.is_dir = is_dir
 
 local function is_reg(name)
     TRACE("IS_REG?", name)
-    local st, err = lstat(name)
+    local st, err = stat(name)
     --TRACE("IS_REG->", name, st, err)
     if st and access(name, "r") then
         --TRACE("IS_REG", path, stat_isdir(st.st_mode))
@@ -122,6 +115,46 @@ end
 
 Filepath.is_reg = is_reg
 
+local function is_readable(name)
+    if name and name ~= "" then
+        return access(name, "r") == 0
+    end
+end
+
+Filepath.is_readable = is_readable
+
+local function is_writeable(name)
+    if name and name ~= "" then
+        return access(name, "w") == 0
+    end
+end
+
+Filepath.is_writeable = is_writeable
+
+local function is_executable(name)
+    if name and name ~= "" then
+        return access(name, "x") == 0
+    end
+end
+
+Filepath.is_executable = is_executable
+
+local function is_deleteable(name)
+    if name and name ~= "" then
+        local parent = path_up(name)
+        return is_executable(parent) and is_writeable(parent)
+    end
+end
+
+Filepath.is_deleteable = is_deleteable
+
+local function mtime(name)
+    local st, err = stat(name)
+    return st.st_mtime
+end
+
+Filepath.mtime = mtime
+
 -------------------------------------------------------------------------------------
 local function __index(path, k)
     local function __is_dir()
@@ -130,20 +163,20 @@ local function __index(path, k)
     local function __is_reg()
         return is_reg(path.name)
     end
+    local function __mtime()
+       return mtime(path.name)
+    end
     local function __readable()
-        local name = path.name
-        if name and name ~= "" then
-            return access(name, "r") == 0
-        end
+       return is_readable(path.name)
     end
     local function __writeable()
-        local name = path.name
-        if name and name ~= "" then
-            return access(name, "w") == 0
-        end
+       return is_writeable(path.name)
+    end
+    local function __executable()
+       return is_executable(path.name)
     end
     local function __deleteable()
-
+       return is_deleteable(path.name)
     end
     local function __files()
         local name = path.name
@@ -195,8 +228,10 @@ local function __index(path, k)
     local dispatch = {
         is_dir = __is_dir,
         is_reg = __is_reg,
+        mtime = __mtime,
         is_readable = __readable,
         is_writeable = __writeable,
+        is_executable = __executable,
         is_deleteable = __deleteable,
         files = __files,
         find_dirs = __find_dirs,
@@ -220,7 +255,7 @@ local mt = {
     __index = __index,
     --__newindex = __newindex, -- DEBUGGING ONLY
     __add = __add,
-    __sub = path_up,
+    __sub = __path_up,
     __tostring = function(self)
         return self.name
     end,
@@ -237,12 +272,3 @@ function Filepath.new(Filepath, name)
 end
 
 return Filepath
---[[
-return {
-    new = new,
-	open = open,
-	close = close,
-	delete = delete,
-    --add = add,
-}
---]]

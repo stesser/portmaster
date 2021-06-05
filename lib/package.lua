@@ -26,7 +26,7 @@ SUCH DAMAGE.
 --]]
 
 -------------------------------------------------------------------------------------
-local Origin = require ("portmaster.origin")
+--local Origin = require ("portmaster.origin")
 local Excludes = require("portmaster.excludes")
 local Options = require("portmaster.options")
 local PkgDb = require("portmaster.pkgdb")
@@ -36,19 +36,6 @@ local CMD = require("portmaster.cmd")
 local Param = require("portmaster.param")
 local Trace = require("portmaster.trace")
 local Filepath = require("portmaster.filepath")
-
--------------------------------------------------------------------------------------
-local P = require("posix")
-local glob = P.glob
-
-local P_SS = require("posix.sys.stat")
-local stat = P_SS.stat
-local lstat = P_SS.lstat
---local stat_isdir = P_SS.S_ISDIR
-local stat_isreg = P_SS.S_ISREG
-
-local P_US = require("posix.unistd")
-local access = P_US.access
 
 local TRACE = Trace.trace
 
@@ -102,7 +89,7 @@ local function shlibs_backup(pkg)
                     for _, l in ipairs(pkg_libs) do
                         if l == lib then
                             local backup_lib = Param.local_lib_compat + lib
-                            if access(backup_lib, "r") then
+                            if backup_lib.is_readable then
                                 Exec.run{
                                     as_root = true,
                                     log = true,
@@ -197,7 +184,7 @@ local function install(pkg, abi)
     local env = {IGNORE_OSVERSION = "yes"}
     TRACE("INSTALL", abi, pkgfile)
     if string.match(pkgfile, ".*/pkg-[^/]+$") then -- pkg command itself
-        if not access(CMD.pkg, "x") then
+        if not Filepath.is_executable(CMD.pkg) then
             env.ASSUME_ALWAYS_YES = "yes"
             local out, err, exitcode = Exec.run{
                 as_root = true,
@@ -260,7 +247,7 @@ local function recover(pkg)
             safe = true,
             CMD.ls, "-1t", filename{base = Param.packages_backup, subdir = "", ext = ".*", pkg}}[1] -- XXX replace with glob and sort by modification time ==> pkg.bakfile
     end
-    if pkgfile and access(pkgfile, "r") then
+    if pkgfile and Filepath.is_readable(pkgfile) then
         Msg.show {"Re-installing previous version", pkgname}
         if install(pkg, pkg.pkgfile_abi) then
             if pkg.is_automatic == 1 then
@@ -285,7 +272,7 @@ local function file_search_in(pkg, subdir)
         local file
         for _, f in ipairs(files) do
             if file_valid_abi(f) then
-                if not file or stat(file).st_mtime < stat(f).st_mtime then -- newer than previously checked package file?
+                if not file or Filepath.mtime(file) < Filepath.mtime(f) then -- newer than previously checked package file?
                     file = f
                 end
             end
@@ -302,13 +289,16 @@ end
 -- delete backup package file
 local function backup_delete(pkg)
     local g = filename {subdir = "portmaster-backup", ext = ".t?*", pkg}
-    for _, backupfile in pairs(glob(g) or {}) do
-        --TRACE("BACKUP_DELETE", backupfile, Param.packages .. "portmaster-backup/")
-        Exec.run{
-            as_root = true,
-            log = true,
-            CMD.unlink, backupfile
-        }
+    local files = Filepath:new(g).files
+    if files then
+        for _, backupfile in pairs(files) do
+            --TRACE("BACKUP_DELETE", backupfile, Param.packages .. "portmaster-backup/")
+            Exec.run{
+                as_root = true,
+                log = true,
+                CMD.unlink, backupfile
+            }
+        end
     end
 end
 
@@ -317,14 +307,17 @@ local function delete_old(pkg)
     local bakfile = pkg.bak_file
     local g = filename {subdir = "*", ext = "t?*", pkg}
     --TRACE("DELETE_OLD", pkg.name, g)
-    for _, pkgfile in pairs(glob(g) or {}) do
-        --TRACE("CHECK_BACKUP", pkgfile, bakfile)
-        if pkgfile ~= bakfile then
-            Exec.run{
-                as_root = true,
-                log = true,
-                CMD.unlink, pkgfile
-            }
+    local files = Filepath:new(g).files
+    if files then
+        for _, pkgfile in pairs(files) do
+            --TRACE("CHECK_BACKUP", pkgfile, bakfile)
+            if pkgfile ~= bakfile then
+                Exec.run{
+                    as_root = true,
+                    log = true,
+                    CMD.unlink, pkgfile
+                }
+            end
         end
     end
 end
@@ -421,7 +414,7 @@ end
 -- load a list of of origins with flavor for currently installed flavored packages
 local function packages_cache_load(Package)
     if PACKAGES_CACHE_LOADED then
-        return
+        return PACKAGES_CACHE
     end
     local pkg_flavor = {}
     local pkg_fbsd_version = {}
@@ -489,29 +482,6 @@ local function packages_cache_load(Package)
 end
 
 -------------------------------------------------------------------------------------
--- wait for dependencies to become available
-local function pkgs_from_origin_tables(...)
-    local pkgs = {}
-    local tables = {...}
-    for _, t in ipairs(tables) do
-        if t then
-            for _, v in ipairs(t) do
-                local origin = string.match(v, "^[^:]+:(.+)")
-                if not string.match(origin, ":") then -- ignore special depends
-                    local o_n = Origin:new(origin)
-                    local pkgname = o_n and o_n.pkgname
-                    if pkgname then
-                        pkgs[#pkgs + 1] = pkgname
-                    end
-                end
-            end
-        end
-    end
-    pkgs.shared = true
-    --TRACE("PKGS_FROM_ORIGIN_TABLES->", pkgs, ...)
-    return pkgs
-end
-
 --
 local function __newindex(pkg, n, v)
     TRACE("SET(p)", pkg.name, n, v)
@@ -519,36 +489,6 @@ local function __newindex(pkg, n, v)
 end
 
 local function __index(pkg, k)
-    local function __depends(pkg, k)
-        local o_n = pkg.origin
-        local o_depends = o_n and o_n.depends
-        if not o_depends then
-            return {}
-        end
-        --TRACE("O_DEPENDS", o_n.name, o_depends)
-        local p_depends = {
-            build = pkgs_from_origin_tables(
-                o_depends.extract,
-                o_depends.patch,
-                o_depends.fetch,
-                o_depends.build,
-                o_depends.lib
-            ),
-            pkg = pkgs_from_origin_tables(
-                o_depends.pkg
-            ),
-            run = pkgs_from_origin_tables(
-                o_depends.lib,
-                o_depends.run
-            ),
-        }
-        local pkgname = pkg.name
-        p_depends.build.tag = pkgname
-        p_depends.pkg.tag = pkgname
-        p_depends.run.tag = pkgname
-        --TRACE("P_DEPENDS", pkgname, p_depends)
-        return p_depends
-    end
     local function __origin_from_pkg(pkg, k)
         TRACE("ORIGIN_FROM_PKG", k, pkg)
     end
@@ -629,7 +569,7 @@ local function __index(pkg, k)
         --shared_libs = false, -- batch loaded at start
         --req_shared_libs = false, -- batch loaded at start
         --is_installed = false, -- set for files loaded from package db
-        depends = __depends,
+        --depends = __depends,
         pkg_filename = __pkg_filename,
         bak_filename = __pkg_filename,
     }

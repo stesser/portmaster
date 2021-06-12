@@ -133,7 +133,7 @@ local function dist_fetch(origin)
          local really_unchecked = fetch_required(unchecked) -- fetch again since we may have been blocked and sleeping
          if #really_unchecked > 0 then
             --TRACE("FETCH_MISSING", really_unchecked)
-            local lines, err, exitcode = origin:port_make{
+            local lines, err, exitcode = origin:port_make{ -- XXX this requires to have all FETCH_DEPENDS installed! (but currently none exist in the ports tree)
                as_root = Param.distdir_ro,
                table = true,
                "FETCH_BEFORE_ARGS=-v",
@@ -149,6 +149,7 @@ local function dist_fetch(origin)
                local files = string.match(l, "Giving up on fetching files: (.*)")
                if files then
                   success = false
+                  origin.fetch_fail_msg = "Distfiles could not be fetched: " .. files
                   for _, file in ipairs(Util.split_words(files)) do
                      --TRACE("DISTINFO_CACHE", "checked", false, file)
                      DISTINFO_CACHE[file].checked = false
@@ -160,8 +161,8 @@ local function dist_fetch(origin)
          -- <<<< FetchLock(unchecked)
       end
    end
+   origin.fetched = success
    --TRACE("FETCH->", port, success)
-   return success
 end
 
 --
@@ -171,17 +172,15 @@ end
 
 --
 local function fetch_wait(origin)
-   if FetchLock then
-      local distfiles = origin.distfiles
-      if distfiles then
-         --TRACE("FETCH_WAIT", distfiles)
-         distfiles.shared = true
-         distfiles.tag = origin.name
-         -- >>>> FetchLock(distfiles, SHARED)
-         FetchLock:acquire(distfiles)
-         FetchLock:release(distfiles) -- release immediately
-         -- <<<< FetchLock(distfiles, SHARED)
-      end
+   local distfiles = origin.distfiles
+   if distfiles then
+      --TRACE("FETCH_WAIT", distfiles)
+      distfiles.shared = true
+      distfiles.tag = origin.name
+      -- >>>> FetchLock(distfiles, SHARED)
+      FetchLock:acquire(distfiles)
+      FetchLock:release(distfiles) -- release immediately
+      -- <<<< FetchLock(distfiles, SHARED)
    end
 end
 

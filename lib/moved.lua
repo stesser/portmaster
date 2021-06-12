@@ -110,7 +110,7 @@ local function o(port, flavor)
 end
 
 -- try to find origin in list of moved or deleted ports, returns new origin or nil if found, false if not found, followed by reason text
-local function lookup_new_origin(origin)
+local function lookup_new_origin(o_o)
     local function locate_move(port, flavor, min_i)
         local movedrec = MOVED_CACHE[port]
         if not movedrec then
@@ -142,8 +142,8 @@ local function lookup_new_origin(origin)
     if not MOVED_CACHE then
         moved_cache_load()
     end
-    local origin_0 = origin
-    local port, flavor, r = locate_move(origin.port, origin.flavor, 1)
+    local origin_0 = o_o
+    local port, flavor, r = locate_move(o_o.port, o_o.flavor, 1)
     if r then
         origin_0.reason = r -- XXX reason might be set on wrong port (old vs. new???)
         if port then
@@ -153,7 +153,7 @@ local function lookup_new_origin(origin)
 end
 
 --
-local function lookup_prev_origin(origin)
+local function lookup_prev_origin(o_n)
     local function locate_rev_move(port, flavor, min_i)
         local movedrec = MOVED_CACHE_REV[port]
         if not movedrec then
@@ -184,13 +184,13 @@ local function lookup_prev_origin(origin)
     if not MOVED_CACHE_REV then
         moved_cache_load()
     end
-    local port, flavor, r = locate_rev_move(origin.port, origin.flavor, 1)
+    local port, flavor, r = locate_rev_move(o_n.port, o_n.flavor, 1)
     --if r then
         if port then
-            origin = Origin.get(o(port, flavor))
+            o_n = Origin.get(o(port, flavor))
         end
-        origin.reason = r -- XXX reason might be set on wrong port (old vs. new???)
-        return origin
+        o_n.reason = r -- XXX reason might be set on wrong port (old vs. new???)
+        return o_n
     --end
 end
 

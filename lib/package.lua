@@ -442,14 +442,6 @@ local function packages_cache_load(Package)
             origin_name = check_default_version(origin_name, pkgname)
         end
         local p = Package:new(pkgname)
-        --[[
-        local o = Origin:new(origin_name)
-        if not rawget(o, "old_pkgs") then
-            o.old_pkgs = {}
-        end
-        table.insert(o.old_pkgs, pkgname)
-        p.origin = o
-        --]]
         p.origin_name = origin_name
         p.installed_abi = abi
         p.flavor = f
@@ -545,10 +537,8 @@ local function __index(pkg, k)
         return result
     end
     local function __origin_name()
-        TRACE("GET ORIGIN_NAME", rawget(pkg, "origin"), pkg)
-        if rawget(pkg, "origin") then
-            return pkg.origin.name
-        end
+        TRACE("GET ORIGIN_NAME", rawget(pkg, "origin_name"), pkg)
+        return rawget(pkg, "origin_name")
     end
     local dispatch = {
         installed_abi = __default_false,

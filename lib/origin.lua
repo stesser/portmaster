@@ -111,7 +111,7 @@ local function port_make(origin, args)
 end
 
 -- return Makefile variables for port (with optional flavor)
-local function port_var(origin, vars)
+local function port_var(o_n, vars)
     local args = {safe = true, table = vars.table}
     for i = 1, #vars do
         args[i] = "-V" .. vars[i]
@@ -121,7 +121,7 @@ local function port_var(origin, vars)
         table.insert(args, "LOC=" .. dbginfo.name .. ":" .. dbginfo.currentline)
     end
     table.insert(args, "-DBUILD_ALL_PYTHON_FLAVORS") -- required for make -V FLAVORS to get the full list :X
-    local out, _, exitcode = port_make(origin, args)
+    local out, _, exitcode = port_make(o_n, args)
     --TRACE("PORTVAR->", out, exitcode)
     if exitcode ~= 0 then
         out = nil
@@ -187,8 +187,8 @@ local function check_excluded(origin)
 end
 
 -- install newly built port
-local function install(origin)
-    return origin:port_make{
+local function install(o_n)
+    return o_n:port_make{
         log = true,
         jailed = true,
         as_root = true,
@@ -198,7 +198,7 @@ local function install(origin)
 end
 
 --
-local function check_license(origin)
+local function check_license(o_n)
     return true -- DUMMY return value XXX
 end
 
@@ -311,26 +311,7 @@ local function __port_vars(origin, k, recursive)
         if default_flavor and not string.match(name, "@") then -- flavor and default_version do not mix !!! check required ???
             adjustname(origin, name .. "@" .. default_flavor)
         end
-        --[[
-        -- check for existing package cache entry and its origin
-        local p = origin.pkgname
-        local o = p and p.origin -- MERGE !!!
-        --TRACE("CHECK_ORIGIN_ALIAS", origin and origin.name or "<nil>", o and o.name or "<nil>", p and p.name or "<nil>")
-        if o and o.name ~= origin.name then
-            adjustname(origin, o.name)
-        end
-        --]]
     end
-    --[[
-    local function set_pkgname(origin, var, pkgname)
-        if pkgname then
-            local p = Package:new(pkgname)
-            --TRACE("PKG_NEW", pkgname, origin.name, p.origin and p.origin.name or "''")
-            p.origin = origin
-            origin[var] = p
-        end
-    end
-    --]]
     local function set_table(self, field, v)
         self[field] = v ~= "" and Util.split_words(v) or false
     end

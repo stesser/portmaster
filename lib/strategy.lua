@@ -65,7 +65,7 @@ local function add_missing_deps(action_list) -- XXX need to also add special dep
             end
         end
     end
-    local function process_depends(deps)
+    local function process_depends()
         for dep_pkg, is_build_dep in pairs(build_dep_table) do
             local is_run_dep = run_dep_table[dep_pkg]
             TRACE("PROCESS_DEPENDS", dep_pkg, is_build_dep, is_run_dep)
@@ -150,7 +150,7 @@ local function add_multiple(args)
             if string.match(pkg.name_base, v .. "$") then
                 return true, Options.force
             end
-            --if pkg.origin and (string.match(pkg.origin.name, v) or string.match(pkg.origin.port, v)) then
+            --if pkg.origin and (string.match(pkg.origin_name, v) or string.match(pkg.origin.port, v)) then
             if string.match(pkg.origin_name, v) then
                 return true, Options.force
             end
@@ -164,11 +164,11 @@ local function add_multiple(args)
             local o = Origin:new(v)
             local p = o.pkg_new -- SLOW !!!
             if p then
-                p.origin = o
                 add_action{
                     is_user = true,
                     force = Options.force,
-                    pkg_new = p
+                    pkg_new = p,
+                    o_n = o
                 }
             end
         end

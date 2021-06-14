@@ -343,15 +343,15 @@ local function __port_vars(origin, k, recursive)
         set_table(origin, "new_options", t.NEW_OPTIONS)
         set_table(origin, "port_options", t.PORT_OPTIONS)
         set_table(origin, "categories", t.CATEGORIES)
-        origin.depends = {}
-        set_table(origin.depends, "fetch", t.FETCH_DEPENDS)
-        set_table(origin.depends, "extract", t.EXTRACT_DEPENDS)
-        set_table(origin.depends, "patch", t.PATCH_DEPENDS)
-        set_table(origin.depends, "build", t.BUILD_DEPENDS)
-        set_table(origin.depends, "lib", t.LIB_DEPENDS)
-        set_table(origin.depends, "run", t.RUN_DEPENDS)
-        set_table(origin.depends, "test", t.TEST_DEPENDS)
-        set_table(origin.depends, "pkg", t.PKG_DEPENDS)
+        origin.depend_var = {}
+        set_table(origin.depend_var, "fetch", t.FETCH_DEPENDS)
+        set_table(origin.depend_var, "extract", t.EXTRACT_DEPENDS)
+        set_table(origin.depend_var, "patch", t.PATCH_DEPENDS)
+        set_table(origin.depend_var, "build", t.BUILD_DEPENDS)
+        set_table(origin.depend_var, "lib", t.LIB_DEPENDS)
+        set_table(origin.depend_var, "run", t.RUN_DEPENDS)
+        set_table(origin.depend_var, "test", t.TEST_DEPENDS)
+        set_table(origin.depend_var, "pkg", t.PKG_DEPENDS)
         set_table(origin, "conflicts_build_var", t.CONFLICTS_BUILD)
         set_table(origin, "conflicts_install_var", t.CONFLICTS_INSTALL)
         set_table(origin, "conflicts_var", t.CONFLICTS)
@@ -369,49 +369,6 @@ local function __port_vars(origin, k, recursive)
         end
     end
     return rawget(origin, k)
-end
-
---
-local function __port_depends(origin, k) -- XXX rename special_depends_var to ???
-    local depends_table = {
-        build_depends = {
-            "extract",
-            "patch",
-            "fetch",
-            "build",
-            "lib"
-        },
-        pkg_depends = {
-            "pkg"
-        },
-        run_depends = {
-            "lib",
-            "run"
-        },
-        test_depends = {
-            "test"
-        },
-        special_depends = {
-            "build"
-        },
-    }
-    local t = depends_table[k]
-    local seen = {}
-    local result = {}
-    for _, v in ipairs(t) do
-        if origin.depends and origin.depends[v] then
-            for _, d in ipairs(origin.depends[v]) do
-                local pattern = k == "special_depends" and "^[^:]+:([^:]+:%S+)" or "^[^:]+:([^:]+)$"
-                --TRACE("PORT_DEPENDS", k, d, pattern)
-                local o = string.match(d, pattern)
-                if o and not seen[o] then
-                    seen[o] = true
-                    result[#result+1] = o
-                end
-            end
-        end
-    end
-    return result
 end
 
 --
@@ -458,6 +415,23 @@ local function __verify_origin(o)
     end
 end
 
+--
+local function __special_depends(o)
+    local result = {}
+    local build_depends = o.depend_var.build
+    if build_depends then
+        for _, entry in ipairs(build_depends) do
+            TRACE("__SPECIAL_DEPEND?", entry)
+            local origin_target = string.match(entry, "^[^:]+:([^:]+:%a+)")
+            if origin_target then
+                result[#result + 1] = origin_target
+                TRACE("__SPECIAL_DEPEND->", origin_target)
+            end
+        end
+    end
+    return result
+end
+
 -------------------------------------------------------------------------------------
 --
 local __index_dispatch = {
@@ -478,7 +452,8 @@ local __index_dispatch = {
     options_file = __port_vars,
     pkgname = __port_vars,
     distfiles = __port_vars,
-    depends = __port_vars,
+    depend_var = __port_vars,
+    special_depends = __special_depends,
     conflicts_build_var = __port_vars,
     conflicts_install_var = __port_vars,
     conflicts_var = __port_vars,
@@ -486,7 +461,6 @@ local __index_dispatch = {
     path = path,
     port = port,
     port_exists = check_port_exists,
-    special_depends = __port_depends,
     build_conflicts = __port_conflicts,
     install_conflicts = __port_conflicts,
     short_name = __short_name,
@@ -544,12 +518,53 @@ local function new(Origin, name)
     return nil
 end
 
+local function getmultiple(Origin, origins)
+    local function __pkgname(o_n)
+        return o_n.pkgname -- dummy fetch to force loading of port variables
+    end
+    TRACE("GETMULTIPLE", origins)
+    for _, name in ipairs(origins) do
+        local o_n = new(Origin, name )
+        if not rawget(o_n, "pkgname") then
+            Exec.spawn(__pkgname, o_n)
+        end
+    end
+    Exec.finish_spawned(__pkgname)
+    local result = {}
+    for _, name in ipairs(origins) do
+        result[#result + 1] = get(name)
+    end
+    TRACE("GETMULTIPLE->", result)
+    return result
+end
+
+--
+local function make_index(Origin)
+    local function get_subdirs(dir)
+        return Util.split_words(Exec.make{"-C", dir, "-V", "SUBDIR"})
+    end
+    local port = {}
+    local categories = get_subdirs("/usr/ports")
+    for _, category in ipairs(categories) do
+        port[category] = get_subdirs("/usr/ports/" .. category)
+    end
+    local all_ports = {}
+    for category, ports in pairs(port) do
+        for _, p in ipairs(ports) do
+            all_ports[#all_ports + 1] = category .. "/" .. p
+        end
+    end
+    --TRACE("ALL_PORTS", all_ports)
+    getmultiple(Origin, all_ports)
+end
+
 -------------------------------------------------------------------------------------
 --
 return {
     -- name = false,
     new = new,
     get = get,
+    getmultiple = getmultiple,
     check_excluded = check_excluded,
     --check_config_allow = check_config_allow,
     fetch = Distfile.fetch,
@@ -561,4 +576,5 @@ return {
     portdb_path = portdb_path,
     dump_cache = dump_cache,
     check_license = check_license,
+    make_index = make_index,
 }

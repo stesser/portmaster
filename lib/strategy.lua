@@ -35,6 +35,7 @@ local Param = require("portmaster.param")
 local Trace = require("portmaster.trace")
 local Origin = require("portmaster.origin")
 local Package = require("portmaster.package")
+local Util = require("portmaster.util")
 
 -------------------------------------------------------------------------------------
 local TRACE = Trace.trace
@@ -50,56 +51,50 @@ end
 
 --
 local function add_missing_deps(action_list) -- XXX need to also add special dependencies, somewhat similar to build dependencies
-    -- verify run dependencies of up-to-date ports exist and are not downlevel, too!!!
-    local build_dep_table -- table indexed by [pkgname]
-    local run_dep_table   -- table indexed by [pkgname]
-    local function add_depends(a, type, is_build_dep, is_run_dep)
-        TRACE("ADD_DEPENDS", a.depends, type, is_build_dep, is_run_dep)
-        local deps = a.depends[type]
-        if deps then
-            local pkg_name = a.pkg_new.name
-            TRACE("DEPS", type, pkg_name, deps)
-            for _, dep_pkg in ipairs(deps) do
-                build_dep_table[dep_pkg] = build_dep_table[dep_pkg] or is_build_dep
-                run_dep_table[dep_pkg] = run_dep_table[dep_pkg] or is_run_dep
+    local function process_depends(origins)
+        TRACE("PROCESS_DEPENDS", #origins)
+        local pkgseen = {}
+        for _, o_n in ipairs(Origin:getmultiple(origins)) do
+            TRACE("X1", o_n)
+            local pkgname = o_n and o_n.pkgname
+            if pkgname and not (pkgseen[pkgname] or Action.get(pkgname)) then
+                pkgseen[pkgname] = true
+                local p_n = Package:new(pkgname)
+                p_n.origin_name = o_n.name
+                add_action{pkg_new = p_n} -- XXX just call Action.new since there is no inherent parallelism?
             end
         end
+        Exec.finish_spawned(Action.new)
     end
-    local function process_depends()
-        for dep_pkg, is_build_dep in pairs(build_dep_table) do
-            local is_run_dep = run_dep_table[dep_pkg]
-            TRACE("PROCESS_DEPENDS", dep_pkg, is_build_dep, is_run_dep)
-            local p = Package.get(dep_pkg)
-            add_action{
-                pkg_new = p,
-                is_run_dep = is_run_dep,
-                is_build_dep = is_build_dep,
-            }
+    local dep_origins = {}
+    local function add_deps(deps)
+        if deps then
+            for _, o_n in ipairs(deps) do
+                dep_origins[o_n] = true
+            end
         end
     end
     local start_elem = 1
     while start_elem <= #action_list do
         TRACE("ADD_MISSING_DEPS:", start_elem, #action_list)
-        build_dep_table = {}
-        run_dep_table = {}
         local last_elem = #action_list
         for i = start_elem, last_elem do
             local a = action_list[i]
             TRACE("ADD_MISSING_DEPS", i, #action_list, a)
+            local depends = a.depends
             if not (a.is_locked or a.ignore) and a.plan.build then
                 --was: Options.force or Options.jailed or not (rawget(a, "pkg_new") and rawget(a.pkg_new, "is_installed")) then
-                add_depends(a, "pkg", true, false)
-                add_depends(a, "build", true, false)
-                add_depends(a, "special", true, false)
-                add_depends(a, "run", rawget(a, "is_build_dep"), true)
-            else
-                add_depends(a, "run", false, true)
+                -- XXX collect dependency origins required for build
+                add_deps(depends.build)
+                add_deps(depends.special)
+                add_deps(depends.pkg)
             end
+            add_deps(depends.run)
         end
-        process_depends()
-        --TRACE("WAIT(NEW)START")
-        Exec.finish_spawned(Action.new)
-        --TRACE("WAIT(NEW)END")
+        TRACE("WAIT(NEW)START", dep_origins)
+        process_depends(Util.table_keys(dep_origins))
+        TRACE("WAIT(NEW)END")
+        dep_origins = {}
         start_elem = last_elem + 1
     end
 end

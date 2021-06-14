@@ -225,7 +225,7 @@ local function category_links_create(pkg_new, categories)
             }
         end
         if category == "Latest" then -- skip if/since automatically created???
-            destination = destination + pkg_new.name_base .. "." .. extension
+            destination = destination + (pkg_new.name_base .. "." .. extension)
         end
         Exec.run{
             as_root = Param.packages_ro,

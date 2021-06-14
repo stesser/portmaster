@@ -180,13 +180,14 @@ local function tasks_poll(timeout)
     end
     local function pollms()
         max_tasks = max_tasks or Param.ncpu
-        local n = tasks_spawned - (max_tasks or 4)
+        --local n = tasks_spawned - (max_tasks or 4)
+        local n = tasks_forked - (max_tasks or 4)
         return n <= 0 and 0 or (20 * n)
     end
     local idle
     if timeout or next(pollfds) then
         timeout = timeout or pollms()
-        --TRACE("POLL", timeout)
+        TRACE("POLL", tasks_spawned, tasks_forked, timeout)
         local task_done
         while not idle and poll(pollfds, timeout) > 0 do -- XXX add test for "terminated" variable set by fail et. al.
             idle = true
@@ -197,7 +198,8 @@ local function tasks_poll(timeout)
                     if revents.IN then
                         local data = read (fd, 128 * 1024) -- 4096 max on FreeBSD
                         if #data > 0 then
-                            table.insert(fdstat[fd].result, data)
+                            local t = fdstat[fd].result
+                            t[#t + 1] = data
                             --TRACE("READ", fdstat[fd].pid, fd, #data)
                             idle = false
                         elseif revents.HUP then

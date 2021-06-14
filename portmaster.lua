@@ -1,4 +1,4 @@
-#!/usr/local/bin/lua53
+#!/usr/local/bin/lua54
 
 --[[
 SPDX-License-Identifier: BSD-2-Clause-FreeBSD
@@ -433,6 +433,8 @@ local function main()
     Param.phase = "scan"
 
     Strategy.init()
+
+--    Origin:make_index()
 
     if Options.replace_origin then
         if #args ~= 1 then

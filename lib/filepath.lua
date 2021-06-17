@@ -90,9 +90,9 @@ end
 
 --
 local function is_dir(name)
-    TRACE("IS_DIR?", name)
+    --TRACE("IS_DIR?", name)
     local st, err = lstat(name)
-    --TRACE("IS_DIR->", name, st, err)
+    TRACE("IS_DIR->", name, st, err)
     if st and access(name, "x") then
         --TRACE("IS_DIR", path, stat_isdir(st.st_mode))
         return stat_isdir(st.st_mode) ~= 0
@@ -238,15 +238,21 @@ local function __index(path, k)
         find_files = __find_files,
     }
 
-    --TRACE("INDEX(f)", rawget(path, "name"), k)
-    local w = false
-    local f = dispatch[k]
-    if f then
-        w = f()
-    else
-        error("illegal field requested: Filepath." .. k)
+    local w = rawget(path, k)
+    if w == nil then
+        local f = dispatch[k]
+        if f then
+            w = f(path, k)
+            if w then
+                rawset(path, k, w)
+            else
+                w = false
+            end
+        else
+            error("illegal field requested: Filepath." .. k)
+        end
     end
-    TRACE("INDEX(f)->", rawget(path, "name"), k, w)
+    TRACE("INDEX(path)->", rawget(path, "name"), k, w)
     return w
 end
 

@@ -63,12 +63,6 @@ local function tasks_count()
     return #ACTION_LIST
 end
 
---[[
-local function origin_changed(o_o, o_n) -- move to Origin package !!!
-    return o_o and o_o.name ~= "" and o_o ~= o_n and o_o.name ~= string.match(o_n.name, "^([^%%]+)%%")
-end
---]]
-
 -- Describe action to be performed
 local function describe(action)
     local p_n = action.pkg_new
@@ -244,10 +238,11 @@ local function package_create(action)
         local as_root = Param.packages_ro
         local base = (as_root or jailed) and Param.tmpdir or Param.packages -- use random tempdir !!!
         local sufx = "." .. Param.package_format
-        local _, err, exitcode =
+        local out, err, exitcode =
             o_n:port_make {
             log = true,
             jailed = jailed,
+            --as_root = true, -- if the package has been
             "_OPTIONS_OK=1",
             "PACKAGES=" .. base.name,
             "PKG_SUFX=" .. sufx,
@@ -276,6 +271,8 @@ local function package_create(action)
                 }
             end
         end
+        pkgfile = Filepath:new(pkgfile.name) -- reset cached file information
+        TRACE ("PACKAGE_CREATE-", exitcode, pkgfile, out, err)
         if exitcode ~= 0 or not Options.dry_run and not pkgfile.is_readable then
             return fail(action, "Package file " .. pkgfile.name .. " could not be created", err)
         end
@@ -362,6 +359,7 @@ end
 --]]
 --
 local WorkDirLock = Lock:new("WorkDirLock")
+--local InstallableLock = Lock:new("InstallableLock")
 local RunnableLock = Lock:new("RunnableLock")
 local JobsLock = Lock:new("JobsLock", Param.maxjobs) -- limit number of processes to one per (virtual) core
 local PhaseLock = Lock:new("Phaselock")
@@ -433,12 +431,12 @@ local function perform_install_or_upgrade(action)
     -- clean work directory and special build depends (might also be delayed to just before program exit)
     local function port_clean()
         local function do_clean(o_n)
-            --TRACE("DO_CLEAN", wrkdir)
-            local wrkdir = o_n.wrkdir
-            local must_clean = wrkdir and wrkdir.is_readable
+            local wrkdir = Filepath:new(o_n.wrkdir)
+            TRACE("DO_CLEAN", wrkdir)
+            local must_clean = wrkdir.is_dir
             if must_clean then
-                local need_root = not wrkdir.is_writable or not (wrkdir - 1).is_writeable
-                --TRACE("DO_CLEAN_AS", origin_name, need_root)
+                local need_root = not wrkdir.is_deleteable
+                TRACE("DO_CLEAN_AS", o_n.name, need_root)
                 return o_n:port_make {
                     log = true,
                     jailed = true,
@@ -808,7 +806,6 @@ local function perform_install_or_upgrade(action)
         if dep_pkgs then
             RunnableLock:acquire(action.depends.pkg)
         end
-        --TRACE("RUNNABLE_LOCK_ACQUIRE_SHARED", table.concat(action.depends.pkg or {}, " "), RunnableLock)
     end
     local function release_pkgdeps_shared()
         local dep_pkgs = action.depends.pkg
@@ -835,9 +832,16 @@ local function perform_install_or_upgrade(action)
         JobsLock:release{weight = action.jobs}
     end
     local function lock_pkgnew()
-        TRACE("LOCK_PKGNEW", p_n.name)
-        RunnableLock:acquire{p_n.name}
+        local pkgname = p_n.name
+        TRACE("LOCK_PKGNEW", pkgname)
+        --InstallableLock:acquire(pkgname)
+        RunnableLock:acquire{pkgname}
     end
+    --[[
+    local function provide_pkgnew()
+        InstallableLock:release{p_n.name}
+    end
+    --]]
     local function release_pkgnew()
         RunnableLock:release{p_n.name}
     end
@@ -851,7 +855,7 @@ local function perform_install_or_upgrade(action)
         build_step(wait_for_distfiles)
         lock_wrkdir() -- >>>> WorkDirLock(o_n.wrkdir)
         --TRACE("perform_portbuild", portname, pkgname_new, special_depends)
-        lock_pkgnew()
+        lock_pkgnew() -- lock requests for this package name until it is available
         lock_builddeps_shared() -- >>>> RunnableLock(build_dep_pkgs, SHARED)
         wait_for_phase("build")
         build_step(check_build_deps)
@@ -878,7 +882,8 @@ local function perform_install_or_upgrade(action)
         end
         finish_phase("build")
     end
-    if action.plan.deinstall or action.plan.deinstall_old then
+    --if action.plan.deinstall or action.plan.deinstall_old then
+    if action.plan.deinstall_old then
         lock_pkgdeps_shared() -- >>>> RunnableLock(action.depends.pkg)
         wait_for_phase("build")
         build_step(create_backup_packages)
@@ -908,7 +913,6 @@ local function perform_install_or_upgrade(action)
         else
             -- == execute if no port has been built and installation from a package is required
             lock_pkgdeps_shared() -- >>>> RunnableLock(action.depends.pkg)
-            TRACE("RUNNABLE_LOCK_ACQUIRE_SHARED4", table.concat(action.depends.pkg or {}, " "), RunnableLock)
             build_step(install_from_package)
             release_pkgdeps_shared() -- <<<< RunnableLock(action.depends.pkg)
         end
@@ -1311,7 +1315,7 @@ local function __index(action, k)
         if not p_n or p_n.no_build or p_n.make_jobs_unsafe or p_n.disable_make_jobs then
             return 1
         end
-        local n = Param.maxjobs // 2
+        local n = (Param.maxjobs - 2) // 2
         local o_n = action.o_n
         if o_n.make_jobs_number and n > o_n.make_jobs_number then
             n = o_n.make_jobs_number
@@ -1422,9 +1426,9 @@ local function __index(action, k)
             TRACE("DETERMINE_PKG_NEW(o_o)-3", o_o, o_n)
             if o_n and o_n.port_exists then
                 p_n = Package:new(o_n.pkgname)
-                p_n.origin_name = o_n.name
 TRACE("XXX1", p_n)
                 if p_n then
+                    p_n.origin_name = o_n.name
                     local basename = p_n.name_base
 TRACE("XXX2", basename)
                     for _, p_o in ipairs(action.old_pkgs) do
@@ -1523,7 +1527,7 @@ TRACE("XXX2", basename)
         end
         local __upgrade_needed = __check_upgrade_needed()
         local function __check_build_needed()
-            TRACE("CHKBUILDREQ", action.short_name, tostring(action.pkg_new), action.use_pkgfile, __upgrade_needed, action.pkg_new and action.req_for.build)
+            --TRACE("CHKBUILDREQ", action.short_name, tostring(action.pkg_new), action.use_pkgfile, __upgrade_needed, action.pkg_new and action.req_for.build)
             -- return action.pkg_new and __upgrade_needed and not action.use_pkgfile
             if __upgrade_needed then
                 return not action.use_pkgfile
@@ -1545,7 +1549,7 @@ TRACE("XXX2", basename)
                 if Param.jailed or Options.delay_installation then
                     return action.req_for.build
                 end
-                return true
+                return __upgrade_needed
             end
         end
         local __install_needed = __check_install_needed()
@@ -1817,11 +1821,14 @@ local function sort_list(action_list)
                     add_deps_of_type("pkg")
                 end
                 add_deps_of_type("build")
+                add_deps_of_type("lib")
                 add_deps_of_type("special")
                 assert(not rawget(action, "planned"), "Dependency loop for: " .. action.short_name)
             end
             if action.plan.provide or action.plan.install then
+                add_deps_of_type("lib")
                 add_deps_of_type("run")
+                assert(not rawget(action, "planned"), "Dependency loop for: " .. action.short_name)
                 table.insert(sorted_list, action)
                 action.listpos = #sorted_list
                 action.planned = true
@@ -1839,7 +1846,7 @@ local function sort_list(action_list)
     end
     TRACE("SORT->", #action_list, #sorted_list)
     -- assert (#action_list == #sorted_list, "action_list items have been lost: " .. #action_list .. " vs. " .. #sorted_list)
-    return action_list
+    return sorted_list
     --return sorted_list
 end
 

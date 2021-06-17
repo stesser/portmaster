@@ -95,47 +95,6 @@ local function fail_bug(...)
 end
 
 -------------------------------------------------------------------------------------
---[[
---
-local function scan_files(dir)
-    TRACE("SCANFILES", dir)
-    local result = {}
-    assert(dir, "empty directory argument")
-    local files = (Filepath:new(dir) + "*").files
-    if files then
-        for _, f in ipairs(files) do
-            if Filepath.is_dir(f) then
-                for _, ff in ipairs(scan_files(f)) do
-                    table.insert(result, ff)
-                end
-            else
-                table.insert(result, f)
-            end
-        end
-    end
-    return result
-end
-
---
-local function scan_dirs(dir)
-    --TRACE("SCANDIRS", dir)
-    local result = {}
-    assert(dir, "empty directory argument")
-    local files = (Filepath:new(dir) + "*").files
-    if files then
-        for _, f in ipairs(files) do
-            if Filepath.is_dir(f) then
-                table.insert(result, f)
-                for _, ff in ipairs(scan_dirs(f)) do
-                    table.insert(result, ff)
-                end
-            end
-        end
-    end
-    return result
-end
---]]
-
 -- replace passed package or port with one built from the new origin
 local function ports_add_changed_origin(build_type, name, o_n) -- 3rd arg is NOT optional
     if Options.force then build_type = "force" end
@@ -154,7 +113,6 @@ local function ports_add_changed_origin(build_type, name, o_n) -- 3rd arg is NOT
         choose_action(build_type, "run", o_o, o_n) -- && matched=1
     end
 end
---]]
 
 -- ---------------------------------------------------------------------------
 -- deletes files within a prefix path

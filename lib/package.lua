@@ -619,9 +619,9 @@ local function new(Package, name)
             PACKAGES_VERSIONS[basename] = v
             --TRACE("V", basename, v)
             --]]
-            --TRACE("NEW Package", name)
+            TRACE("NEW Package", name)
         else
-            --TRACE("NEW Package", name, "(cached)")
+            TRACE("NEW Package", name, "(cached)")
         end
         return P
     end

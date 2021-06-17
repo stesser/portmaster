@@ -51,9 +51,9 @@ end
 
 --
 local function add_missing_deps(action_list) -- XXX need to also add special dependencies, somewhat similar to build dependencies
+    local pkgseen = {}
     local function process_depends(origins)
         TRACE("PROCESS_DEPENDS", #origins)
-        local pkgseen = {}
         for _, o_n in ipairs(Origin:getmultiple(origins)) do
             TRACE("X1", o_n)
             local pkgname = o_n and o_n.pkgname
@@ -69,8 +69,13 @@ local function add_missing_deps(action_list) -- XXX need to also add special dep
     local dep_origins = {}
     local function add_deps(deps)
         if deps then
-            for _, o_n in ipairs(deps) do
-                dep_origins[o_n] = true
+            for _, pkgname in ipairs(deps) do
+                local p_n = Package.get(pkgname)
+                if p_n then
+                    dep_origins[p_n.origin_name] = true
+                else
+                    TRACE("DEP_ERROR?", pkgname)
+                end
             end
         end
     end
@@ -261,8 +266,8 @@ local function execute()
     -- add missing dependencies
     add_missing_deps(action_list)
 
-    -- sort actions according to registered dependencies
---    action_list = Action.sort_list(action_list)
+    -- sort actions according to registered dependencies to check for cycles
+    action_list = Action.sort_list(action_list)
 
     --[[ DEBUGGING ONLY!!!
     Origin.dump_cache()

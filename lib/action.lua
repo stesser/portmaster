@@ -405,7 +405,7 @@ local function perform_install_or_upgrade(action)
     local pkgfile = p_n and p_n.pkgfile
     local o_n = action.o_n
     local portname = o_n and o_n.name -- o_n.port ???
-    local special_depends = o_n.special_depends -- check for special license and ask user to accept it (may require make extract/patch)
+    local special_depends = o_n.depends and o_n.depends.special -- check for special license and ask user to accept it (may require make extract/patch)
     local build_dep_pkgs = action.depends.build
 
     local function wait_for_distfiles()
@@ -454,25 +454,26 @@ local function perform_install_or_upgrade(action)
         if exitcode ~= 0 then
             return fail(action, "Failed to clean the work directory of " .. o_n.name, out)
         end
-        for _, origin_target in ipairs(special_depends or {}) do
-            --TRACE("PORT_CLEAN_SPECIAL_DEPENDS", o_n.name, origin_target)
-            local target = target_part(origin_target)
-            local origin = Origin:new(origin_target:gsub(":.*", ""))
-            if target ~= "fetch" and target ~= "checksum" then
-                action:log {"Clean work directory of special dependency", origin.name}
-                out, _, exitcode = do_clean(origin)
-                if exitcode ~= 0 then
-                    return fail(action, "Failed to clean the work directory of " .. origin.port, out)
+        if special_depends then
+            for origin_target, test in pairs(special_depends) do
+                TRACE("PORT_CLEAN_SPECIAL_DEPENDS", o_n.name, origin_target)
+                local target = target_part(origin_target)
+                local origin = Origin:new(origin_target:gsub(":.*", ""))
+                if target ~= "fetch" and target ~= "checksum" then
+                    action:log {"Clean work directory of special dependency", origin.name}
+                    out, _, exitcode = do_clean(origin)
+                    if exitcode ~= 0 then
+                        return fail(action, "Failed to clean the work directory of " .. origin.port, out)
+                    end
                 end
             end
         end
     end
     local function special_deps()
-        --TRACE("SPECIAL:", #special_depends, special_depends[1])
-        if #special_depends > 0 then
-            --TRACE("SPECIAL_DEPENDS", special_depends)
-            -- local special_depends = action.o_n.special_depends
-            for _, origin_target in ipairs(special_depends) do
+        TRACE("SPECIAL_DEPS", special_depends)
+        if special_depends then
+            TRACE("SPECIAL_DEPENDS", special_depends)
+            for origin_target, test in pairs(special_depends) do
                 -- print ("SPECIAL_DEPENDS", origin_target)
                 local target = target_part(origin_target)
                 local origin = Origin:new(origin_target:gsub(":.*", "")) -- define function to strip the target ???
@@ -498,8 +499,9 @@ local function perform_install_or_upgrade(action)
         end
     end
     local function extract()
-        local wrkdir_parent = Filepath:new(o_n.wrkdir) - 1
-        action:log {"Extract port", portname}
+        local wrkdir = Filepath:new(o_n.wrkdir)
+        local wrkdir_parent = wrkdir.parent
+        action:log {"Extract port", portname, wrkdir_parent.name, wrkdir.name}
         local _, _, exitcode =
             Exec.run {
             CMD.mkdir,
@@ -789,6 +791,7 @@ local function perform_install_or_upgrade(action)
     end
     local function lock_builddeps_shared()
         local dep_pkgs = action.depends.build
+        --TRACE("LOCK_BUILDDEPS", action.short_name, dep_pkgs)
         if dep_pkgs then
             register_build_depends(action)
             RunnableLock:acquire(dep_pkgs) -- acquire shared lock to wait for build deps to become runnable
@@ -835,7 +838,9 @@ local function perform_install_or_upgrade(action)
         local pkgname = p_n.name
         TRACE("LOCK_PKGNEW", pkgname)
         --InstallableLock:acquire(pkgname)
-        RunnableLock:acquire{pkgname}
+        if pkgname then
+            RunnableLock:acquire{pkgname}
+        end
     end
     --[[
     local function provide_pkgnew()
@@ -843,26 +848,30 @@ local function perform_install_or_upgrade(action)
     end
     --]]
     local function release_pkgnew()
-        RunnableLock:release{p_n.name}
+        local pkgname = p_n.name
+        if pkgname then
+            RunnableLock:release{pkgname}
+        end
     end
 
     TRACE("PERFORM_INSTALL_OR_UPGRADE", action)
     -- has a package been identified to be used instead of building the port?
     TRACE("BUILDREQUIRED", action.short_name, action.plan.build, action.force, Options.packages)
     action.buildstate = {}
+    if action.plan.build or action.plan.install then
+        lock_pkgnew() -- lock requests for this package name until it is available
+    end
+    wait_for_phase("build")
     if action.plan.build then
         -- == i.e. we are not installing from a package file ...
         build_step(wait_for_distfiles)
-        lock_wrkdir() -- >>>> WorkDirLock(o_n.wrkdir)
-        --TRACE("perform_portbuild", portname, pkgname_new, special_depends)
-        lock_pkgnew() -- lock requests for this package name until it is available
         lock_builddeps_shared() -- >>>> RunnableLock(build_dep_pkgs, SHARED)
-        wait_for_phase("build")
+        lock_wrkdir() -- >>>> WorkDirLock(o_n.wrkdir)
         build_step(check_build_deps)
-        lock_jobs() -- >>>> JobsLock(weight = action.jobs)
         if action.plan.preclean then
             build_step(port_clean)
         end
+        lock_jobs() -- >>>> JobsLock(weight = action.jobs)
         build_step(check_license)
         build_step(special_deps)
         build_step(extract)
@@ -880,12 +889,10 @@ local function perform_install_or_upgrade(action)
             release_pkgdeps_shared() -- <<<< RunnableLock(action.depends.pkg)
             build_done("package") -- XXX set if no package is to be created, too ???
         end
-        finish_phase("build")
     end
     --if action.plan.deinstall or action.plan.deinstall_old then
     if action.plan.deinstall_old then
         lock_pkgdeps_shared() -- >>>> RunnableLock(action.depends.pkg)
-        wait_for_phase("build")
         build_step(create_backup_packages)
         if action.plan.save_sharedlibs then
             build_step(preserve_old_shared_libraries)
@@ -894,8 +901,8 @@ local function perform_install_or_upgrade(action)
         build_step(delete_old_packages)
         build_step(recover_precious)
         release_pkgdeps_shared() -- <<<< RunnableLock(action.depends.pkg)
-        finish_phase("build")
     end
+    finish_phase("build")
     -- install build depends immediately but optionally delay installation of other ports
     if action.plan.install then -- install immediately to jail or base system
         if action.plan.build then
@@ -927,7 +934,7 @@ local function perform_install_or_upgrade(action)
             build_step(cleanup_old_shared_libraries)
         end
         lock_rundeps_shared() -- >>>> RunnableLock(action.depends.run)
-        if action.plan.build then
+        if action.plan.build  or action.plan.install then
             release_pkgnew() -- <<<< RunnableLock(p_n.name)
         end
         --build_step(fetch_pkg_message)
@@ -949,6 +956,7 @@ local function perform_install_or_upgrade(action)
             action:log {"SUCCESS:", describe(action)}
         end
     end
+    Msg.show{Lock.blocked_tasks(RunnableLock), "tasks remaining"}
     return not failed(action)
 end
 
@@ -972,6 +980,7 @@ local function perform_upgrades(action_list)
             Exec.spawn(perform_install_or_upgrade, action)
         end
     end
+    start_phase("build")
     Exec.finish_spawned(perform_install_or_upgrade)
     return true
 end
@@ -1315,7 +1324,7 @@ local function __index(action, k)
         if not p_n or p_n.no_build or p_n.make_jobs_unsafe or p_n.disable_make_jobs then
             return 1
         end
-        local n = (Param.maxjobs - 2) // 2
+        local n = Param.maxjobs
         local o_n = action.o_n
         if o_n.make_jobs_number and n > o_n.make_jobs_number then
             n = o_n.make_jobs_number
@@ -1324,59 +1333,27 @@ local function __index(action, k)
         return math.floor(n <= limit and n or limit) -- convert from float to integer
     end
     local function __depends()
-        local depends_table = {
-            build = {
-                "extract",
-                "patch",
-                "build",
-                "lib"
-            },
-            fetch = {
-                "fetch"
-            },
-            pkg = {
-                "pkg"
-            },
-            run = {
-                "lib",
-                "run"
-            },
-            test = {
-                "test"
-            },
-            special = {
-                "build"
-            },
-        }
         local p_n = action.pkg_new
         local origin = Origin.get(p_n.origin_name)
         if origin then
             local depends = {}
-            for type, table in pairs(depends_table) do
-                local seen = {}
-                for _, v in ipairs(table) do
-                    if origin.depend_var and origin.depend_var[v] then
-                        for _, dep in ipairs(origin.depend_var[v]) do
-                            local pattern = type == "special" and "^[^:]+:([^:]+:%S+)" or "^[^:]+:([^:]+)$"
-                            local o = string.match(dep, pattern)
-                            TRACE("PORT_DEPENDS", type, dep, pattern, o)
-                            if o then
-                                seen[o] = true
-                            end
+            TRACE("DEPENDS:", p_n, origin)
+            for type, dep_table in pairs(origin.depends) do
+                if dep_table then
+                    local dep_pkgs = {}
+                    for origin_name, test in pairs(dep_table) do
+                        local pkg = Origin:new(origin_name).pkgname
+                        TRACE("DEPENDS?", type, origin_name, pkg)
+                        if pkg then
+                            dep_pkgs[#dep_pkgs + 1] = pkg
                         end
                     end
-                end
-                local dep_pkgs = {}
-                for origin_name, _ in pairs(seen) do
-                    local pkg = Origin:new(origin_name).pkgname
-                    if pkg then
-                        dep_pkgs[#dep_pkgs + 1] = pkg
+                    if #dep_pkgs > 0 then
+                        dep_pkgs.shared = true
+                        dep_pkgs.tag = p_n.name
+                        depends[type] = dep_pkgs
+                        TRACE("PKG_DEPENDS->", type, dep_pkgs)
                     end
-                end
-                if #dep_pkgs > 0 then
-                    depends[type] = dep_pkgs
-                    depends[type].shared = true
-                    TRACE("PORT_DEPENDS->", type, dep_pkgs)
                 end
             end
             return depends
@@ -1399,8 +1376,29 @@ local function __index(action, k)
     local function determine_origin_old() -- XXX incomplete ???
         local p_o = action.old_pkgs and action.old_pkgs[1]
         if p_o then
-            local o_o = Origin:new(p_o.origin_name)
-            return o_o
+            return Origin:new(p_o.origin_name)
+        end
+        local p_n = action.pkg_new
+        if not p_o and p_n then
+            local o_n = action.o_n
+            if not p_o then
+                local basename = p_n.name_base_major
+                for _, pkgname in ipairs(o_n.old_pkgs) do
+                    p_o = Package.get(pkgname) -- XXX has get() been deleted ???
+                    if p_o and p_o.name_base_major == basename then
+                        return Origin:new(p_o.origin_name)
+                    end
+                end
+            end
+            if not p_o then
+                local basename = p_n.name_base
+                for _, pkgname in ipairs(o_n.old_pkgs) do
+                    p_o = Package.get(pkgname) -- XXX has get() has been deleted ???
+                    if p_o and p_o.name_base == basename then
+                        return Origin:new(p_o.origin_name)
+                    end
+                end
+            end
         end
     end
     local function determine_pkg_new() -- XXX conflicts check required???
@@ -1521,7 +1519,7 @@ TRACE("XXX2", basename)
     local function __create_action_plan()
         local function __check_upgrade_needed()
             local o_n = action.o_n
-            if o_n and o_n.port_exists and action.pkg_new then
+            if o_n and o_n.port_exists and not action.ignore then
                 return action.force or compare_versions_old_new(action) ~= 0
             end
         end
@@ -1586,7 +1584,6 @@ TRACE("XXX2", basename)
             if __build_needed or __provide_needed or __deinstall_requested then
                 return action.ignore
             end
-            return false
         end
         local function __check_do_preclean()
             return not Options.no_pre_clean
@@ -1598,24 +1595,43 @@ TRACE("XXX2", basename)
             return Options.save_shared and true
         end
         TRACE("PLAN", action)
+        --[[
+            build:		        port build is required
+            deinstall:		    deinstall only, no installation of updated version
+            deinstall_old:	    deinstall immediately before installation of new version
+            delay_installation:	delay installation until all ports have been built (unless build_dep)
+            install:		    install to base system
+            install_pkg_base:	install package file to base system
+            install_pkg_jail:	provide package in jail
+            install_pkg_late:	install newly built port from package file after end of build phase
+            install_port_base:	install newly built port to base system
+            install_port_jail:	install newly built port to build jail
+            nothing:		    ignore this action
+            pkgcreate:		    create package file
+            postclean:		    clean work directory after build (ignored unless build is true)
+            preclean:		    clean work directory before build (ignored unless build is true)
+            provide:		    needed as a build dependency (or run dependency of a build dependency)
+            save_sharedlibs:	preserve shared libraries of old version
+            upgrade:		    upgrade will be performed (old version, not excluded, locked, ...)
+        --]]
         return {
-            upgrade = __upgrade_needed,                             -- package is to be installed/upgraded
-            build = __build_needed,                                 -- build from port required
-            provide = __provide_needed,                             -- package is missing build dependency (i.e. install into jail or base)
-            install = __install_needed,                             -- package is to be installed into base system
-            install_port_base = __check_install_port_base_needed(), -- install newly built port to base system
-            install_port_jail = __check_install_port_jail_needed(), -- install newly built port to build jail
-            install_pkg_base = __check_install_pkg_base_needed(),   -- install package file to base system
-            install_pkg_jail = __check_install_pkg_jail_needed(),   -- provide package in jail
-            install_pkg_late = __check_install_pkg_late_needed(),   -- install newly built port from package file after end of build phase
-            pkgcreate = __check_pkgcreate_needed(),                 -- create a package file from a newly built port
-            deinstall = __deinstall_requested,                      -- deinstall only (without installation of new version)
+            build = __build_needed,
+            deinstall = __deinstall_requested,
             deinstall_old = __check_deinstall_old(),
+            delay_installation = __delay_installation,
+            install = __install_needed,
+            --install_pkg_base = __check_install_pkg_base_needed(),
+            --install_pkg_jail = __check_install_pkg_jail_needed(),
+            --install_pkg_late = __check_install_pkg_late_needed(),
+            --install_port_base = __check_install_port_base_needed(),
+            --install_port_jail = __check_install_port_jail_needed(),
             nothing = __check_do_nothing(),
-            preclean = __check_do_preclean(),
+            pkgcreate = __check_pkgcreate_needed(),
             postclean = __check_do_postclean(),
+            preclean = __check_do_preclean(),
+            provide = __provide_needed,
             save_sharedlibs = __check_save_sharedlibs(),
-            delay_installation = __delay_installation, -- install new port from pkg file after end of build phase
+            upgrade = __upgrade_needed,
         }
     end
     local function __check_forced()
@@ -1657,7 +1673,6 @@ TRACE("XXX2", basename)
         ignore = __check_excluded,
         depends = __depends,                                        -- table of dependencies of this port/package
         req_for = __check_req_for,                                  -- required for some other package
-        --is_special_pkg = __check_dep,
         is_auto = __is_auto,                                        -- dependency only, not requested by user
         is_locked = __check_locked,                                 -- keep unchanged
         use_pkgfile = __use_pkgfile,                                -- pkgfile exists with matching ABI
@@ -1914,7 +1929,7 @@ local function report_results(action_list)
                     msg = nil
                 end
                 --TRACE("ACTION", action)
-                Msg.show{action.short_name .. ": " .. action[field]}
+                Msg.show{action.o_n.name .. "(" .. action.short_name .. "): " .. action[field]}
             end
         end
     end
@@ -2265,3 +2280,4 @@ local function action_enrich(action)
     return action -- NYI
 end
 --]=]
+

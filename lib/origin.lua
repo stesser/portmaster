@@ -432,6 +432,57 @@ local function __special_depends(o)
     return result
 end
 
+--
+local function __depends(origin, k)
+    local depends_table = {
+        build = {
+            "extract",
+            "patch",
+            "build",
+            "lib"
+        },
+        fetch = {
+            "fetch"
+        },
+        pkg = {
+            "pkg"
+        },
+        run = {
+            "lib",
+            "run"
+        },
+        test = {
+            "test"
+        },
+        special = {
+            "build"
+        },
+    }
+    local depends = {}
+    if origin.depend_var then
+        for type, table in pairs(depends_table) do
+            local depends_tmp = {}
+            for _, depvar_name in ipairs(table) do
+                local depvar = origin.depend_var[depvar_name]
+                if depvar then
+                    for _, depdef in ipairs(depvar) do
+                        local pattern = type == "special" and "^([^:]+):([^:]+:%S+)" or "^([^:]+):([^:]+)$"
+                        local test, dep_origin = string.match(depdef, pattern)
+                        TRACE("PORT_DEPENDS", type, depdef, pattern, test, dep_origin)
+                        if dep_origin then
+                            depends_tmp[dep_origin] = test
+                        end
+                    end
+                end
+            end
+            if next(depends_tmp) then
+                depends[type] = depends_tmp
+            end
+        end
+    end
+    return depends
+end
+
 -------------------------------------------------------------------------------------
 --
 local __index_dispatch = {
@@ -453,6 +504,7 @@ local __index_dispatch = {
     pkgname = __port_vars,
     distfiles = __port_vars,
     depend_var = __port_vars,
+    depends = __depends,
     special_depends = __special_depends,
     conflicts_build_var = __port_vars,
     conflicts_install_var = __port_vars,
@@ -524,9 +576,14 @@ local function getmultiple(Origin, origins)
     end
     TRACE("GETMULTIPLE", origins)
     for _, name in ipairs(origins) do
-        local o_n = new(Origin, name )
-        if not rawget(o_n, "pkgname") then
-            Exec.spawn(__pkgname, o_n)
+        if name then
+            TRACE("GETMULTIPLE:", name)
+            local o_n = new(Origin, name )
+            if not rawget(o_n, "pkgname") then
+                Exec.spawn(__pkgname, o_n)
+            end
+        else
+            TRACE("GETMULTIPLE?", origins)
         end
     end
     Exec.finish_spawned(__pkgname)

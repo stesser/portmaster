@@ -52,37 +52,43 @@ end
 --
 local function add_missing_deps(action_list) -- XXX need to also add special dependencies, somewhat similar to build dependencies
     local pkgseen = {}
-    local function process_depends(origins)
-        TRACE("PROCESS_DEPENDS", #origins)
-        for _, o_n in ipairs(Origin:getmultiple(origins)) do
-            TRACE("X1", o_n)
-            local pkgname = o_n and o_n.pkgname
-            if pkgname and not (pkgseen[pkgname] or Action.get(pkgname)) then
-                pkgseen[pkgname] = true
-                local p_n = Package:new(pkgname)
-                p_n.origin_name = o_n.name
-                add_action{pkg_new = p_n} -- XXX just call Action.new since there is no inherent parallelism?
-            end
-        end
-        Exec.finish_spawned(Action.new)
-    end
-    local dep_origins = {}
-    local function add_deps(deps)
-        if deps then
-            for _, pkgname in ipairs(deps) do
-                local p_n = Package.get(pkgname)
-                if p_n then
-                    dep_origins[p_n.origin_name] = true
-                else
-                    TRACE("DEP_ERROR?", pkgname)
+    local originseen = {}
+    local function collect_dep_origins(start_elem, last_elem)
+        local origins = {}
+        for i = start_elem, last_elem do
+            local a = action_list[i]
+            local o_n = a.o_n
+            local depvars = o_n and o_n.depend_var
+            for _, t in pairs(depvars) do
+                TRACE("COLLECT_DEP_ORIGINS", t)
+                if t then
+                    for _, dep in ipairs(t) do
+                        local origin = string.match(dep, "[^:]*:([^:]*)")
+                        if origin and not originseen[origin] then
+                            originseen[origin] = true
+                            origins[#origins + 1] = origin
+                        end
+                    end
                 end
             end
         end
+        TRACE("COLLECT_DEP_ORIGINS!", origins)
+        return origins
     end
-    local start_elem = 1
-    while start_elem <= #action_list do
-        TRACE("ADD_MISSING_DEPS:", start_elem, #action_list)
-        local last_elem = #action_list
+    --[[
+    local function add_all_deps(start_elem, last_elem)
+        local function add_deps(deps)
+            if deps then
+                for _, pkgname in ipairs(deps) do
+                    local p_n = Package:new(pkgname)
+                    if p_n and p_n.origin_name then
+                        dep_origins[p_n.origin_name] = true
+                    else
+                        TRACE("DEP_ERROR?", pkgname)
+                    end
+                end
+            end
+        end
         for i = start_elem, last_elem do
             local a = action_list[i]
             TRACE("ADD_MISSING_DEPS", i, #action_list, a)
@@ -96,11 +102,33 @@ local function add_missing_deps(action_list) -- XXX need to also add special dep
             end
             add_deps(depends.run)
         end
+    end
+    --]]
+    local function process_depends(origins)
+        TRACE("PROCESS_DEPENDS", #origins)
+        for _, o_n in ipairs(Origin:getmultiple(origins)) do
+            local pkgname = o_n and o_n.pkgname
+            if pkgname and not (pkgseen[pkgname] or Action.get(pkgname)) then
+                pkgseen[pkgname] = true
+                local p_n = Package:new(pkgname)
+                p_n.origin_name = o_n.name
+                add_action{pkg_new = p_n} -- XXX just call Action.new since there is no inherent parallelism?
+            end
+        end
+        Exec.finish_spawned(Action.new)
+    end
+    local start_elem = 1
+    local last_elem = #action_list
+    while start_elem <= last_elem do
+        TRACE("ADD_MISSING_DEPS:", start_elem, last_elem)
+        local dep_origins = collect_dep_origins(start_elem, last_elem)
+--        add_all_deps(start_elem, last_elem)
         TRACE("WAIT(NEW)START", dep_origins)
-        process_depends(Util.table_keys(dep_origins))
+--        process_depends(Util.table_keys(dep_origins))
+        process_depends(dep_origins)
         TRACE("WAIT(NEW)END")
-        dep_origins = {}
         start_elem = last_elem + 1
+        last_elem = #action_list
     end
 end
 
@@ -276,7 +304,6 @@ local function execute()
     Action.dump_cache()
 
     -- end of scan phase, all required actions are known at this point, builds may start
-    Action.start_phase("build")
     Action.perform_actions(action_list)
     Action.start_phase("finish")
 
@@ -284,6 +311,7 @@ local function execute()
 end
 
 local function init()
+    Param.phase = "scan"
     Action.block_phase("build")
     Action.block_phase("finish")
 end

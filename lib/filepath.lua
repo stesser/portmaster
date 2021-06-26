@@ -48,19 +48,11 @@ local Filepath = {}
 
 -------------------------------------------------------------------------------------
 -- go directory levels up
-local function path_up(dir, level)
-    level = level or 1
-    for _ = 1, level do
-        if dir == "/" then
-                break
-        end
+local function path_up(dir)
+    if dir ~= "/" then
         dir = string.gsub(dir, "/[^/]+$", "")
     end
     return dir
-end
-
-local function __path_up(dir, level)
-    return Filepath:new(path_up(dir.name, level))
 end
 
 --
@@ -185,6 +177,9 @@ local function __index(path, k)
         end
         return glob(name, 0) -- or {} ???
     end
+    local function __parent()
+        return Filepath:new(path_up(path.name))
+    end
     local function __find_files()
         local result = {}
         local function file_list(prefix, subdir)
@@ -233,6 +228,7 @@ local function __index(path, k)
         is_writeable = __writeable,
         is_executable = __executable,
         is_deleteable = __deleteable,
+        parent = __parent,
         files = __files,
         find_dirs = __find_dirs,
         find_files = __find_files,
@@ -261,7 +257,6 @@ local mt = {
     __index = __index,
     --__newindex = __newindex, -- DEBUGGING ONLY
     __add = __add,
-    __sub = __path_up,
     __tostring = function(self)
         return self.name
     end,

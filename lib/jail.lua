@@ -226,7 +226,7 @@ local function provide_file(jaildir, ...)
     local dir
     local files = {...}
     for _, file in ipairs(files) do
-        dir = (jaildir + file) - 1
+        dir = (jaildir + file).parent
         Exec.run{
             CMD.mkdir, "-p", dir.name
         } -- use direct LUA function

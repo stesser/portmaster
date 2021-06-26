@@ -227,7 +227,7 @@ local function release(lock, items)
     end
     local function resume_unlocked(resume_list)
         --TRACE("BlockedTasks:", BlockedTasks)
-        TRACE("RESUME_UNLOCKED", lock.name, resume_list)
+        TRACE("LOCK.RESUME_UNLOCKED", lock.name, resume_list)
         local locktable = BlockedTasks[lock]
         assert(locktable, "No BlockedTasks sub-table named " .. lock.name)
         local again

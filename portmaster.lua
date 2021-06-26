@@ -388,8 +388,6 @@ local function main()
 
     -------------------------------------------------------------------------------------
     -- plan tasks based on parameters passed on the command line
-    Param.phase = "scan"
-
     Strategy.init()
 
 --    Origin:make_index()

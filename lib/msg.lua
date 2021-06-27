@@ -42,6 +42,7 @@ local State = {
     at_start = true,
     empty_line = true,
     doprompt = false,
+    sameline = false,
     sep1 = "#- ",
     sep2 = "#  ",
     sepabort = "#! ",
@@ -96,6 +97,20 @@ local function show(args)
     end
     local level = args.level or 0
     if level <= State.level then
+        if args.sameline then
+            args.verbatim = true
+            if State.sameline then
+                stdout:write("\r", State.sep1)
+            else
+                args.start = true
+                stdout:write("\n", State.sep1)
+                State.sameline = true
+            end
+        elseif State.sameline then
+            args.start = true
+            stdout:write("\n")
+            State.sameline = false
+        end
         if args.start then
             -- print message with separator for new message section
             State.at_start = true

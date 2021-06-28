@@ -202,6 +202,7 @@ local function tasks_poll(timeout)
                             t[#t + 1] = data
                             --TRACE("READ", fdstat[fd].pid, fd, #data)
                             idle = false
+                            timeout = timeout > 0 and 1 or timeout -- reduce timeout if more than 1 iteration through loop
                         elseif revents.HUP then
                             local pid = rm_poll_fd(fd)
                             if pid then
@@ -365,7 +366,7 @@ local function run(args)
     TRACE("run", "[" .. table.concat(Util.table_keys(args), ",") .. "]", table.unpack(args))
     if Param.jailbase and args.jailed then
         table.insert(args, 1, CMD.chroot)
-        table.insert(args, 2, Param.jailbase)
+        table.insert(args, 2, Param.jailbase.name)
         if not args.as_root and Param.uid ~= 0 then -- chroot needs root but can then switch back to user
             args.as_root = true
             table.insert(args, 2, "-u")

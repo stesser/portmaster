@@ -74,7 +74,7 @@ local function delete(filepath)
 end
 
 local function __add(path, k)
-    --TRACE("ADD", path, k)
+    TRACE("FILEPATH_ADD", path, k)
     local basedir = path.name
     local sep = #basedir > 0 and string.sub(basedir, -1) ~= "/" and string.sub(k, 1, 1) ~= "/" and "/" or ""
     return Filepath:new(basedir .. sep .. k)
@@ -183,10 +183,10 @@ local function __index(path, k)
     local function __find_files()
         local result = {}
         local function file_list(prefix, subdir)
-            local pathname = prefix .. (subdir and "/" .. subdir or "")
+            local pathname = subdir and (prefix .. "/" .. subdir) or prefix
             for f in dirent.files(pathname) do
                 if f ~= "." and f ~= ".." then
-                    local childdir = subdir and subdir .. "/" .. f or f
+                    local childdir = subdir and (subdir .. "/" .. f) or f
                     if is_dir(prefix .. "/" .. childdir) then
                         --TRACE("D1", childdir)
                         file_list(prefix, childdir)
@@ -204,12 +204,11 @@ local function __index(path, k)
     local function __find_dirs()
         local result = {}
         local function dir_list(prefix, subdir)
-            local pathname = prefix .. (subdir and "/" .. subdir or "")
+            local pathname = subdir and (prefix .. "/" .. subdir) or prefix
             for f in dirent.files(pathname) do
                 if f ~= "." and f ~= ".." then
                     local childdir = subdir and subdir .. "/" .. f or f
                     if is_dir(prefix .. "/" .. childdir) then
-                        --TRACE("D1", childdir)
                         dir_list(prefix, childdir)
                         table.insert(result, childdir)
                     end

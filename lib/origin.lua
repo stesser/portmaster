@@ -517,6 +517,9 @@ local __index_dispatch = {
     install_conflicts = __port_conflicts,
     short_name = __short_name,
     exists = __verify_origin,
+    old_pkgs = function ()
+        return {"NIL"}
+    end
 }
 
 local function __index(origin, k)
@@ -575,9 +578,9 @@ local function getmultiple(Origin, origins)
         return o_n.pkgname -- dummy fetch to force loading of port variables
     end
     TRACE("GETMULTIPLE", origins)
-    for _, name in ipairs(origins) do
+    for n, name in ipairs(origins) do
         if name then
-            TRACE("GETMULTIPLE:", name)
+            TRACE("GETMULTIPLE:", n, name)
             local o_n = new(Origin, name )
             if not rawget(o_n, "pkgname") then
                 Exec.spawn(__pkgname, o_n)

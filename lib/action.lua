@@ -386,6 +386,7 @@ local function register_build_depends(action)
     D2[pkg] = {}
     for _, dep in ipairs(action.depends.build) do
         D1[dep] = (D1[dep] or 0) + 1
+        TRACE("BUILD_DEPS", dep, D1[dep])
     end
 end
 
@@ -664,7 +665,7 @@ local function perform_install_or_upgrade(action)
                 action:log {level = 1, "Create backup of old version", pkgname_old}
                 local out, err, exitcode = p_o:backup_old_package()
                 if exitcode ~= 0 then
-                    return fail(action, "Create backup package for " .. pkgname_old, err)
+--                    return fail(action, "Create backup package for " .. pkgname_old, err)
                 end
             end
         end
@@ -1310,10 +1311,15 @@ local actions_started = 0
 --
 local function __index(action, k)
     local function __short_name()
-        local p_n = action.pkg_new
-        return p_n and p_n.name
-            or action.old_pkgs and action.old_pkgs[1].name
-            or "<unknown>"
+        if action then
+            local o_n = action.o_n
+            local o_o = action.o_o
+            return o_n and o_n.pkgname
+                or o_o and o_o.pkgname
+    --            or action.old_pkgs and action.old_pkgs[1].name
+                or "<unknown>"
+        end
+        return "<nil>"
     end
     local function __startno()
         actions_started = actions_started + 1
@@ -1358,12 +1364,6 @@ local function __index(action, k)
             end
             return depends
         end
-    end
-    local function __check_req_for()
-        return {
-            run = rawget(action, "is_run_dep"),
-            build = rawget(action, "is_build_dep")
-        }
     end
     local function determine_origin() -- XXX incomplete ???
         local p_n = action.pkg_new
@@ -1497,7 +1497,7 @@ TRACE("XXX2", basename)
                 --TRACE("USE_PKGFILE", "use pkgfile", p_n.name)
                 return true
             end
-            if action.req_for.run or not action.is_auto then -- build from port if not only a build dependency
+            if rawget(action, "is_run_dep") or not action.is_auto then -- build from port if not only a build dependency
                 --TRACE("NOT USE_PKGFILE", "user installed or run dependency without --packages option", p_n.name)
                 return false
             end
@@ -1536,16 +1536,16 @@ TRACE("XXX2", basename)
             return __build_needed and Options.create_package
         end
         local function __check_provide_needed()
+            TRACE("CHECK_PROVIDE_NEEDED", action)
             if Param.jailed and action.pkg_new then
-                local req_for = action.req_for
-                return req_for.build or req_for.run -- XXX NYI
+                return rawget(action, "is_build_dep")
             end
         end
         local __provide_needed = __check_provide_needed()
         local function __check_install_needed()
             if action.pkg_new then
                 if Param.jailed or Options.delay_installation then
-                    return action.req_for.build
+                    return rawget(action, "is_build_dep")
                 end
                 return __upgrade_needed
             end
@@ -1641,8 +1641,7 @@ TRACE("XXX2", basename)
         --TRACE("X", action)
         if Options.skip_install or Options.jailed then
             if action.is_auto then
-                local req_for = action.req_for
-                return not req_for.build and not req_for.pkg
+                return not rawget(action, "is_build_dep")
             end
         end
     end
@@ -1672,7 +1671,7 @@ TRACE("XXX2", basename)
         jobs = __jobs,                                              -- number of threads to use for port build
         ignore = __check_excluded,
         depends = __depends,                                        -- table of dependencies of this port/package
-        req_for = __check_req_for,                                  -- required for some other package
+        --req_for = __check_req_for,                                  -- required for some other package
         is_auto = __is_auto,                                        -- dependency only, not requested by user
         is_locked = __check_locked,                                 -- keep unchanged
         use_pkgfile = __use_pkgfile,                                -- pkgfile exists with matching ABI
@@ -1734,7 +1733,7 @@ local function action_list_add(action)
                 listpos = #ACTION_LIST + 1
                 action.listpos = listpos
                 ACTION_LIST[listpos] = action
-                Msg.show {listpos, describe(action)}
+                --Msg.show{listpos, describe(action)}
                 if not action.plan.nothing and action.plan.build then
                     TRACE("ACTION_FETCH", action.o_n.name)
                     action.o_n:fetch()
@@ -1788,9 +1787,11 @@ local function cache_add(action)
         action.plan = Util.table_union(action.plan, cached_action.plan)
     end
     check_config_allow(action)
+if action.short_name then
     ACTION_CACHE[action.short_name] = action
-    TRACE("LIST_ADD", action.pkg_new and action.pkg_new.name or action.old_pkgs[1].name, rawget(action, "listpos"))
+    TRACE("LIST_ADD", action)
     action_list_add(action)
+end
     return action
 end
 
@@ -1815,42 +1816,51 @@ end
 local function sort_list(action_list)
     --local max_str = tostring(#action_list)
     local sorted_list = {}
-    local function add_deps(action)
-        local function add_deps_of_type(type)
+    local function add_deps(action, is_build_dep)
+        local function add_deps_of_type(type, is_build_dep)
             local deps = action.depends[type]
             if deps then
                 for _, pkg_new in ipairs(deps) do
                     local a = get(pkg_new)
-                    --TRACE("ADD_DEPS", type, a and rawget(a, "action"), origin.name, origin.pkg_new, origin.pkg_new and rawget(origin.pkg_new, "is_installed"))
-                    if a and not rawget(a, "planned") and a.pkg_new and not rawget(a.pkg_new, "is_installed") then
-                        add_deps(a)
+                    if a then
+                        local p_n = a.pkg_new
+                        if not rawget(a, "planned") and p_n and not p_n.is_installed then
+                            local origin = a.o_n
+                            TRACE("ADD_DEPS", type, origin.name, origin.pkgname, is_build_dep, p_n and rawget(p_n, "is_installed"))
+                            add_deps(a, is_build_dep)
+                        end
+                    else
+                        TRACE("ERROR: NO ACTION FOUND FOR", pkg_new)
                     end
                 end
             end
         end
         if not rawget(action, "planned") then
+            action.plan = nil
+            TRACE("A", action.plan)
             local p_n = action.pkg_new
-            if p_n and action.plan.build then
+            if p_n and (action.plan.build or action.plan.provide) then
                 TRACE("BUILDREQUIRED!", p_n.name)
                 if not Options.jailed then -- jailed builds use pkg from base -- it must be separately updated first !!! XXX
-                    add_deps_of_type("pkg")
+                    add_deps_of_type("pkg", true)
                 end
-                add_deps_of_type("build")
-                add_deps_of_type("lib")
-                add_deps_of_type("special")
+                add_deps_of_type("build", true)
+                add_deps_of_type("lib", true)
+                add_deps_of_type("special", true)
                 assert(not rawget(action, "planned"), "Dependency loop for: " .. action.short_name)
             end
-            if action.plan.provide or action.plan.install then
-                add_deps_of_type("lib")
-                add_deps_of_type("run")
+            --if action.plan.provide or action.plan.install then
+                add_deps_of_type("lib", true)
+                add_deps_of_type("run", is_build_dep)
                 assert(not rawget(action, "planned"), "Dependency loop for: " .. action.short_name)
                 table.insert(sorted_list, action)
                 action.listpos = #sorted_list
                 action.planned = true
+                action.is_build_dep = is_build_dep
                 Msg.show {"[" .. tostring(#sorted_list) .. "]", action.name}
-            else
-                Msg.show {"SKIPPING", action.short_name}
-            end
+            --else
+            --    Msg.show {"SKIPPING", action.short_name}
+            --end
         end
     end
 

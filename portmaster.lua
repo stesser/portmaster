@@ -135,7 +135,7 @@ end
 local function delete_empty_directories(path, as_root)
     TRACE("DELETE_EMPTY_DIRS", path)
     --local dirs = scan_dirs(path.name)
-    local dirs = path.find_dirs()
+    local dirs = path:find_dirs()
     if #dirs > 0 then
         table.sort(dirs, function (a, b) return a > b end)
     end
@@ -390,7 +390,7 @@ local function main()
     -- plan tasks based on parameters passed on the command line
     Strategy.init()
 
---    Origin:make_index()
+    --Origin:make_index() -- ONLY USED TO TEST CREATE INDEX FUNCTIONALITY
 
     if Options.replace_origin then
         if #args ~= 1 then

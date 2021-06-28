@@ -1,7 +1,7 @@
 --[[
 SPDX-License-Identifier: BSD-2-Clause-FreeBSD
 
-Copyright (c) 2019, 2020 Stefan Eßer <se@freebsd.org>
+Copyright (c) 2019-2021 Stefan Eßer <se@freebsd.org>
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions
@@ -28,14 +28,19 @@ SUCH DAMAGE.
 -------------------------------------------------------------------------------------
 local Param = require("portmaster.param")
 --local Package = require("portmaster.package")
-local Trace = require("portmaster.trace")
+--local Trace = require("portmaster.trace")
 local Util = require("portmaster.util")
 -------------------------------------------------------------------------------
-local TRACE = Trace.trace
+--local TRACE = Trace.trace
 
 -------------------------------------------------------------------------------------
 local stdout = io.stdout
 local stderr = io.stderr
+
+local sep1 = "#- "
+local sep2 = "#  "
+local sepabort = "#! "
+local sepprompt = "#> "
 
 local State = {
     level = 0,
@@ -43,12 +48,8 @@ local State = {
     empty_line = true,
     doprompt = false,
     sameline = false,
-    sep1 = "#- ",
-    sep2 = "#  ",
-    sepabort = "#! ",
-    sepprompt = "#> ",
+    sep = sep1,
 }
-State.sep = State.sep1
 
 -- local table for copies of 4 options that are used in this module
 local Options = {}
@@ -98,24 +99,24 @@ local function show(args)
     local level = args.level or 0
     if level <= State.level then
         if args.sameline then
-            args.verbatim = true
             if State.sameline then
-                stdout:write("\r", State.sep1)
+                stdout:write("\r")
             else
                 args.start = true
-                stdout:write("\n", State.sep1)
                 State.sameline = true
+                State.sep = sep1
+                stdout:write("\n")
             end
         elseif State.sameline then
             args.start = true
-            stdout:write("\n")
+            State.at_start = false
             State.sameline = false
+            stdout:write("\n")
         end
         if args.start then
             -- print message with separator for new message section
             State.at_start = true
-            State.sep = State.sep1
-            --TRACE("MSG_START")
+            State.sep = sep1
         end
         if args.verbatim then
             -- print message with separator for new message section
@@ -123,9 +124,9 @@ local function show(args)
         else
             if args.prompt then
                 -- print a prompt to request user input
-                State.doprompt = true
-                State.sep = State.sepprompt
                 State.at_start = true
+                State.doprompt = true
+                State.sep = sepprompt
             end
             -- print arguments
             local format = args.format
@@ -149,22 +150,22 @@ local function show(args)
                     else
                         State.empty_line = false
                         local  nl = "\n"
-                        if State.doprompt then
+                        if State.doprompt or State.sameline then
                             if i == #lines then
                                 -- no newline after final line of prompt message
                                 nl = ""
                             end
                         end
                         stdout:write(State.sep, line, nl)
-                        State.sep = State.sep2
+                        State.sep = sep2
                     end
                     State.at_start = false
                 end
                 -- reset to default prefix after reading user input
                 if State.doprompt then
-                    State.sep = State.sep2 -- sep1 ???
                     State.at_start = true
                     State.doprompt = false
+                    State.sep = sep2
                 end
             end
         end
@@ -230,7 +231,7 @@ end
 -- print abort message at level 0
 local function abort(...)
     State.at_start = true
-    State.sep = "\n" .. State.sepabort
+    State.sep = "\n" .. sepabort
     show({...})
 end
 

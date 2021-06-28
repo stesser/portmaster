@@ -32,6 +32,7 @@ local CMD = require("portmaster.cmd")
 local Param = require("portmaster.param")
 local Trace = require("portmaster.trace")
 local Util = require("portmaster.util")
+local Filepath = require("portmaster.filepath")
 
 -------------------------------------------------------------------------------------
 local P_US = require("posix.unistd")
@@ -91,7 +92,8 @@ local JAIL_FS = {
 -- ---------------------------------------------------------------------------
 local function unmount_all(jaildir)
     --TRACE("UNMOUNT_ALL", jaildir)
-    assert(jaildir and jaildir == Param.jailbase, "invalid jail directory " .. jaildir .. " passed")
+    local dir = jaildir and jaildir.name
+    assert(dir == Param.jailbase.name, "invalid jail directory " .. jaildir.name .. " passed")
     local mnt_dev, mnt_point, md_unit
     local df_lines = Exec.run{
         table = true,
@@ -100,7 +102,7 @@ local function unmount_all(jaildir)
     }
     for i = #df_lines, 2, -1 do
         mnt_dev, mnt_point = string.match(df_lines[i], "^(%S*)%s.*%s(/%S*)$")
-        if string.match(mnt_point, "^" .. jaildir) then
+        if string.match(mnt_point, "^" .. dir) then
             md_unit = string.match(mnt_dev, "^/dev/md(.+)")
             --TRACE("UNMOUNT", mnt_point, md_unit)
             Exec.run{
@@ -148,7 +150,7 @@ end
 local function mount_null(fs_type, what, where, param)
     --TRACE("MOUNT_NULL", fs_type, what, where, param)
     param = param or "ro"
-    assert(param == "rw" or param == "ro", "Invalid parameter '" .. param .. "' passed to jail mount of " .. where)
+    assert(param == "rw" or param == "ro", "Invalid parameter '" .. param .. "' passed to jail mount of " .. where.name)
     --   local real_fs = Exec.run {safe = true, CMD.realpath, what}
     --   if dir_is_fsroot (real_fs) then
     return do_mount("null", what, where, param)
@@ -158,13 +160,13 @@ end
 
 local function mount_special(fs_type, what, where, param)
     assert(not param or param == "linrdlnk",
-           "Invalid parameter '" .. (param or "<nil>") .. "' passed to jail mount of " .. where)
+           "Invalid parameter '" .. (param or "<nil>") .. "' passed to jail mount of " .. where.name)
     return do_mount(fs_type, what, where, param)
 end
 
 local function mount_tmp(fs_type, what, where, param)
     param = param or "size=4g" -- make tunable ...
-    return do_mount("tmp", what, where, param .. ",mode=1777")
+    return do_mount("tmp", what, where.name, param .. ",mode=1777")
 end
 
 -- ---------------------------------------------------------------------------
@@ -238,7 +240,7 @@ end
 
 -- create (partially filtered) copies of most relevant files from /etc in the jail (must be run under root account, currently)
 local function setup_etc(jaildir)
-    assert(jaildir and #jaildir.name > 0, "Empty jaildir in jail_create_etc")
+    assert(jaildir.name and #jaildir.name > 0, "Empty jaildir in jail_create_etc")
     assert((jaildir + "/etc").is_dir, "Destination directory " .. jaildir.name .. "/etc does not exist")
     -- create /etc/passwd and /etc/master.passwd
     local inpf = io.open("/etc/passwd", "r")
@@ -285,7 +287,7 @@ local function setup_etc(jaildir)
     outf1:close()
     -- further required files are copied unmodified
     provide_file(jaildir, "/etc/shells", "/etc/rc.subr", "/etc/make.conf", "/etc/src.conf", "/etc/rc.d", "/etc/defaults")
-    provide_file(jaildir, Param.localbase .. "/etc/pkg.conf", Param.localbase .. "/etc/pkg", "/var/log/utx.log")
+    provide_file(jaildir, (Param.localbase + "/etc/pkg.conf").name, (Param.localbase + "/etc/pkg").name, "/var/log/utx.log")
 end
 
 local function setup_var_run(jaildir)
@@ -293,18 +295,18 @@ local function setup_var_run(jaildir)
         as_root = true,
         jailed = true,
         log = true,
-        CMD.ldconfig, "/lib", "/usr/lib", Param.localbase .. "/lib"
+        CMD.ldconfig, "/lib", "/usr/lib", (Param.localbase + "/lib").name
     }
     Exec.run{
         as_root = true,
         jailed = true,
         log = true,
-        CMD.ldconfig, "-32", "/usr/lib32", Param.localbase .. "/lib32"
+        CMD.ldconfig, "-32", "/usr/lib32", (Param.localbase + "/lib32").name
     }
 end
 
 local function setup_usr_local(jaildir)
-    provide_file(jaildir, Param.localbase .. "/etc/portmaster.rc")
+    provide_file(jaildir, (Param.localbase + "/etc/portmaster.rc").name)
 end
 
 -- ---------------------------------------------------------------------------
@@ -312,7 +314,7 @@ local JAILROOT = "/tmp"
 
 local function create()
     if not Options.dry_run then
-        Param.jailbase = JAILROOT .. "/TEST" -- NYI use individual jail names
+        Param.jailbase = Filepath:new(JAILROOT) + "TEST" -- NYI use individual jail names
 
         unmount_all(Param.jailbase)
         mount_all(Param.jailbase)

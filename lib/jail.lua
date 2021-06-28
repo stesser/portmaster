@@ -150,7 +150,7 @@ end
 local function mount_null(fs_type, what, where, param)
     --TRACE("MOUNT_NULL", fs_type, what, where, param)
     param = param or "ro"
-    assert(param == "rw" or param == "ro", "Invalid parameter '" .. param .. "' passed to jail mount of " .. where.name)
+    assert(param == "rw" or param == "ro", "Invalid parameter '" .. param .. "' passed to jail mount of " .. where)
     --   local real_fs = Exec.run {safe = true, CMD.realpath, what}
     --   if dir_is_fsroot (real_fs) then
     return do_mount("null", what, where, param)
@@ -160,13 +160,13 @@ end
 
 local function mount_special(fs_type, what, where, param)
     assert(not param or param == "linrdlnk",
-           "Invalid parameter '" .. (param or "<nil>") .. "' passed to jail mount of " .. where.name)
+           "Invalid parameter '" .. (param or "<nil>") .. "' passed to jail mount of " .. where)
     return do_mount(fs_type, what, where, param)
 end
 
 local function mount_tmp(fs_type, what, where, param)
     param = param or "size=4g" -- make tunable ...
-    return do_mount("tmp", what, where.name, param .. ",mode=1777")
+    return do_mount("tmp", what, where, param .. ",mode=1777")
 end
 
 -- ---------------------------------------------------------------------------
@@ -212,7 +212,7 @@ local function mount_all(jaildir)
         end
         local mount_proc = MOUNT_PROCS[fs_type]
         assert(mount_proc, "unknown file system type " .. fs_type .. " for " .. dir)
-        mount_proc(fs_type, real_fs, where, mount_opt)
+        mount_proc(fs_type, real_fs, where.name, mount_opt)
     end
 end
 
@@ -295,13 +295,13 @@ local function setup_var_run(jaildir)
         as_root = true,
         jailed = true,
         log = true,
-        CMD.ldconfig, "/lib", "/usr/lib", (Param.localbase + "/lib").name
+        CMD.ldconfig, "/lib", "/usr/lib", (Param.localbase + "lib").name
     }
     Exec.run{
         as_root = true,
         jailed = true,
         log = true,
-        CMD.ldconfig, "-32", "/usr/lib32", (Param.localbase + "/lib32").name
+        CMD.ldconfig, "-32", "/usr/lib32", (Param.localbase + "lib32").name
     }
 end
 

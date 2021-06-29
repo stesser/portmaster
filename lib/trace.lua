@@ -28,9 +28,10 @@ SUCH DAMAGE.
 --]]
 
 -------------------------------------------------------------------------------------
-local table_expand_level = 4 -- 3
+local Util = require("portmaster.util")
 
 -------------------------------------------------------------------------------------
+local table_expand_level = 4 -- 3
 local STARTTIMESECS = os.time()
 local tracefd
 
@@ -48,8 +49,11 @@ local function trace(...)
             return tostring(t)
         end
         local result = {}
-        for k, v in pairs(t) do
+        local kt = Util.table_keys(t)
+        table.sort(kt, function (a,b) return tostring(a) < tostring(b) end)
+        for _, k in ipairs(kt) do
             if type(k) ~= "string" or string.sub(k, 1, 1) ~= "_" then
+                local v = t[k]
                 k = type(k) == "table" and table_to_string(k, 1, "") or as_string(k)
                 v = type(v) == "table" and table_to_string(v, level - 1, indent2) or as_string(v)
                 result[#result + 1] = k .. " = " .. v

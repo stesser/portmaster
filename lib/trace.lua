@@ -1,5 +1,3 @@
-#!/usr/local/bin/lua53
-
 --[[
 SPDX-License-Identifier: BSD-2-Clause-FreeBSD
 

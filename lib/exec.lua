@@ -134,6 +134,14 @@ local tasks_spawned_with = {} -- mapping of function used to start coroutine to 
 local tasks_forked = 0 -- number of forked processes
 
 --
+local function spawned_tasks()
+    return tasks_spawned
+end
+
+local function forked_tasks()
+    return tasks_forked
+end
+--
 local task_results -- results of non-spawned function
 
 local function task_result()
@@ -383,10 +391,10 @@ local function run(args)
             end
         end
         args.env = {SUDO_PROMPT = "#  >>>\tEnter password of user %p: "}
-        --TRACE("SUDO", args)
     end
     if args.log then
         if Options.dry_run or Options.show_work then
+            TRACE("RUN_LOG", args)
             local args_txt = {}
             for i, v in ipairs(args) do
                 args_txt[i] = string.match(v, "%s") and "'" .. v .. "'" or v
@@ -400,12 +408,13 @@ local function run(args)
         end
     end
     if Options.dry_run and not args.safe then
-        while (args[1]) do
-            table.remove(args)
+        for i = 1, #args do
+            args[i] = nil
         end
         table.insert(args, "/bin/sleep")
         table.insert(args, "0.01") -- minimal sleep to trigger coroutine switch
         args.to_tty = nil
+        args.as_root = false
     end
     tasks_poll(0)
     tasks_forked = tasks_forked + 1
@@ -444,7 +453,7 @@ local function make(args)
         table.insert(args, 1, CMD.ktrace)
         table.insert(args, 2, "-dia")
     end
-    local rd_lock = args.pkgdb_rd
+    local rd_lock = args.pkgdb_rd -- XXX not actually used, required ?
     local wr_lock = args.pkgdb_wr
     local lock_args
     if rd_lock or wr_lock then
@@ -452,7 +461,7 @@ local function make(args)
         PkgDbLock:acquire(lock_args)
     end
     local stdout, stderr, exitcode = run(args)
-    --TRACE ("MAKE->", args, exitcode, stdout, stderr)
+    TRACE ("MAKE->", args, exitcode, stdout, stderr)
     if lock_args then
         PkgDbLock:release(lock_args)
     end
@@ -464,7 +473,7 @@ local function pkg(args)
     if args.jailed then
         if Param.jailbase then
             table.insert(args, 1, "-c")
-            table.insert(args, 2, Param.jailbase)
+            table.insert(args, 2, Param.jailbase.name)
         end
         args.jailed = nil
     end
@@ -501,4 +510,6 @@ return {
     run = run,
     spawn = spawn,
     finish_spawned = finish_spawned,
+    spawned_tasks = spawned_tasks,
+    forked_tasks = forked_tasks,
 }

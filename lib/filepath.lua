@@ -109,6 +109,7 @@ Filepath.is_reg = is_reg
 
 local function is_readable(name)
     if name and name ~= "" then
+        TRACE("IS_READABLE", name)
         return access(name, "r") == 0
     end
 end
@@ -140,13 +141,6 @@ end
 
 Filepath.is_deleteable = is_deleteable
 
-local function mtime(name)
-    local st, err = stat(name)
-    return st.st_mtime
-end
-
-Filepath.mtime = mtime
-
 -------------------------------------------------------------------------------------
 local function __index(path, k)
     local function __is_dir()
@@ -156,7 +150,8 @@ local function __index(path, k)
         return is_reg(path.name)
     end
     local function __mtime()
-       return mtime(path.name)
+        local st = stat(path.name)
+        return st.st_mtime
     end
     local function __readable()
        return is_readable(path.name)
@@ -175,7 +170,16 @@ local function __index(path, k)
         if path.is_dir then
             name = name .. "/*"
         end
-        return glob(name, 0) -- or {} ???
+        TRACE("FILES", name)
+        local filenames = glob(name, 0)
+        local result = {}
+        if filenames then
+            for _, f in ipairs(glob(name, 0)) do
+                TRACE("FILES+", f)
+                result[#result + 1] = Filepath:new(f)
+            end
+        end
+        return result
     end
     local function __parent()
         return Filepath:new(path_up(path.name))
@@ -192,7 +196,7 @@ local function __index(path, k)
                         file_list(prefix, childdir)
                     else
                         --TRACE("F1", childdir)
-                        table.insert(result, childdir)
+                        result[#result + 1] = Filepath:new(childdir)
                     end
                 end
             end
@@ -210,7 +214,7 @@ local function __index(path, k)
                     local childdir = subdir and subdir .. "/" .. f or f
                     if is_dir(prefix .. "/" .. childdir) then
                         dir_list(prefix, childdir)
-                        table.insert(result, childdir)
+                        result[#result + 1] = Filepath:new(childdir)
                     end
                 end
             end

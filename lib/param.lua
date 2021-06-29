@@ -83,7 +83,7 @@ local function __index(param, k)
     end
 
     local function __jailbase()
-    return -- "/tmp/PMJAIL"
+        return Filepath:new("") -- will be overridden in Jail module if required
     end
 
     local function __packages_backup()

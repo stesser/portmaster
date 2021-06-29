@@ -577,7 +577,7 @@ local function getmultiple(Origin, origins)
     local function __pkgname(o_n)
         return o_n.pkgname -- dummy fetch to force loading of port variables
     end
-    TRACE("GETMULTIPLE", origins)
+    --TRACE("GETMULTIPLE", origins)
     for n, name in ipairs(origins) do
         if name then
             TRACE("GETMULTIPLE:", n, name)

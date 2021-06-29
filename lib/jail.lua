@@ -288,6 +288,7 @@ local function setup_etc(jaildir)
     -- further required files are copied unmodified
     provide_file(jaildir, "/etc/shells", "/etc/rc.subr", "/etc/make.conf", "/etc/src.conf", "/etc/rc.d", "/etc/defaults")
     provide_file(jaildir, (Param.localbase + "/etc/pkg.conf").name, (Param.localbase + "/etc/pkg").name, "/var/log/utx.log")
+    provide_file(jaildir, (Param.localbase + "sbin/pkg-static").name) -- XXX TEMPORARILY FOR TESTING ONLY
 end
 
 local function setup_var_run(jaildir)
@@ -313,9 +314,8 @@ end
 local JAILROOT = "/tmp"
 
 local function create()
+    Param.jailbase = Filepath:new(JAILROOT) + "TEST" -- NYI use individual jail names
     if not Options.dry_run then
-        Param.jailbase = Filepath:new(JAILROOT) + "TEST" -- NYI use individual jail names
-
         unmount_all(Param.jailbase)
         mount_all(Param.jailbase)
         setup_etc(Param.jailbase)
@@ -328,7 +328,7 @@ local function destroy()
     if not Options.dry_run and not Options.developer_mode then
         unmount_all(Param.jailbase)
     end
-    Param.jailbase = nil
+    Param.jailbase = Filepath:new("")
 end
 
 return {create = create, destroy = destroy}

@@ -107,7 +107,7 @@ local function describe(action)
             end
             text = text .. " to " .. p_n.name
             if action.use_pkgfile then
-                text = text .. " from " .. p_n.pkg_filename
+                text = text .. " from " .. p_n.pkg_filename.name
             else
                 text = text .. " from " .. o_n.name
             end
@@ -125,13 +125,13 @@ local function log(action, args)
     if not rawget(action, "startno_string") then
         action.startno_string = "[" .. tostring(action.startno) .. "/" .. tostring(#ACTION_LIST) .. "]"
         TRACE("STARTNO", action.startno_string, action.listpos, action.short_name)
-        action:log { start = true, "START:", describe(action)}
+        action:log{start = true, "START:", describe(action)}
         args.start = nil
     end
     args.start = args.start or co ~= previous_action_co
     table.insert(args, 1, action.startno_string)
     table.insert(args, 2, action.short_name .. ":")
-    --TRACE("LOG", args)
+    TRACE("LOG", args)
     Msg.show(args)
     previous_action_co = co
 end
@@ -228,7 +228,7 @@ end
 local function package_create(action)
     local o_n = action.o_n
     local pkgname = action.pkg_new.name
-    local pkgfile = Filepath:new(action.pkg_new.pkg_filename) -- (Param.packages .. "All", pkgname, Param.package_format)
+    local pkgfile = action.pkg_new.pkg_filename -- (Param.packages .. "All", pkgname, Param.package_format)
     --TRACE("PACKAGE_CREATE", o_n, pkgname, pkgfile)
     if Options.skip_recreate_pkg and pkgfile.is_readable then
         action:log {"The existing package file will not be overwritten"}
@@ -250,8 +250,9 @@ local function package_create(action)
         }
         if exitcode == 0 then
             if as_root or jailed then
-                local tmpfile = base + "All" + pkgname .. sufx
+                local tmpfile = base + "All" + (pkgname .. sufx)
                 if jailed then
+                    TRACE("Z", tmpfile.name, Param.jailbase)
                     tmpfile = Param.jailbase + tmpfile.name
                 end
                 if as_root then
@@ -262,7 +263,7 @@ local function package_create(action)
                         tmpfile.name
                     }
                 end
-                _, err, exitcode =
+                local _, err, exitcode =
                     Exec.run {
                     as_root = as_root,
                     CMD.mv,
@@ -325,7 +326,7 @@ local function deinstall_failed_port(action)
     local out, err, exitcode =
         o_n:port_make {
         log = true,
-        jailed = true,
+        jailed = Options.jailed, -- XXX could also happen on base system after jailed build !!!
         as_root = true,
         "deinstall"
     }
@@ -411,6 +412,7 @@ local function perform_install_or_upgrade(action)
 
     local function wait_for_distfiles()
         TRACE("WAIT_FOR_DISTFILES", o_n.name, o_n)
+        o_n:fetch()
         o_n:fetch_wait()
         if o_n.distfiles and not o_n.fetched then
             return fail(action, o_n.fetch_fail_msg)
@@ -440,7 +442,7 @@ local function perform_install_or_upgrade(action)
                 TRACE("DO_CLEAN_AS", o_n.name, need_root)
                 return o_n:port_make {
                     log = true,
-                    jailed = true,
+                    jailed = Options.jailed,
                     errtoout = true,
                     as_root = need_root,
                     "NO_CLEAN_DEPENDS=1",
@@ -484,7 +486,7 @@ local function perform_install_or_upgrade(action)
                     local out, _, exitcode =
                         origin:port_make {
                         log = true,
-                        jailed = true,
+                        jailed = Options.jailed,
                         errtoout = true,
                         "NO_DEPENDS=1",
                         "DEFER_CONFLICTS_CHECK=1",
@@ -502,7 +504,7 @@ local function perform_install_or_upgrade(action)
     local function extract()
         local wrkdir = Filepath:new(o_n.wrkdir)
         local wrkdir_parent = wrkdir.parent
-        action:log {"Extract port", portname, wrkdir_parent.name, wrkdir.name}
+        action:log {"Extract port", portname}
         local _, _, exitcode =
             Exec.run {
             CMD.mkdir,
@@ -527,7 +529,7 @@ local function perform_install_or_upgrade(action)
             o_n:port_make {
             log = true,
             errtoout = true,
-            jailed = true,
+            jailed = Options.jailed,
             "NO_DEPENDS=1",
             "DEFER_CONFLICTS_CHECK=1",
             "DISABLE_CONFLICTS=1",
@@ -544,7 +546,7 @@ local function perform_install_or_upgrade(action)
             o_n:port_make {
             log = true,
             errtoout = true,
-            jailed = true,
+            jailed = Options.jailed,
             "NO_DEPENDS=1",
             "DEFER_CONFLICTS_CHECK=1",
             "DISABLE_CONFLICTS=1",
@@ -561,7 +563,7 @@ local function perform_install_or_upgrade(action)
             o_n:port_make {
             log = true,
             errtoout = true,
-            jailed = true,
+            jailed = Options.jailed,
             "NO_DEPENDS=1",
             "DEFER_CONFLICTS_CHECK=1",
             "DISABLE_CONFLICTS=1",
@@ -595,7 +597,7 @@ local function perform_install_or_upgrade(action)
             o_n:port_make {
             log = true,
             errtoout = true,
-            jailed = true,
+            jailed = Options.jailed,
             "NO_DEPENDS=1",
             "DISABLE_CONFLICTS=1",
             "_OPTIONS_OK=1",
@@ -613,7 +615,7 @@ local function perform_install_or_upgrade(action)
             o_n:port_make {
             log = true,
             errtoout = true,
-            jailed = true,
+            jailed = Options.jailed,
             "NO_DEPENDS=1",
             "DISABLE_CONFLICTS=1",
             "_OPTIONS_OK=1",
@@ -699,7 +701,7 @@ local function perform_install_or_upgrade(action)
     local function install_from_package()
         -- try to install from package
         --TRACE("PERFORM_INSTALLATION/PKGFILE", p_n.pkgfile)
-        action:log {"Install from package file", p_n.pkgfile}
+        action:log{"Install from package file", p_n.pkgfile.name}
         -- <se> DEAL WITH CONFLICTS ONLY DETECTED BY PLIST CHECK DURING PKG REGISTRATION!!!
         local _, err, exitcode = p_n:install()
         local errtxt
@@ -717,7 +719,7 @@ local function perform_install_or_upgrade(action)
             {"Rename", pkgfile, "to", pkgfile .. ".NOTOK after failed installation")
             os.rename(pkgfile, pkgfile .. ".NOTOK")
             --]]
-            fail(action, "Failed to install from package file " .. p_n.pkgfile, err)
+            fail(action, "Failed to install from package file " .. p_n.pkgfile.name, err)
             if errtxt then
                 fail(action, "Could not re-install previously installed version after failed installation", errtxt)
             end
@@ -741,7 +743,7 @@ local function perform_install_or_upgrade(action)
                     errtxt = err
                 end
             end
-            fail(action, "Failed to install port " .. portname, err)
+            fail(action, "Failed to install port " .. portname, errtxt)
             if errtxt then
                 return fail(action, "Could not re-install previously installed version after failed installation", errtxt)
             end
@@ -957,7 +959,7 @@ local function perform_install_or_upgrade(action)
             action:log {"SUCCESS:", describe(action)}
         end
     end
-    Msg.show{Lock.blocked_tasks(RunnableLock), "tasks remaining"}
+    Msg.show{level = 3, start = true, Exec.spawned_tasks() -1 , "spawned threads,", Lock.blocked_tasks(RunnableLock), "blocked treads,", Exec.forked_tasks(), "forked processes"}
     return not failed(action)
 end
 
@@ -1340,9 +1342,9 @@ local function __index(action, k)
     end
     local function __depends()
         local p_n = action.pkg_new
-        local origin = Origin.get(p_n.origin_name)
+        local origin = p_n and Origin.get(p_n.origin_name)
+        local depends = {}
         if origin then
-            local depends = {}
             TRACE("DEPENDS:", p_n, origin)
             for type, dep_table in pairs(origin.depends) do
                 if dep_table then
@@ -1362,8 +1364,8 @@ local function __index(action, k)
                     end
                 end
             end
-            return depends
         end
+        return depends
     end
     local function determine_origin() -- XXX incomplete ???
         local p_n = action.pkg_new
@@ -1495,7 +1497,8 @@ TRACE("XXX2", basename)
             end
             if Options.packages then -- use package if allowed and available
                 --TRACE("USE_PKGFILE", "use pkgfile", p_n.name)
-                return true
+                local abi = p_n.pkgfile_abi
+                return abi == Param.abi or abi == Param.abi_noarch
             end
             if rawget(action, "is_run_dep") or not action.is_auto then -- build from port if not only a build dependency
                 --TRACE("NOT USE_PKGFILE", "user installed or run dependency without --packages option", p_n.name)
@@ -1524,10 +1527,17 @@ TRACE("XXX2", basename)
             end
         end
         local __upgrade_needed = __check_upgrade_needed()
+        local function __check_provide_needed()
+            TRACE("CHECK_PROVIDE_NEEDED", action)
+            if Options.jailed and action.pkg_new then
+                return rawget(action, "is_build_dep")
+            end
+        end
+        local __provide_needed = __check_provide_needed()
         local function __check_build_needed()
             --TRACE("CHKBUILDREQ", action.short_name, tostring(action.pkg_new), action.use_pkgfile, __upgrade_needed, action.pkg_new and action.req_for.build)
             -- return action.pkg_new and __upgrade_needed and not action.use_pkgfile
-            if __upgrade_needed then
+            if __upgrade_needed or __provide_needed then
                 return not action.use_pkgfile
             end
         end
@@ -1535,24 +1545,19 @@ TRACE("XXX2", basename)
         local function __check_pkgcreate_needed()
             return __build_needed and Options.create_package
         end
-        local function __check_provide_needed()
-            TRACE("CHECK_PROVIDE_NEEDED", action)
-            if Param.jailed and action.pkg_new then
-                return rawget(action, "is_build_dep")
-            end
-        end
-        local __provide_needed = __check_provide_needed()
         local function __check_install_needed()
+            TRACE("CHECK_INSTALL_NEEDED", rawget(action, "is_build_dep"), action)
             if action.pkg_new then
-                if Param.jailed or Options.delay_installation then
+                if Options.jailed or Options.delay_installation then
                     return rawget(action, "is_build_dep")
                 end
                 return __upgrade_needed
             end
         end
         local __install_needed = __check_install_needed()
+        TRACE("CHECK_INSTALL_NEEDED->", __install_needed, action)
         local function __check_delay_installation_to_base()
-            return Param.jailed and not action.depends.build
+            return Options.jailed and not action.depends.build
         end
         local __delay_installation = __check_delay_installation_to_base()
         local function __check_install_port_base_needed()
@@ -1562,13 +1567,13 @@ TRACE("XXX2", basename)
                 and not action.skip_install
         end
         local function __check_install_port_jail_needed()
-            return Options.jailed and __build_needed and action.deps.build
+            return Options.jailed and __build_needed and action.depends.build
         end
         local function __check_install_pkg_base_needed()
             return __install_needed and action.use_pkgfile and not __delay_installation
         end
         local function __check_install_pkg_jail_needed()
-            return Options.jailed and action.use_pkgfile and action.deps.build
+            return Options.jailed and action.use_pkgfile and action.depends.build
         end
         local function __check_install_pkg_late_needed()
             return Options.jailed and __install_needed and __delay_installation
@@ -1614,7 +1619,7 @@ TRACE("XXX2", basename)
             save_sharedlibs:	preserve shared libraries of old version
             upgrade:		    upgrade will be performed (old version, not excluded, locked, ...)
         --]]
-        return {
+        local plan = {
             build = __build_needed,
             deinstall = __deinstall_requested,
             deinstall_old = __check_deinstall_old(),
@@ -1633,6 +1638,8 @@ TRACE("XXX2", basename)
             save_sharedlibs = __check_save_sharedlibs(),
             upgrade = __upgrade_needed,
         }
+        TRACE("PLAN:", plan)
+        return plan
     end
     local function __check_forced()
         return action.force -- XXX NYI
@@ -1722,10 +1729,12 @@ local function action_list_add(action)
     --local old_pkgs = action.old_pkgs
     --local p_n = action.pkg_new
     --if p_n or action.plan.deinstall_old then
-    if action.plan.upgrade then
+        action.plan = nil
+    local plan = action.plan
+    if plan.upgrade or plan.provide then
         TRACE("IGNORE?", action.short_name, action.ignore)
-        if not action.plan.nothing then
-            TRACE("UPGRADE?", action.short_name, action.plan.upgrade, action.plan.provide)
+        if not plan.nothing then
+            TRACE("UPGRADE?", action.short_name, plan.upgrade, plan.provide)
             local listpos = rawget(action, "listpos")
             if listpos then
                 ACTION_LIST[listpos] = action
@@ -1734,15 +1743,13 @@ local function action_list_add(action)
                 action.listpos = listpos
                 ACTION_LIST[listpos] = action
                 --Msg.show{listpos, describe(action)}
-                if not action.plan.nothing and action.plan.build then
-                    TRACE("ACTION_FETCH", action.o_n.name)
-                    action.o_n:fetch()
-                end
             end
             TRACE("ACTION_LIST_ADD", action.listpos, action.short_name)
         end
-    else
-        -- error: action_list_add() called without old or new package
+        if not action.use_pkgfile then
+            TRACE("ACTION_FETCH", action.o_n.name)
+            action.o_n:fetch()
+        end
     end
 end
 
@@ -1763,6 +1770,7 @@ end
         this will be a new installation (user selected, not as an automatic dependency)
 --]]
 local function cache_add(action)
+    TRACE("CACHE_ADD?", action)
     local p_n = action.pkg_new
     local cached_action = p_n and ACTION_CACHE[p_n.name]
     if not cached_action then
@@ -1816,6 +1824,7 @@ end
 local function sort_list(action_list)
     --local max_str = tostring(#action_list)
     local sorted_list = {}
+    local seen = {}
     local function add_deps(action, is_build_dep)
         local function add_deps_of_type(type, is_build_dep)
             local deps = action.depends[type]
@@ -1836,11 +1845,12 @@ local function sort_list(action_list)
             end
         end
         if not rawget(action, "planned") then
-            action.plan = nil
-            TRACE("A", action.plan)
-            local p_n = action.pkg_new
-            if p_n and (action.plan.build or action.plan.provide) then
-                TRACE("BUILDREQUIRED!", p_n.name)
+            action.is_build_dep = is_build_dep
+            action.plan = nil -- reset to get up-to-date state
+            local plan = action.plan
+            TRACE("ADD_DEPS", action.short_name, plan, action)
+            if plan.build or plan.provide then
+                TRACE("BUILDREQUIRED!", action.short_name)
                 if not Options.jailed then -- jailed builds use pkg from base -- it must be separately updated first !!! XXX
                     add_deps_of_type("pkg", true)
                 end
@@ -1849,18 +1859,21 @@ local function sort_list(action_list)
                 add_deps_of_type("special", true)
                 assert(not rawget(action, "planned"), "Dependency loop for: " .. action.short_name)
             end
-            --if action.plan.provide or action.plan.install then
+            if plan.provide or plan.install then
+                if not Options.jailed then -- jailed builds use pkg from base -- it must be separately updated first !!! XXX
+                    add_deps_of_type("pkg", true)
+                end
                 add_deps_of_type("lib", true)
                 add_deps_of_type("run", is_build_dep)
                 assert(not rawget(action, "planned"), "Dependency loop for: " .. action.short_name)
-                table.insert(sorted_list, action)
-                action.listpos = #sorted_list
+                local listpos = #sorted_list + 1
+                action.listpos = listpos
+                sorted_list[listpos] = action
                 action.planned = true
-                action.is_build_dep = is_build_dep
                 Msg.show {"[" .. tostring(#sorted_list) .. "]", action.name}
-            --else
-            --    Msg.show {"SKIPPING", action.short_name}
-            --end
+            else
+                Msg.show {"SKIPPING", action.short_name}
+            end
         end
     end
 

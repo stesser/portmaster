@@ -43,7 +43,7 @@ local TRACE = Trace.trace
 -- the Package class describes a package with optional package file
 
 --
-local function filename(args)
+local function pkg_filepath(args)
     local pkg = args[1]
     local pkgname = pkg.name
     local base = args.base or Param.packages
@@ -54,18 +54,7 @@ local function filename(args)
     end
     local result = base + subdir + (pkgname .. extension)
     --TRACE("FILENAME->", result, base, subdir, pkgname, extension)
-    return result.name
-end
-
--- fetch ABI from package file
-local function file_get_abi(filename)
-    return PkgDb.query {pkgfile = filename, "%q"} -- <se> %q vs. %Q ???
-end
-
--- check whether ABI of package file matches current system Param.abi
-local function file_valid_abi(file)
-    local abi = file_get_abi(file)
-    return abi == Param.abi or abi == Param.abi_noarch
+    return result
 end
 
 -------------------------------------------------------------------------------------
@@ -179,7 +168,7 @@ end
 -------------------------------------------------------------------------------------
 -- install package from passed pkg
 local function install(pkg, abi)
-    local pkgfile = pkg.pkgfile
+    local pkgfile = pkg.pkgfile.name
     local jailed = Options.jailed and Param.phase == "build"
     local env = {IGNORE_OSVERSION = "yes"}
     TRACE("INSTALL", abi, pkgfile)
@@ -213,7 +202,7 @@ end
 -- create category links and a lastest link
 local function category_links_create(pkg_new, categories)
     local extension = Param.package_format
-    local source = filename {base = Filepath:new(".."), ext = extension, pkg_new}
+    local source = pkg_filepath{base = Filepath:new(".."), ext = extension, pkg_new}
     table.insert(categories, "Latest")
     for _, category in ipairs(categories) do
         local destination = Param.packages + category
@@ -227,6 +216,7 @@ local function category_links_create(pkg_new, categories)
         if category == "Latest" then -- skip if/since automatically created???
             destination = destination + (pkg_new.name_base .. "." .. extension)
         end
+        TRACE("LN", source, destination)
         Exec.run{
             as_root = Param.packages_ro,
             log = true,
@@ -240,12 +230,13 @@ end
 local function recover(pkg)
     -- if not pkgname then return true end
     local pkgname = pkg.name
-    local pkgfile = pkg.pkgfile
+    local pkgfile = pkg.pkgfile.name
     if not pkgfile then
         pkgfile = Exec.run{
             table = true,
             safe = true,
-            CMD.ls, "-1t", filename{base = Param.packages_backup, subdir = "", ext = ".*", pkg}}[1] -- XXX replace with glob and sort by modification time ==> pkg.bakfile
+            CMD.ls, "-1t", pkg_filepath{base = Param.packages_backup, subdir = "", ext = ".*", pkg}.name -- XXX replace with glob and sort by modification time ==> pkg.bakfile
+        }[1]
     end
     if pkgfile and Filepath.is_readable(pkgfile) then
         Msg.show {"Re-installing previous version", pkgname}
@@ -267,57 +258,51 @@ end
 
 -- search package file in directory
 local function file_search_in(pkg, subdir)
-    local files = Filepath:new(filename {subdir = subdir, ext = ".t?*", pkg}).files
-    if files then
-        local file
-        for _, f in ipairs(files) do
-            if file_valid_abi(f) then
-                if not file or Filepath.mtime(file) < Filepath.mtime(f) then -- newer than previously checked package file?
-                    file = f
-                end
-            end
+    local files = pkg_filepath{subdir = subdir, ext = ".t?*", pkg}.files
+    TRACE("FILE_SEARCH_IN", files)
+    local file
+    for _, f in ipairs(files) do
+        if not file or file.mtime < f.mtime then -- newer than previously checked package file?
+            file = f
         end
-        return file
+    return file -- XXX check callers
     end
 end
 
+--[[
 -- search package file
 local function file_search(pkg)
     return file_search_in(pkg, "All") or file_search_in(pkg, "package-backup")
 end
+--]]
 
 -- delete backup package file
 local function backup_delete(pkg)
-    local g = filename {subdir = "portmaster-backup", ext = ".t?*", pkg}
-    local files = Filepath:new(g).files
-    if files then
-        for _, backupfile in pairs(files) do
-            --TRACE("BACKUP_DELETE", backupfile, Param.packages .. "portmaster-backup/")
-            Exec.run{
-                as_root = true,
-                log = true,
-                CMD.unlink, backupfile
-            }
-        end
+    local files = pkg_filepath{subdir = "portmaster-backup", ext = ".t?*", pkg}.files
+    for _, backupfile in pairs(files) do
+        --TRACE("BACKUP_DELETE", backupfile, Param.packages .. "portmaster-backup/")
+        Exec.run{
+            as_root = true,
+            log = true,
+            CMD.unlink, backupfile.name
+        }
     end
 end
 
 -- delete stale package file ==> convert to be based on pkg.pkgfile and pkg.bakfile XXX
 local function delete_old(pkg)
-    local bakfile = pkg.bak_file
-    local g = filename {subdir = "*", ext = "t?*", pkg}
+    local bakfile_name = pkg.bakfile
+    local files = pkg_filepath{subdir = "*", ext = "t?*", pkg}.files
     --TRACE("DELETE_OLD", pkg.name, g)
-    local files = Filepath:new(g).files
-    if files then
-        for _, pkgfile in pairs(files) do
-            --TRACE("CHECK_BACKUP", pkgfile, bakfile)
-            if pkgfile ~= bakfile then
-                Exec.run{
-                    as_root = true,
-                    log = true,
-                    CMD.unlink, pkgfile
-                }
-            end
+    for _, pkgfile in pairs(files) do
+        --TRACE("CHECK_BACKUP", pkgfile, bakfile)
+        local pkgfile_name = pkgfile.name
+        if pkgfile_name ~= bakfile_name then
+            Exec.run{
+                as_root = true,
+                log = true,
+                CMD.unlink, pkgfile_name
+            }
         end
     end
 end
@@ -495,20 +480,21 @@ local function __index(pkg, k)
         Msg.show {level = 2, start = true}
         return pkg[k]
     end
-    local function __get_abi(pkg, v)
-        return file_get_abi(filename {pkg}) or false
+    local function __pkgfile_abi(pkg, v)
+        return PkgDb.query{pkgfile = pkg_filepath{pkg}.name, "%q"} or false
     end
     local function __pkg_filename(pkg, v)
-        if v == "pkg_filename" then
-            return filename {subdir = "All", pkg}
-        elseif v == "bak_filename" then
-            return filename {subdir = "portmaster-backup", ext = Param.backup_format, pkg}
-        end
+        return pkg_filepath{subdir = "All", pkg}
+    end
+    local function __bak_filename(pkg, v)
+        return pkg_filepath{subdir = "portmaster-backup", ext = Param.backup_format, pkg}
     end
     -- lookup package file
     local function __pkg_lookup(pkg, k)
-        local subdir = k == "pkgfile" and "All" or "portmaster-backup"
-        return file_search_in(pkg, subdir)
+        return file_search_in(pkg, "All")
+    end
+    local function __bak_lookup(pkg, k)
+        return file_search_in(pkg, "portmaster-backup")
     end
     local function __default_true()
        return true
@@ -553,15 +539,15 @@ local function __index(pkg, k)
         name_base_major = __pkg_strip_minor,
         version = __pkg_version,
         pkgfile = __pkg_lookup,
-        bakfile = __pkg_lookup,
-        pkgfile_abi = __get_abi,
+        bakfile = __bak_lookup,
+        pkgfile_abi = __pkgfile_abi,
         -- bakfile_abi = file_get_abi, -- UNUSED XXX
         --shared_libs = false, -- batch loaded at start
         --req_shared_libs = false, -- batch loaded at start
         --is_installed = false, -- set for files loaded from package db
         --depends = __depends,
         pkg_filename = __pkg_filename,
-        bak_filename = __pkg_filename,
+        bak_filename = __bak_filename,
     }
 
     --TRACE("INDEX(p)", pkg, k)
@@ -638,7 +624,7 @@ return {
     delete_old = delete_old,
     recover = recover,
     category_links_create = category_links_create,
-    file_search = file_search,
+    -- file_search = file_search,
     -- file_get_abi = file_get_abi,
     -- check_use_package = check_use_package,
     check_excluded = check_excluded,
@@ -651,5 +637,4 @@ return {
     automatic_set = automatic_set,
     packages_cache_load = packages_cache_load,
     dump_cache = dump_cache,
-    filename = filename,
 }

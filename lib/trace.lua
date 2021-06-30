@@ -42,20 +42,26 @@ local function trace(...)
         return v
     end
     local function table_to_string(t, level, indent)
-        local indent2 = indent .. " "
         if level <= 0 then
             return tostring(t)
         end
+        local indent2 = indent .. " "
         local result = {}
-        local kt = Util.table_keys(t)
-        table.sort(kt, function (a,b) return tostring(a) < tostring(b) end)
-        for _, k in ipairs(kt) do
+        local function table_entry(k)
             if type(k) ~= "string" or string.sub(k, 1, 1) ~= "_" then
                 local v = t[k]
                 k = type(k) == "table" and table_to_string(k, 1, "") or as_string(k)
                 v = type(v) == "table" and table_to_string(v, level - 1, indent2) or as_string(v)
                 result[#result + 1] = k .. " = " .. v
             end
+        end
+        local kt = Util.table_keys(t)
+        table.sort(kt, function (a,b) return tostring(a) < tostring(b) end)
+        for _, k in ipairs(kt) do
+            table_entry(k)
+        end
+        for i = 1, #t do
+            table_entry(i)
         end
         if #result == 0 then
             return "{}"

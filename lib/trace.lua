@@ -47,9 +47,11 @@ local function trace(...)
         end
         local indent2 = indent .. " "
         local result = {}
+        local top_level = true
         local function table_entry(k)
             if type(k) ~= "string" or string.sub(k, 1, 1) ~= "_" then
                 local v = t[k]
+                top_level = top_level and not (type(k) == "table" or type(v) == "table")
                 k = type(k) == "table" and table_to_string(k, 1, "") or as_string(k)
                 v = type(v) == "table" and table_to_string(v, level - 1, indent2) or as_string(v)
                 result[#result + 1] = k .. " = " .. v
@@ -65,8 +67,8 @@ local function trace(...)
         end
         if #result == 0 then
             return "{}"
-        elseif #result == 1 then
-            return "{" .. result[1] .. "}"
+        elseif #result == 1 or top_level and #result <= 4 then
+            return "{" .. table.concat(result, ", ") .. "}"
         else
             return "{\n" .. indent2 .. table.concat(result, ",\n" .. indent2) .. "\n" .. indent .. "}"
         end

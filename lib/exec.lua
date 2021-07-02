@@ -372,7 +372,7 @@ end
 -- execute command according to passed flags argument
 local function run(args)
     TRACE("run", "[" .. table.concat(Util.table_keys(args), ",") .. "]", table.unpack(args))
-    if Param.jailbase and args.jailed then
+    if Options.jailed and Param.jailbase and args.jailed then
         table.insert(args, 1, CMD.chroot)
         table.insert(args, 2, Param.jailbase.name)
         if not args.as_root and Param.uid ~= 0 then -- chroot needs root but can then switch back to user
@@ -489,7 +489,7 @@ local function pkg(args)
         TRACE("PKG<-", i, shared, args[#args-1], args[#args])
         PkgDbLock:acquire{weight = 1, shared = shared}
         out, err, exitcode = run(args) -- XXX retry if exitcode indicates lock timeout occurred
-        --TRACE("PKG->", args, exitcode, out, err)
+        TRACE("PKG->", args, exitcode, out, err)
         PkgDbLock:release{weight = 1, shared = shared}
         if exitcode == 0 then
             return (out or args.table and {} or ""), err, 0

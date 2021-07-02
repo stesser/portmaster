@@ -75,35 +75,6 @@ local function add_missing_deps(action_list) -- XXX need to also add special dep
         TRACE("COLLECT_DEP_ORIGINS!", origins)
         return origins
     end
-    --[[
-    local function add_all_deps(start_elem, last_elem)
-        local function add_deps(deps)
-            if deps then
-                for _, pkgname in ipairs(deps) do
-                    local p_n = Package:new(pkgname)
-                    if p_n and p_n.origin_name then
-                        dep_origins[p_n.origin_name] = true
-                    else
-                        TRACE("DEP_ERROR?", pkgname)
-                    end
-                end
-            end
-        end
-        for i = start_elem, last_elem do
-            local a = action_list[i]
-            TRACE("ADD_MISSING_DEPS", i, #action_list, a)
-            local depends = a.depends
-            if not (a.is_locked or a.ignore) and a.plan.build then
-                --was: Options.force or Options.jailed or not (rawget(a, "pkg_new") and rawget(a.pkg_new, "is_installed")) then
-                -- XXX collect dependency origins required for build
-                add_deps(depends.build)
-                add_deps(depends.special)
-                add_deps(depends.pkg)
-            end
-            add_deps(depends.run)
-        end
-    end
-    --]]
     local function process_depends(origins)
         TRACE("PROCESS_DEPENDS", #origins)
         for _, o_n in ipairs(Origin:getmultiple(origins)) do

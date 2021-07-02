@@ -230,8 +230,9 @@ end
 local function recover(pkg)
     -- if not pkgname then return true end
     local pkgname = pkg.name
-    local pkgfile = pkg.pkgfile.name
+    local pkgfile = pkg.bakfile.name
     if not pkgfile then
+        error("RECOVER ".. pkg.name ..  " failed" )
         pkgfile = Exec.run{
             table = true,
             safe = true,
@@ -256,25 +257,44 @@ local function recover(pkg)
     Msg.show {"Recovery from backup package file", pkgfile, "failed"}
 end
 
+--
+local function pkgfile_abi(path)
+    local lines = PkgDb.query{table = true, pkgfile = path.name, "%q %dn-%dv"}
+    local abi
+    local pkgname
+    local depends = {}
+    for _, line in ipairs(lines) do
+        abi, pkgname = string.match(line, "(%S*) (%S%S*)")
+        depends[#depends + 1] = pkgname
+    end
+    if not abi then
+        abi = PkgDb.query{pkgfile = path.name, "%q"}
+        depends = {}
+    end
+    TRACE("PKGFILE_ABI", abi, depends)
+    return abi, depends
+end
+
 -- search package file in directory
 local function file_search_in(pkg, subdir)
     local files = pkg_filepath{subdir = subdir, ext = ".t?*", pkg}.files
     TRACE("FILE_SEARCH_IN", files)
     local file
+    local file_abi
+    local file_depends
     for _, f in ipairs(files) do
+        --TRACE("FILE_SEARCH_IN_NEWER?", f.name, file.mtime, f.mtime)
         if not file or file.mtime < f.mtime then -- newer than previously checked package file?
-            file = f
+            local abi, depends = pkgfile_abi(f)
+            if abi == Param.abi or abi == Param.abi_noarch then
+                file = f
+                file_abi = abi
+                file_depends = depends
+            end
         end
-    return file -- XXX check callers
     end
+    return file, file_abi, file_depends -- XXX check callers
 end
-
---[[
--- search package file
-local function file_search(pkg)
-    return file_search_in(pkg, "All") or file_search_in(pkg, "package-backup")
-end
---]]
 
 -- delete backup package file
 local function backup_delete(pkg)
@@ -480,8 +500,9 @@ local function __index(pkg, k)
         Msg.show {level = 2, start = true}
         return pkg[k]
     end
-    local function __pkgfile_abi(pkg, v)
-        return PkgDb.query{pkgfile = pkg_filepath{pkg}.name, "%q"} or false
+    local function __pkgfile_vars(pkg, v)
+        pkg.pkgfile_abi, pkg.pkgfile_depends = pkgfile_abi(pkg_filepath{pkg})
+        return pkg[v]
     end
     local function __pkg_filename(pkg, v)
         return pkg_filepath{subdir = "All", pkg}
@@ -491,7 +512,10 @@ local function __index(pkg, k)
     end
     -- lookup package file
     local function __pkg_lookup(pkg, k)
-        return file_search_in(pkg, "All")
+        local file, abi, depends = file_search_in(pkg, "All")
+        pkg.pkgfile_abi = abi -- XXX side effect acceptable due to the cost of "pkg query -F <file> %q" ???
+        pkg.pkgfile_depends = depends
+        return file
     end
     local function __bak_lookup(pkg, k)
         return file_search_in(pkg, "portmaster-backup")
@@ -540,7 +564,8 @@ local function __index(pkg, k)
         version = __pkg_version,
         pkgfile = __pkg_lookup,
         bakfile = __bak_lookup,
-        pkgfile_abi = __pkgfile_abi,
+        pkgfile_abi = __pkgfile_vars,
+        pkgfile_depends = __pkgfile_vars,
         -- bakfile_abi = file_get_abi, -- UNUSED XXX
         --shared_libs = false, -- batch loaded at start
         --req_shared_libs = false, -- batch loaded at start

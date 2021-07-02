@@ -66,51 +66,53 @@ end
 -- Describe action to be performed
 local function describe(action)
     local p_n = action.pkg_new
-    local o_n = action.o_n
-    local old_pkgs = action.old_pkgs -- XXX update for multiple old packages !!!
-    local n_old = #old_pkgs
-    TRACE("DESCRIBE", rawget(p_n or {}, "name"), action)
-    local text
+    local old_pkgs = action.old_pkgs
     local plan = action.plan
-    if plan.deinstall then
-        assert(n_old == 1)
-        local p_o = old_pkgs[1]
-        local o_o = action.o_o
-        local reason = rawget (o_o, "reason") or
-            ("Port directory " .. o_o.port .. " has been deleted")
-        text = "Deinstall " .. p_o.name .. " (" .. reason .. ")"
-    elseif plan.upgrade then
-        local verb
-        if n_old == 0 then
-            verb = "Install"
-        elseif plan.upgrade then
-            verb = "Upgrade"
-        elseif plan.pkgcreate then
-            verb = "Create package"
-        elseif plan.provide then
-            verb = "Provide"
+    TRACE("DESCRIBE", action.short_name, action.use_pkgfile, action.plan)
+    local text
+    if plan.nothing or plan.deinstall then
+        local reason
+        if plan.nothing then
+            text = "Skip " .. p_n.name
+            reason = rawget (p_n, "reason") -- XXX add exclude et.al. reason to pkg_new !!!
         else
-            verb = "???UNDEF???"
+            assert(#old_pkgs == 1)
+            local p_o = old_pkgs[1]
+            local o_o = action.o_o
+            text = "Deinstall " .. p_o.name
+            reason = rawget (o_o, "reason") or
+                ("Port directory " .. o_o.port .. " has been deleted")
         end
-        if n_old == 0 then
-            text = verb .. " " .. p_n.name .. " from " .. o_n.name
-        else
-            text = verb .. " "
-            for i, p_o in ipairs(old_pkgs) do
-                if i > 1 then
-                    text = text .. ", "
-                end
-                text = text .. p_o.name
-                if p_o.origin_name ~= o_n.name then
-                    text = text .. " (" .. p_o.origin_name .. ")"
-                end
-            end
-            text = text .. " to " .. p_n.name
-            if action.use_pkgfile then
-                text = text .. " from " .. p_n.pkg_filename.name
+        if reason then
+            text = text .. " (" .. reason .. ")"
+        end
+    else
+        local o_n = action.o_n
+        if plan.upgrade then
+            if #old_pkgs == 0 then
+                text = "Install "
             else
-                text = text .. " from " .. o_n.name
+                text = "Upgrade "
+                for i, p_o in ipairs(old_pkgs) do
+                    if i > 1 then
+                        text = text .. ", "
+                    end
+                    text = text .. p_o.name
+                    if p_o.origin_name ~= o_n.name then
+                        text = text .. " (" .. p_o.origin_name .. ")"        end
+                end
+                text = text .. " to "
             end
+        elseif plan.provide then
+            text = "Provide "
+        elseif plan.pkgcreate then
+            text = "Create Package "
+        end
+        text = text .. p_n.name
+        if action.use_pkgfile then
+            text = text .. " from " .. p_n.pkg_filename.name
+        else
+            text = text .. " from " .. o_n.name
         end
     end
     return text
@@ -893,6 +895,28 @@ local function perform_install_or_upgrade(action)
             build_done("package") -- XXX set if no package is to be created, too ???
         end
     end
+    --[[ -------------
+    HERE:
+        normal:
+            install port immediately to base
+        delay_installation:
+            install port immediately to base if it is a build dependency
+        jailed or repo_mode:
+            install port immediately to jail if it is a build dependency
+    -------------------
+    USE PACKAGE:
+            install package immediately to base
+        delay_installation:
+            install package immediately to base if it is a build dependency
+        jailed or repo_mode:
+            install package immediately to jail if it is a build dependency
+    -------------------
+    DELAYED INSTALLATION TO BASE:
+        normal:
+            nothing to do?
+        delay_installation, jailed
+            install to base from package file if required and not a build dependency
+    --]]
     --if action.plan.deinstall or action.plan.deinstall_old then
     if action.plan.deinstall_old then
         lock_pkgdeps_shared() -- >>>> RunnableLock(action.depends.pkg)
@@ -1601,41 +1625,35 @@ TRACE("XXX2", basename)
         end
         TRACE("PLAN", action)
         --[[
-            build:		        port build is required
-            deinstall:		    deinstall only, no installation of updated version
-            deinstall_old:	    deinstall immediately before installation of new version
-            delay_installation:	delay installation until all ports have been built (unless build_dep)
-            install:		    install to base system
-            install_pkg_base:	install package file to base system
-            install_pkg_jail:	provide package in jail
-            install_pkg_late:	install newly built port from package file after end of build phase
-            install_port_base:	install newly built port to base system
-            install_port_jail:	install newly built port to build jail
+            build:		        port build is required -- check "use_pkgfile" to decide whether port needs to be built
+            delay_installation:	delay installation until all ports have been built (unless build_dep) -- Option
+            pkgcreate:		    create package file -- check Option and whether same name package file should be overwritten
+            postclean:		    clean work directory after build (ignored unless build is true) -- check Option
+            preclean:		    clean work directory before build (ignored unless build is true) -- check Option
+
             nothing:		    ignore this action
-            pkgcreate:		    create package file
-            postclean:		    clean work directory after build (ignored unless build is true)
-            preclean:		    clean work directory before build (ignored unless build is true)
-            provide:		    needed as a build dependency (or run dependency of a build dependency)
-            save_sharedlibs:	preserve shared libraries of old version
+            deinstall:		    deinstall only, no installation of updated version
+            deinstall_old:	    deinstall old package(s) immediately before installation of new version to base system
+            install:		    install to base system (from port or package)
+            provide:		    needed as a build dependency (or run dependency of a build dependency) in jail
             upgrade:		    upgrade will be performed (old version, not excluded, locked, ...)
+
+            --save_sharedlibs:	preserve shared libraries of old version -- XXX check Option
         --]]
         local plan = {
+            -- [[
             build = __build_needed,
-            deinstall = __deinstall_requested,
-            deinstall_old = __check_deinstall_old(),
             delay_installation = __delay_installation,
-            install = __install_needed,
-            --install_pkg_base = __check_install_pkg_base_needed(),
-            --install_pkg_jail = __check_install_pkg_jail_needed(),
-            --install_pkg_late = __check_install_pkg_late_needed(),
-            --install_port_base = __check_install_port_base_needed(),
-            --install_port_jail = __check_install_port_jail_needed(),
-            nothing = __check_do_nothing(),
+            save_sharedlibs = __check_save_sharedlibs(),
             pkgcreate = __check_pkgcreate_needed(),
             postclean = __check_do_postclean(),
             preclean = __check_do_preclean(),
+            --]]
+            nothing = __check_do_nothing(),
+            deinstall = __deinstall_requested,
+            deinstall_old = __check_deinstall_old(),
+            install = __install_needed,
             provide = __provide_needed,
-            save_sharedlibs = __check_save_sharedlibs(),
             upgrade = __upgrade_needed,
         }
         TRACE("PLAN:", plan)
@@ -1872,7 +1890,7 @@ local function sort_list(action_list)
                 action.planned = true
                 Msg.show {"[" .. tostring(#sorted_list) .. "]", action.name}
             else
-                Msg.show {"SKIPPING", action.short_name}
+                --Msg.show {"SKIPPING", action.short_name}
             end
         end
     end

@@ -939,7 +939,7 @@ local function perform_install_or_upgrade(action)
         end
         -- wait for availability of all run dependencies
         lock_rundeps_shared() -- >>>> RunnableLock(action.depends.run)
-        if rawget(action, "wrkdir_locked") then
+        if rawget(action, "pkgnew_locked") then
             release_pkgnew() -- <<<< RunnableLock(p_n.name)
         end
         --build_step(fetch_pkg_message)

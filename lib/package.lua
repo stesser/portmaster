@@ -230,16 +230,16 @@ end
 local function recover(pkg)
     -- if not pkgname then return true end
     local pkgname = pkg.name
-    local pkgfile = pkg.bakfile.name
-    if not pkgfile then
-        error("RECOVER ".. pkg.name ..  " failed" )
-        pkgfile = Exec.run{
+    local bakfile_name = pkg.bakfile.name
+    if not bakfile_name then
+        error("RECOVER ".. pkg.name ..  " failed to find package backup file" )
+        bakfile_name = Exec.run{
             table = true,
             safe = true,
             CMD.ls, "-1t", pkg_filepath{base = Param.packages_backup, subdir = "", ext = ".*", pkg}.name -- XXX replace with glob and sort by modification time ==> pkg.bakfile
         }[1]
     end
-    if pkgfile and Filepath.is_readable(pkgfile) then
+    if bakfile_name and Filepath.is_readable(bakfile_name) then
         Msg.show {"Re-installing previous version", pkgname}
         if install(pkg, pkg.pkgfile_abi) then
             if pkg.is_automatic == 1 then
@@ -254,15 +254,15 @@ local function recover(pkg)
             return true
         end
     end
-    Msg.show {"Recovery from backup package file", pkgfile, "failed"}
+    Msg.show {"Recovery from backup package file", bakfile_name, "failed"}
 end
 
 --
 local function pkgfile_abi(path)
-    local lines = PkgDb.query{table = true, pkgfile = path.name, "%q %dn-%dv"}
     local abi
     local pkgname
     local depends = {}
+    local lines = PkgDb.query{table = true, pkgfile = path.name, "%q %dn-%dv"}
     for _, line in ipairs(lines) do
         abi, pkgname = string.match(line, "(%S*) (%S%S*)")
         depends[#depends + 1] = pkgname
@@ -286,7 +286,7 @@ local function file_search_in(pkg, subdir)
         --TRACE("FILE_SEARCH_IN_NEWER?", f.name, file.mtime, f.mtime)
         if not file or file.mtime < f.mtime then -- newer than previously checked package file?
             local abi, depends = pkgfile_abi(f)
-            if abi == Param.abi or abi == Param.abi_noarch then
+            if subdir == "portmaster-backup" or abi == Param.abi or abi == Param.abi_noarch then
                 file = f
                 file_abi = abi
                 file_depends = depends
@@ -504,12 +504,6 @@ local function __index(pkg, k)
         pkg.pkgfile_abi, pkg.pkgfile_depends = pkgfile_abi(pkg_filepath{pkg})
         return pkg[v]
     end
-    local function __pkg_filename(pkg, v)
-        return pkg_filepath{subdir = "All", pkg}
-    end
-    local function __bak_filename(pkg, v)
-        return pkg_filepath{subdir = "portmaster-backup", ext = Param.backup_format, pkg}
-    end
     -- lookup package file
     local function __pkg_lookup(pkg, k)
         local file, abi, depends = file_search_in(pkg, "All")
@@ -519,6 +513,12 @@ local function __index(pkg, k)
     end
     local function __bak_lookup(pkg, k)
         return file_search_in(pkg, "portmaster-backup")
+    end
+    local function __pkg_filename(pkg, v)
+        return pkg_filepath{subdir = "All", pkg}
+    end
+    local function __bak_filename(pkg, v)
+        return pkg_filepath{subdir = "portmaster-backup", ext = Param.backup_format, pkg}
     end
     local function __default_true()
        return true

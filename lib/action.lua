@@ -702,7 +702,7 @@ local function perform_install_or_upgrade(action)
     end
     local function install_from_package()
         -- try to install from package
-        --TRACE("PERFORM_INSTALLATION/PKGFILE", p_n.pkgfile)
+        TRACE("PERFORM_INSTALLATION/PKGFILE", p_n)
         action:log{"Install from package file", p_n.pkgfile.name}
         -- <se> DEAL WITH CONFLICTS ONLY DETECTED BY PLIST CHECK DURING PKG REGISTRATION!!!
         local _, err, exitcode = p_n:install()
@@ -859,23 +859,18 @@ local function perform_install_or_upgrade(action)
         end
     end
 
-    TRACE("PERFORM_INSTALL_OR_UPGRADE", action)
-    -- has a package been identified to be used instead of building the port?
-    TRACE("BUILDREQUIRED", action.short_name, action.plan.build, action.force, Options.packages)
-    action.buildstate = {}
-    if action.plan.build or action.plan.install then
-        lock_pkgnew() -- lock requests for this package name until it is available
-    end
-    wait_for_phase("build")
-    if action.plan.build then
+    local function __prepare_build()
         -- == i.e. we are not installing from a package file ...
         build_step(wait_for_distfiles)
         lock_builddeps_shared() -- >>>> RunnableLock(build_dep_pkgs, SHARED)
-        lock_wrkdir() -- >>>> WorkDirLock(o_n.wrkdir)
         build_step(check_build_deps)
+        lock_wrkdir() -- >>>> WorkDirLock(o_n.wrkdir)
+        action.wrkdir_locked = true
         if action.plan.preclean then
             build_step(port_clean)
         end
+    end
+    local function __build_port()
         lock_jobs() -- >>>> JobsLock(weight = action.jobs)
         build_step(check_license)
         build_step(special_deps)
@@ -887,14 +882,69 @@ local function perform_install_or_upgrade(action)
         release_jobs() -- <<<< JobsLock(weight = action.jobs)
         build_step(stage)
         release_builddeps_shared()
-        if action.plan.pkgcreate then
-            -- == create_package==true to create a new package from a port
-            lock_pkgdeps_shared() -- >>>> RunnableLock(action.depends.pkg)
-            build_step(package_create)
-            release_pkgdeps_shared() -- <<<< RunnableLock(action.depends.pkg)
-            build_done("package") -- XXX set if no package is to be created, too ???
+    end
+    local function __create_package()
+        -- == create_package==true to create a new package from a port
+        lock_pkgdeps_shared() -- >>>> RunnableLock(action.depends.pkg)
+        build_step(package_create)
+        release_pkgdeps_shared() -- <<<< RunnableLock(action.depends.pkg)
+        build_done("package") -- XXX set if no package is to be created, too ???
+    end
+    local function __deinstall_old()
+        lock_pkgdeps_shared() -- >>>> RunnableLock(action.depends.pkg)
+        build_step(create_backup_packages)
+        if action.plan.save_sharedlibs then
+            build_step(preserve_old_shared_libraries)
+        end
+        build_step(preserve_precious)
+        build_step(delete_old_packages)
+        build_step(recover_precious)
+        release_pkgdeps_shared() -- <<<< RunnableLock(action.depends.pkg)
+    end
+    local function __install_port()
+        lock_pkgdeps_shared() -- >>>> RunnableLock(action.depends.pkg)
+        build_step(install_from_stage_area)
+        release_pkgdeps_shared() -- <<<< RunnableLock(action.depends.pkg)
+        -- preserve file names and hashes of distfiles from new port
+        -- NYI distinfo_cache_update (o_n, pkgname_new)
+        -- backup clean port directory and special build depends (might also be delayed to just before program exit)
+        if action.plan.postclean then
+            build_step(port_clean)
+            -- delete old distfiles
+            -- NYI distfiles_delete_old (o_n, pkgname_old) -- OUTPUT
         end
     end
+    local function __install_package()
+        -- == execute if no port has been built and installation from a package is required
+        lock_pkgdeps_shared() -- >>>> RunnableLock(action.depends.pkg)
+        build_step(install_from_package)
+        release_pkgdeps_shared() -- <<<< RunnableLock(action.depends.pkg)
+    end
+    local function __check_failed()
+        local failed_msg, failed_log = failed(action)
+        if failed_msg then
+            action:log {describe(action), "FAILURE:", failed_msg .. (failed_log and ":" or "")}
+            if failed_log then
+                Msg.show {verbatim = true, failed_log, "\n"}
+            end
+        else
+            action:log {"SUCCESS:", describe(action)}
+        end
+    end
+    local function __postinstall_cleanup()
+        build_step(post_install_fixup)
+        build_step(delete_stale_pkgfiles)
+        if action.plan.save_sharedlibs then
+            build_step(cleanup_old_shared_libraries)
+        end
+        -- wait for availability of all run dependencies
+        lock_rundeps_shared() -- >>>> RunnableLock(action.depends.run)
+        if rawget(action, "wrkdir_locked") then
+            release_pkgnew() -- <<<< RunnableLock(p_n.name)
+        end
+        --build_step(fetch_pkg_message)
+    end
+
     --[[ -------------
     HERE:
         normal:
@@ -917,54 +967,43 @@ local function perform_install_or_upgrade(action)
         delay_installation, jailed
             install to base from package file if required and not a build dependency
     --]]
+    TRACE("PERFORM_INSTALL_OR_UPGRADE", action)
+    -- has a package been identified to be used instead of building the port?
+    local is_build_dep = rawget(action, "is_build_dep")
+    local is_run_dep = rawget(action, "is_run_dep")
+    TRACE("BUILDREQUIRED", action.short_name, action.plan.build, action.force, Options.packages)
+    action.buildstate = {}
+    if action.plan.build or action.plan.provide or action.plan.install then
+        lock_pkgnew() -- lock requests for this package name until it is available
+        action.pkgnew_locked = true
+    end
+    wait_for_phase("build")
+    if action.plan.build then
+        __prepare_build()
+        __build_port()
+        if action.plan.pkgcreate then
+            __create_package()
+        end
+    end
     --if action.plan.deinstall or action.plan.deinstall_old then
     if action.plan.deinstall_old then
-        lock_pkgdeps_shared() -- >>>> RunnableLock(action.depends.pkg)
-        build_step(create_backup_packages)
-        if action.plan.save_sharedlibs then
-            build_step(preserve_old_shared_libraries)
-        end
-        build_step(preserve_precious)
-        build_step(delete_old_packages)
-        build_step(recover_precious)
-        release_pkgdeps_shared() -- <<<< RunnableLock(action.depends.pkg)
+        __deinstall_old()
     end
     finish_phase("build")
     -- install build depends immediately but optionally delay installation of other ports
     if action.plan.install then -- install immediately to jail or base system
-        if action.plan.build then
-            lock_pkgdeps_shared() -- >>>> RunnableLock(action.depends.pkg)
-            build_step(install_from_stage_area)
-            release_pkgdeps_shared() -- <<<< RunnableLock(action.depends.pkg)
-            -- preserve file names and hashes of distfiles from new port
-            -- NYI distinfo_cache_update (o_n, pkgname_new)
-            -- backup clean port directory and special build depends (might also be delayed to just before program exit)
-            if action.plan.postclean then
-                build_step(port_clean)
-                -- delete old distfiles
-                -- NYI distfiles_delete_old (o_n, pkgname_old) -- OUTPUT
-            end
+        if action.use_pkgfile then
+            __install_package()
         else
-            -- == execute if no port has been built and installation from a package is required
-            lock_pkgdeps_shared() -- >>>> RunnableLock(action.depends.pkg)
-            build_step(install_from_package)
-            release_pkgdeps_shared() -- <<<< RunnableLock(action.depends.pkg)
+            __install_port()
         end
     end
-    if action.plan.build then
+    if rawget(action, "wrkdir_locked") then
         release_wrkdir() -- <<<< WorkDirLock(o_n.wrkdir)
+        action.wrkdir_locked = false
     end
     if action.plan.install then
-        build_step(post_install_fixup)
-        build_step(delete_stale_pkgfiles)
-        if action.plan.save_sharedlibs then
-            build_step(cleanup_old_shared_libraries)
-        end
-        lock_rundeps_shared() -- >>>> RunnableLock(action.depends.run)
-        if action.plan.build  or action.plan.install then
-            release_pkgnew() -- <<<< RunnableLock(p_n.name)
-        end
-        --build_step(fetch_pkg_message)
+        __postinstall_cleanup()
         build_done("provide")
         if not Options.jailed then
             -- == if jailed then the installation to the base system has not been peformed yet
@@ -973,15 +1012,7 @@ local function perform_install_or_upgrade(action)
     end
     -- report success or failure ...
     if not Options.dry_run then
-        local failed_msg, failed_log = failed(action)
-        if failed_msg then
-            action:log {describe(action), "FAILURE:", failed_msg .. (failed_log and ":" or "")}
-            if failed_log then
-                Msg.show {verbatim = true, failed_log, "\n"}
-            end
-        else
-            action:log {"SUCCESS:", describe(action)}
-        end
+        __check_failed()
     end
     Msg.show{level = 3, start = true, Exec.spawned_tasks() -1 , "spawned threads,", Lock.blocked_tasks(RunnableLock), "blocked treads,", Exec.forked_tasks(), "forked processes"}
     return not failed(action)
@@ -999,6 +1030,7 @@ local function perform_upgrades(action_list)
         --BUILDLOG = tempfile_create("BUILD_LOG")
         end
         --]]
+        action.plan = nil -- force recalculation of action.plan with up-to-date dependencies etc.
         if action.plan.nothing then
             --TRACE("IGNORE". action.describe)
         --elseif -- change origin and rename port here ...
@@ -1007,7 +1039,7 @@ local function perform_upgrades(action_list)
             Exec.spawn(perform_install_or_upgrade, action)
         end
     end
-    start_phase("build")
+    start_phase("build") -- XXX use build phase lock local to this package instead of phase
     Exec.finish_spawned(perform_install_or_upgrade)
     return true
 end
@@ -1313,6 +1345,23 @@ local function check_conflicts(mode)
     Msg.show {level = 2, start = true, "Check for conflicts has been completed"}
 end
 
+--
+local function pkgfile_depends_check(action)
+    local p_n = action.pkg_new
+    local depends = p_n and p_n.pkgfile_depends
+    if depends then
+        for _, dep in ipairs(depends) do
+            TRACE("PKGFILE_DEPENDS_CHECK?", action.short_name, dep)
+            if not ACTION_CACHE[dep] then
+                TRACE("PKGFILE_DEPENDS_CHECK-", action.short_name, dep)
+                return false
+            end
+        end
+    end
+    TRACE("PKGFILE_DEPENDS_CHECK+", action.short_name)
+    return true
+end
+
 -- DEBUGGING: DUMP INSTANCES CACHE
 local function dump_cache()
     local t = ACTION_CACHE
@@ -1515,24 +1564,32 @@ TRACE("XXX2", basename)
                 --TRACE("NOT USE_PKGFILE", "force", p_n.name)
                 return false
             end
-            if not p_n.pkgfile then -- no usable package file found
-                --TRACE("NOT USE_PKGFILE", "no pkgfile", p_n.name)
+            if not Options.packages then
+                if not Options.packages_build then -- rebuild pure build dependencies unless pkg allowed
+                    --TRACE("NOT USE_PKGFILE", "no --packages or --packages-build option", p_n.name)
+                    return false
+                end
+                if rawget(action, "is_run_dep") or not action.is_auto then -- build from port if not only a build dependency
+                    --TRACE("NOT USE_PKGFILE", "user installed or run dependency without --packages option", p_n.name)
+                    return false
+                end
+            end
+            if not p_n.pkgfile then -- no package file found
+                --TRACE("NOT USE_PKGFILE", "pkgfile not found", p_n.name)
                 return false
             end
-            if Options.packages then -- use package if allowed and available
-                --TRACE("USE_PKGFILE", "use pkgfile", p_n.name)
-                local abi = p_n.pkgfile_abi
-                return abi == Param.abi or abi == Param.abi_noarch
-            end
-            if rawget(action, "is_run_dep") or not action.is_auto then -- build from port if not only a build dependency
-                --TRACE("NOT USE_PKGFILE", "user installed or run dependency without --packages option", p_n.name)
+            local abi = p_n.pkgfile_abi
+            if not abi == Param.abi or abi == Param.abi_noarch then
+                --TRACE("NOT USE_PKGFILE", "pkgfile abi mismatch", p_n.name)
                 return false
             end
-            if Options.packages_build then -- rebuild pure build dependencies unless pkg allowed
-                --TRACE("USE_PKGFILE", "build dep from pkgfile allowed", p_n.name)
-                return true
+            -- XXX insert optional check of FreeBSD_VERSION of package file
+            if not pkgfile_depends_check(action) then
+                --TRACE("NOT USE_PKGFILE", "depends mismatch", p_n.name)
+                return false
             end
-            --TRACE("NOT USE_PKGFILE", "no --packages-build option", p_n.name)
+            --TRACE("USE_PKGFILE", "use pkgfile", p_n.name)
+            return true
         end
     end
     local function __is_auto() -- force is_auto to false for new user installed packages!!! XXX
@@ -1580,6 +1637,7 @@ TRACE("XXX2", basename)
         end
         local __install_needed = __check_install_needed()
         TRACE("CHECK_INSTALL_NEEDED->", __install_needed, action)
+--[[
         local function __check_delay_installation_to_base()
             return Options.jailed and not action.depends.build
         end
@@ -1588,7 +1646,6 @@ TRACE("XXX2", basename)
             return __build_needed
                 and __install_needed
                 and not __delay_installation
-                and not action.skip_install
         end
         local function __check_install_port_jail_needed()
             return Options.jailed and __build_needed and action.depends.build
@@ -1602,6 +1659,7 @@ TRACE("XXX2", basename)
         local function __check_install_pkg_late_needed()
             return Options.jailed and __install_needed and __delay_installation
         end
+--]]
         local function __check_deinstall_requested()
             return not action.pkg_new and not Options.repo_mode
         end
@@ -1614,6 +1672,7 @@ TRACE("XXX2", basename)
                 return action.ignore
             end
         end
+--[[
         local function __check_do_preclean()
             return not Options.no_pre_clean
         end
@@ -1623,6 +1682,7 @@ TRACE("XXX2", basename)
         local function __check_save_sharedlibs()
             return Options.save_shared and true
         end
+--]]
         TRACE("PLAN", action)
         --[[
             build:		        port build is required -- check "use_pkgfile" to decide whether port needs to be built
@@ -1630,24 +1690,23 @@ TRACE("XXX2", basename)
             pkgcreate:		    create package file -- check Option and whether same name package file should be overwritten
             postclean:		    clean work directory after build (ignored unless build is true) -- check Option
             preclean:		    clean work directory before build (ignored unless build is true) -- check Option
+            --save_sharedlibs:	preserve shared libraries of old version -- XXX check Option
 
             nothing:		    ignore this action
             deinstall:		    deinstall only, no installation of updated version
             deinstall_old:	    deinstall old package(s) immediately before installation of new version to base system
             install:		    install to base system (from port or package)
-            provide:		    needed as a build dependency (or run dependency of a build dependency) in jail
+            provide:		    needed as a build dependency (or run dependency of a build dependency) in base or jail
             upgrade:		    upgrade will be performed (old version, not excluded, locked, ...)
-
-            --save_sharedlibs:	preserve shared libraries of old version -- XXX check Option
         --]]
         local plan = {
-            -- [[
+            --[[
             build = __build_needed,
             delay_installation = __delay_installation,
-            save_sharedlibs = __check_save_sharedlibs(),
             pkgcreate = __check_pkgcreate_needed(),
             postclean = __check_do_postclean(),
             preclean = __check_do_preclean(),
+            save_sharedlibs = __check_save_sharedlibs(),
             --]]
             nothing = __check_do_nothing(),
             deinstall = __deinstall_requested,
@@ -1660,8 +1719,9 @@ TRACE("XXX2", basename)
         return plan
     end
     local function __check_forced()
-        return action.force -- XXX NYI
+        return rawget(action, "force") -- will be set depending on CLI options
     end
+    --[[
     local function __check_skip_install() -- do not install to base system
         --TRACE("X", action)
         if Options.skip_install or Options.jailed then
@@ -1670,6 +1730,7 @@ TRACE("XXX2", basename)
             end
         end
     end
+    --]]
     local function __check_locked()
         local p_n = action.pkg_new
         if p_n and p_n.is_locked then
@@ -1693,14 +1754,13 @@ TRACE("XXX2", basename)
         --pkg_old = determine_pkg_old,
         vers_cmp = compare_versions_old_new,
         startno = __startno,
-        jobs = __jobs,                                              -- number of threads to use for port build
+        jobs = __jobs,                          -- number of threads to use for port build
         ignore = __check_excluded,
-        depends = __depends,                                        -- table of dependencies of this port/package
-        --req_for = __check_req_for,                                  -- required for some other package
-        is_auto = __is_auto,                                        -- dependency only, not requested by user
-        is_locked = __check_locked,                                 -- keep unchanged
-        use_pkgfile = __use_pkgfile,                                -- pkgfile exists with matching ABI
-        skip_install = __check_skip_install,                        -- no installation to base system allowed
+        depends = __depends,                    -- table of package dependencies of this port/package
+        --req_for = __check_req_for,            -- required for some other package
+        is_auto = __is_auto,                    -- dependency only, not requested by user
+        is_locked = __check_locked,             -- keep unchanged
+        use_pkgfile = __use_pkgfile,            -- pkgfile exists with matching ABI
         plan = __create_action_plan,
         force = __check_forced,
     }

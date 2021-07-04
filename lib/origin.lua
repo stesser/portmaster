@@ -517,9 +517,11 @@ local __index_dispatch = {
     install_conflicts = __port_conflicts,
     short_name = __short_name,
     exists = __verify_origin,
+    --…[[
     old_pkgs = function ()
         return {"NIL"}
     end
+    --]]
 }
 
 local function __index(origin, k)

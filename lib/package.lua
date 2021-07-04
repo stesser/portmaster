@@ -230,7 +230,7 @@ end
 local function recover(pkg)
     -- if not pkgname then return true end
     local pkgname = pkg.name
-    local bakfile_name = pkg.bakfile.name
+    local bakfile_name = pkg.bakfile and pkg.bakfile.name
     if not bakfile_name then
         error("RECOVER ".. pkg.name ..  " failed to find package backup file" )
         bakfile_name = Exec.run{
@@ -278,12 +278,12 @@ end
 -- search package file in directory
 local function file_search_in(pkg, subdir)
     local files = pkg_filepath{subdir = subdir, ext = ".t?*", pkg}.files
-    TRACE("FILE_SEARCH_IN", files)
+    TRACE("FILE_SEARCH_IN", pkg.name, subdir, files)
     local file
     local file_abi
     local file_depends
     for _, f in ipairs(files) do
-        --TRACE("FILE_SEARCH_IN_NEWER?", f.name, file.mtime, f.mtime)
+        TRACE("FILE_SEARCH_IN_NEWER?", f.name, file and file.mtime, f.mtime)
         if not file or file.mtime < f.mtime then -- newer than previously checked package file?
             local abi, depends = pkgfile_abi(f)
             if subdir == "portmaster-backup" or abi == Param.abi or abi == Param.abi_noarch then
@@ -299,7 +299,7 @@ end
 -- delete backup package file
 local function backup_delete(pkg)
     local files = pkg_filepath{subdir = "portmaster-backup", ext = ".t?*", pkg}.files
-    for _, backupfile in pairs(files) do
+    for _, backupfile in ipairs(files) do
         --TRACE("BACKUP_DELETE", backupfile, Param.packages .. "portmaster-backup/")
         Exec.run{
             as_root = true,

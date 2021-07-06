@@ -147,13 +147,13 @@ local function __index(param, k)
     end
 
     local function __ncpu()
-        local ncpu = tonumber(os.getenv("_SMP_CPUS"))
+        local ncpu = os.getenv("_SMP_CPUS")
         if not ncpu then
             local pipe = io.popen(CMD.sysctl .. " -n hw.ncpu") -- do not rely on Exec.pkg!!!
             ncpu = pipe:read("*n")
             pipe:close()
         end
-        return ncpu
+        return tonumber(ncpu)
     end
 
     -- maximum number of make jobs - twice the number of CPU threads?

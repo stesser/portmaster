@@ -210,7 +210,7 @@ local function tasks_poll(timeout)
                             t[#t + 1] = data
                             --TRACE("READ", fdstat[fd].pid, fd, #data)
                             idle = false
-                            timeout = timeout > 0 and 1 or timeout -- reduce timeout if more than 1 iteration through loop
+                            timeout = 0 -- timeout > 0 and 1 or timeout -- reduce timeout if more than 1 iteration through loop
                         elseif revents.HUP then
                             local pid = rm_poll_fd(fd)
                             if pid then

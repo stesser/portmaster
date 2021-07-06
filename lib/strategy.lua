@@ -58,15 +58,18 @@ local function add_missing_deps(action_list) -- XXX need to also add special dep
             local a = action_list[i]
             local o_n = a.o_n
             local depvars = o_n and o_n.depend_var
-            for n, t in pairs(depvars) do
-                TRACE("COLLECT_DEP_ORIGINS", n, t)
-                if t then
-                    for _, dep in ipairs(t) do
-                        local origin = string.match(dep, "[^:]*:([^:]*)")
-                        if origin and not originseen[origin] then
-                            originseen[origin] = true
-                            origins[#origins + 1] = origin
-                            TRACE("COLLECT_DEP_ORIGINS+", #origins, n, origin)
+            TRACE("DEPVARS", depvars)
+            if depvars then
+                for n, t in pairs(depvars) do
+                    TRACE("COLLECT_DEP_ORIGINS", n, t)
+                    if t then
+                        for _, dep in ipairs(t) do
+                            local origin = string.match(dep, "[^:]*:([^:]*)")
+                            if origin and not originseen[origin] then
+                                originseen[origin] = true
+                                origins[#origins + 1] = origin
+                                TRACE("COLLECT_DEP_ORIGINS+", #origins, n, origin)
+                            end
                         end
                     end
                 end

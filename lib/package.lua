@@ -62,7 +62,7 @@ end
 -- preserve currently installed shared libraries // <se> check name of control variable
 local function shlibs_backup(pkg)
     local pkg_libs = pkg.shared_libs
-    --TRACE("SHLIBS_BACKUP", pkg.name, pkg_libs, pkg)
+    TRACE("SHLIBS_BACKUP", pkg.name, pkg_libs, pkg)
     if pkg_libs then
         local ldconfig_lines = Exec.run{ -- "RT?" ??? CACHE LDCONFIG OUTPUT???
             table = true,
@@ -73,7 +73,7 @@ local function shlibs_backup(pkg)
             local libpath, lib = string.match(line, " => (" .. Param.local_lib.name .. "*(lib.*%.so%..*))")
             if lib then
                 local libfile = Filepath:new(libpath)
-                --TRACE("SHLIBS_BACKUP+", libpath, lib, stat, mode)
+                TRACE("SHLIBS_BACKUP+", libpath, lib, stat, mode)
                 if libfile.is_reg then
                     for _, l in ipairs(pkg_libs) do
                         if l == lib then
@@ -97,7 +97,7 @@ local function shlibs_backup(pkg)
                         end
                     end
                 else
-                    --TRACE("SHLIBS_BACKUP-", libpath, lib, stat, mode)
+                    TRACE("SHLIBS_BACKUP-", libpath, lib, stat, mode)
                 end
             end
         end
@@ -136,8 +136,10 @@ end
 -- deinstall named package (JAILED)
 local function backup_old_package(package)
     local pkgname = package.name
+    TRACE("BACKUP_OLD_PACKAGE", pkgname, package)
     return Exec.pkg{
         as_root = Param.packages_ro,
+        log = true,
         "create", "-q", "-o", Param.packages_backup.name, "-f", Param.backup_format, pkgname
     }
 end
@@ -168,9 +170,11 @@ end
 -------------------------------------------------------------------------------------
 -- install package from passed pkg
 local function install(pkg, abi)
-    local pkgfile = pkg.pkgfile.name
+    TRACE("INSTALL PACKAGE", pkg)
+    local pkgfile = pkg.pkg_filename.name
     local jailed = Options.jailed and Param.phase == "build"
-    local env = {IGNORE_OSVERSION = "yes"}
+    --local env = {IGNORE_OSVERSION = "yes"}
+    local env = {}
     TRACE("INSTALL", abi, pkgfile)
     if string.match(pkgfile, ".*/pkg-[^/]+$") then -- pkg command itself
         if not Filepath.is_executable(CMD.pkg) then
@@ -190,6 +194,7 @@ local function install(pkg, abi)
     elseif abi then
         env.ABI = abi
     end
+    env.PACKAGES = "/dev/null"
     return Exec.pkg{
         log = true,
         as_root = true,
@@ -230,7 +235,8 @@ end
 local function recover(pkg)
     -- if not pkgname then return true end
     local pkgname = pkg.name
-    local bakfile_name = pkg.bakfile and pkg.bakfile.name
+    local bakfile_name = pkg.bak_filename.name
+    --TRACE("RECOVER", pkgname, bakfile_name)
     if not bakfile_name then
         error("RECOVER ".. pkg.name ..  " failed to find package backup file" )
         bakfile_name = Exec.run{
@@ -507,6 +513,7 @@ local function __index(pkg, k)
     -- lookup package file
     local function __pkg_lookup(pkg, k)
         local file, abi, depends = file_search_in(pkg, "All")
+        pkg.pkg_filename = file
         pkg.pkgfile_abi = abi -- XXX side effect acceptable due to the cost of "pkg query -F <file> %q" ???
         pkg.pkgfile_depends = depends
         return file
@@ -588,11 +595,11 @@ local function __index(pkg, k)
                 w = false
             end
         else
-            -- error("illegal field requested: Package." .. k)
+            error("Illegal Package field requested: " .. tostring(pkg) .. "." .. k)
         end
-        --TRACE("INDEX(p)->", pkg, k, w)
+        TRACE("INDEX(p)->", pkg, k, w)
     else
-        --TRACE("INDEX(p)->", pkg, k, w, "(cached)")
+        TRACE("INDEX(p)->", pkg, k, w, "(cached)")
     end
     return w
 end

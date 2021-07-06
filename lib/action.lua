@@ -92,16 +92,20 @@ local function describe(action)
             if #old_pkgs == 0 then
                 text = "Install "
             else
-                text = "Upgrade "
-                for i, p_o in ipairs(old_pkgs) do
-                    if i > 1 then
-                        text = text .. ", "
+                if action.vers_cmp == 0 then
+                    text = "Re-install "
+                else
+                    text = "Upgrade "
+                    for i, p_o in ipairs(old_pkgs) do
+                        if i > 1 then
+                            text = text .. ", "
+                        end
+                        text = text .. p_o.name
+                        if p_o.origin_name ~= o_n.name then
+                            text = text .. " (" .. p_o.origin_name .. ")"        end
                     end
-                    text = text .. p_o.name
-                    if p_o.origin_name ~= o_n.name then
-                        text = text .. " (" .. p_o.origin_name .. ")"        end
+                    text = text .. " to "
                 end
-                text = text .. " to "
             end
         elseif plan.provide then
             text = "Provide "
@@ -668,8 +672,8 @@ local function perform_install_or_upgrade(action, phase)
         -- create backup package files from installed files
         for _, p_o in ipairs(old_pkgs) do
             local pkgname_old = p_o.name
-            TRACE("CREATE_BACKUP_PACKAGES", pkgname_old, pkgname_new, pkgfile)
-            local create_backup = pkgname_old ~= pkgname_new or not pkgfile
+            TRACE("CREATE_BACKUP_PACKAGES", pkgname_old, pkgname_new, p_o.pkg_filename.name)
+            local create_backup = pkgname_old ~= pkgname_new or not p_o.pkg_filename.name
             if create_backup then
                 action:log {level = 1, "Create backup of old version", pkgname_old}
                 local out, err, exitcode = p_o:backup_old_package()
@@ -737,7 +741,16 @@ local function perform_install_or_upgrade(action, phase)
         --TRACE("PERFORM_INSTALLATION/PORT", portname)
         -- >>>> PkgDbLock(weight = 1)
         -- PkgDb.lock() -- only one installation at a time due to exclusive lock on pkgdb
-        action:log {"Install", pkgname_new, "built from", portname, "on base system"}
+        local verb
+        local dest
+        if action.jail_base then
+            verb = "Provide"
+            dest = "in build jail"
+        else
+            verb = "Install"
+            dest = "on base system"
+        end
+        action:log {verb, pkgname_new, "built from", portname, dest}
         local out, err, exitcode = o_n:install() -- <se> DEAL WITH CONFLICTS ONLY DETECTED BY PLIST CHECK DURING PKG REGISTRATION!!!
         --PkgDb.unlock()
         -- <<<< PkgDbLock(weight = 1)
@@ -1034,7 +1047,7 @@ local function perform_install_or_upgrade(action, phase)
                 action.jail_base = nil
                 action.pkgfile = nil -- force search for new package file
                 action.use_pkgfile = true
-                wait_for_phase("install")
+                --wait_for_phase("install")
                 __deinstall_old()
                 __install_package()
                 __postinstall_cleanup()
@@ -1072,9 +1085,11 @@ local function perform_upgrades(action_list)
     end
     start_phase("build") -- XXX use build phase lock local to this package instead of phase
     Exec.finish_spawned(perform_install_or_upgrade)
+    start_phase("install")
     if Options.delay_installation then
         for _, action in ipairs(action_list) do
-            perform_install_or_upgrade(action, "install")
+            Exec.spawn(perform_install_or_upgrade, action, "install")
+            Exec.finish_spawned(perform_install_or_upgrade)
         end
     end
     return true
@@ -1252,25 +1267,6 @@ end
 --]]
 
 --
-local function compare_versions_old_new(action)
-    local old_pkgs = action.old_pkgs
-    local p_n = action.pkg_new
-    if p_n then
-        local n = p_n.name_base
-        local f = action.o_n and action.o_n.flavor
-        for _, p_o in ipairs(old_pkgs) do
-            if p_o.name_base == n then
-                if action.o_o and f ~= action.o_o.flavor then
-                    return -1 -- flavor mismatch requires update
-                end
-                return Versions.compare(p_o, p_n)
-            end
-        end
-    end
-    return -1 -- return outdated if the base names did not match
-end
-
---
 local function check_config_allow(action, recursive)
     TRACE("CHECK_CONFIG_ALLOW", action.pkg_new and action.pkg_new.name, recursive)
     if not action.pkg_new then
@@ -1437,17 +1433,16 @@ local function __index(action, k)
         return actions_started -- action.listpos
     end
     local function __jobs()
-        local p_n = action.pkg_new
-        if not p_n or p_n.no_build or p_n.make_jobs_unsafe or p_n.disable_make_jobs then
+        local o_n = action.o_n
+        if not o_n or o_n.no_build or o_n.make_jobs_unsafe or o_n.disable_make_jobs then
             return 1
         end
         local n = Param.maxjobs
-        local o_n = action.o_n
         if o_n.make_jobs_number and n > o_n.make_jobs_number then
             n = o_n.make_jobs_number
         end
         local limit = o_n.make_jobs_number_limit or Param.ncpu
-        return math.floor(n <= limit and n or limit) -- convert from float to integer
+        return n <= limit and n or limit
     end
     local function __depends()
         local p_n = action.pkg_new
@@ -1605,26 +1600,26 @@ TRACE("XXX2", basename)
                     --TRACE("NOT USE_PKGFILE", "no --packages or --packages-build option", p_n.name)
                     return false
                 end
-                if rawget(action, "is_run_dep") or not action.is_auto then -- build from port if not only a build dependency
+                if not rawget(action, "is_build_dep") then -- build from port if not only a build dependency
                     --TRACE("NOT USE_PKGFILE", "user installed or run dependency without --packages option", p_n.name)
                     return false
                 end
             end
             if not p_n.pkgfile then -- no package file found
-                --TRACE("NOT USE_PKGFILE", "pkgfile not found", p_n.name)
+                TRACE("NOT USE_PKGFILE", "pkgfile not found", p_n.name)
                 return false
             end
             local abi = p_n.pkgfile_abi
             if not abi == Param.abi or abi == Param.abi_noarch then
-                --TRACE("NOT USE_PKGFILE", "pkgfile abi mismatch", p_n.name)
+                TRACE("NOT USE_PKGFILE", "pkgfile abi mismatch", p_n.name)
                 return false
             end
             -- XXX insert optional check of FreeBSD_VERSION of package file
             if not pkgfile_depends_check(action) then
-                --TRACE("NOT USE_PKGFILE", "depends mismatch", p_n.name)
+                TRACE("NOT USE_PKGFILE", "depends mismatch", p_n.name)
                 return false
             end
-            --TRACE("USE_PKGFILE", "use pkgfile", p_n.name)
+            TRACE("USE_PKGFILE", "use pkgfile", p_n.name)
             return true
         end
     end
@@ -1643,7 +1638,17 @@ TRACE("XXX2", basename)
         local function __check_upgrade_needed()
             local o_n = action.o_n
             if o_n and o_n.port_exists and not action.ignore then
-                return action.force or compare_versions_old_new(action) ~= 0
+                if action.force or action.vers_cmp ~= 0 then
+                    return true
+                end
+                if Options.all_old_abi then
+                    local p_n = action.pkg_new
+                    local abi = p_n.installed_abi
+                    TRACE("CHECK_ABI", p_n.name, abi)
+                    if abi ~= Param.abi and abi ~= Param.abi_noarch then
+                        return true
+                    end
+                end
             end
         end
         local __upgrade_needed = __check_upgrade_needed()
@@ -1760,6 +1765,24 @@ TRACE("XXX2", basename)
     local function __check_forced()
         return false -- would have been set by CLI option
     end
+    local function __compare_versions_old_new()
+        TRACE("VERS_CMP", action)
+        local old_pkgs = action.old_pkgs
+        local p_n = action.pkg_new
+        if p_n then
+            local n = p_n.name_base
+            local f = action.o_n and action.o_n.flavor
+            for _, p_o in ipairs(old_pkgs) do
+                if p_o.name_base == n then
+                    if action.o_o and f ~= action.o_o.flavor then
+                        return -1 -- flavor mismatch requires update
+                    end
+                    return Versions.compare(p_o, p_n)
+                end
+            end
+        end
+        return -1 -- return outdated if the base names did not match
+    end
     --[[
     local function __check_skip_install() -- do not install to base system
         --TRACE("X", action)
@@ -1791,7 +1814,7 @@ TRACE("XXX2", basename)
         o_o = determine_origin_old,
         pkg_new = determine_pkg_new,
         --pkg_old = determine_pkg_old,
-        vers_cmp = compare_versions_old_new,
+        vers_cmp = __compare_versions_old_new,
         startno = __startno,
         jobs = __jobs,                          -- number of threads to use for port build
         ignore = __check_excluded,
@@ -1816,7 +1839,7 @@ TRACE("XXX2", basename)
                 rawset(action, k, w)
             end
         else
-            error("illegal field requested: Action." .. k)
+            error("Illegal Action field requested: " .. tostring(action) .. "." .. k)
         end
         --TRACE("INDEX(a)->", k, w)
     else
@@ -1863,10 +1886,14 @@ local function action_list_add(action)
                 --Msg.show{listpos, describe(action)}
             end
             TRACE("ACTION_LIST_ADD", action.listpos, action.short_name)
-        end
-        if not action.use_pkgfile then
-            TRACE("ACTION_FETCH", action.o_n.name)
-            action.o_n:fetch()
+            --[[
+            local p_n = rawget(action, "pkg_new")
+            local is_installed = p_n and rawget(p_n, "is_installed")
+            if not (is_installed or action.use_pkgfile) then
+                TRACE("ACTION_FETCH", action.o_n.name)
+                action.o_n:fetch()
+            end
+            --]]
         end
     end
 end
@@ -1910,12 +1937,19 @@ local function cache_add(action)
         TRACE("CACHE_ADD_MERGE", (p_n and p_n.name or ""), rawget(action, "listpos"), (c_p_n and c_p_n.name or ""), rawget(cached_action, "listpos"), action, cached_action)
         action.old_pkgs = Util.table_union(action.old_pkgs, cached_action.old_pkgs)
     end
-    check_config_allow(action)
-if action.short_name then
-    ACTION_CACHE[action.short_name] = action
-    TRACE("LIST_ADD", action)
-    action_list_add(action)
-end
+    --check_config_allow(action)
+    if action.short_name then
+        ACTION_CACHE[action.short_name] = action
+        local listpos = rawget(action, "listpos")
+        if listpos then
+            ACTION_LIST[listpos] = action
+        else
+            listpos = #ACTION_LIST + 1
+            action.listpos = listpos
+            ACTION_LIST[listpos] = action
+        end
+        TRACE("ACTION_LIST_ADD", action.listpos, action.short_name)
+    end
     return action
 end
 
@@ -1949,9 +1983,9 @@ local function sort_list(action_list)
                     local a = get(pkg_new)
                     if a then
                         local p_n = a.pkg_new
-                        if not rawget(a, "planned") and p_n and not p_n.is_installed then
+                        if not rawget(a, "planned") and p_n and not rawget(p_n, "is_installed") then
                             local origin = a.o_n
-                            TRACE("ADD_DEPS", type, origin.name, origin.pkgname, is_build_dep, p_n and rawget(p_n, "is_installed"))
+                            --TRACE("ADD_DEPS", type, origin.name, origin.pkgname, is_build_dep, p_n and rawget(p_n, "is_installed"))
                             add_deps(a, is_build_dep, is_run_dep)
                         end
                     else
@@ -1967,10 +2001,16 @@ local function sort_list(action_list)
             action.is_run_dep = true
         end
         if not rawget(action, "planned") then
-            action.plan = nil -- reset to get up-to-date state
+            TRACE("ADD_DEPS", action.short_name, action)
+            if rawget(action, "plan") ~= nil then
+                TRACE ("ADD_DEPS_PLAN", action.short_name, action.plan, action)
+            else
             local plan = action.plan
-            TRACE("ADD_DEPS", action.short_name, plan, action)
-            if (plan.upgrade or plan.provide) and not action.use_pkgfile then
+            check_config_allow(action)
+            --if not (plan.nothing or action.use_pkgfile) then
+            if (plan.upgrade or plan.provide or plan.install) and not action.use_pkgfile then
+                TRACE("ACTION_FETCH", action.o_n.name, action)
+                action.o_n:fetch()
                 TRACE("BUILDREQUIRED!", action.short_name)
                 if not Options.jailed then -- jailed builds use pkg from base -- it must be separately updated first !!! XXX
                     add_deps_of_type("pkg", true, false)
@@ -1996,18 +2036,18 @@ local function sort_list(action_list)
                 --Msg.show {"SKIPPING", action.short_name}
             end
         end
+        end
     end
 
     Msg.show {start = true, "Sort", #action_list, "actions"}
     for _, a in ipairs(action_list) do
         Msg.show {start = true}
-        local is_run_dep = a.is_user
+        local is_run_dep = rawget(a, "is_user")
         add_deps(a, false, is_run_dep)
     end
     TRACE("SORT->", #action_list, #sorted_list)
     -- assert (#action_list == #sorted_list, "action_list items have been lost: " .. #action_list .. " vs. " .. #sorted_list)
     return sorted_list
-    --return sorted_list
 end
 
 --

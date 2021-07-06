@@ -538,7 +538,7 @@ local function __index(origin, k)
                 w = false
             end
         else
-            error("illegal field requested: Origin." .. k)
+            error("Illegal Origin field requested: " .. tostring(origin) .. "." .. k)
         end
         --TRACE("INDEX(o)->", origin, k, w)
     else

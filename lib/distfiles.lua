@@ -125,9 +125,8 @@ local function dist_fetch(origin)
    local distfiles = Util.table_keys(distinfo) -- or {} ???
    origin.distfiles = distfiles -- XXX why this assignment, distfiles had been set on entry into this function ???
    local unchecked = fetch_required(distfiles)
-   if #unchecked == 0 then
-      origin.fetched = true
-   else
+   origin.fetched = #unchecked == 0
+   if not origin.fetched then
       unchecked.tag = port.name
       -- >>>> FetchLock(unchecked)
       FetchLock:acquire(unchecked)

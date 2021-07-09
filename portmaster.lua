@@ -323,6 +323,11 @@ local function list_ports(mode)
             end
         elseif pkgname_new ~= pkg_old.name then
             result = "needs update to " .. pkgname_new
+        else
+            local abi = rawget(pkg_old, "installed_abi")
+            if abi and abi ~= Param.abi and abi ~= Param.abi_noarch then
+                result = "has wrong ABI " .. pkg_old.installed_abi
+            end
         end
         if o_o and rawget(o_o, "expiration_date") then
             if result and result ~= "" then

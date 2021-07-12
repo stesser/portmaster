@@ -33,8 +33,20 @@ local table_expand_level = 4 -- 3
 local STARTTIMESECS = os.time()
 local tracefd
 
+local FunctionTable = {}
+
 local function trace(...)
     local function as_string(v)
+        if type(v) == "function" then
+            local f = FunctionTable[v]
+            if not f then
+                local info = debug.getinfo(v, "S")
+                local module = string.match(info.short_src, "[^/]*$")
+                f = module .. ":" .. info.linedefined
+                FunctionTable[v] = f
+            end
+            return f or tostring(v)
+        end
         v = tostring(v)
         if v == "" or string.find(v, " ") then
             return "'" .. v .. "'"

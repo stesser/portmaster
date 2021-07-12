@@ -47,7 +47,14 @@ end
 
 -- return full path to the port directory
 local function path(origin)
-    return Param.portsdir + port(origin)
+    local subdir = port(origin)
+    for _, portsdir in ipairs(Param.portsdirs) do
+        local dir = portsdir + subdir
+        if dir.is_dir and (dir + "Makefile").is_readable then
+            return dir
+        end
+    end
+    return Param.portsdir + subdir
 end
 
 --
@@ -321,20 +328,17 @@ local function __port_vars(origin, k, recursive)
     local t = origin:port_var(__port_vars_table)
     --TRACE("PORT_VAR(" .. origin.name .. ", " .. k .. ")", t)
     if t then
-        -- first check for and update port options since they might affect the package name
-        set_table(origin, "new_options", t.NEW_OPTONS)
-        origin.is_broken = t.BROKEN
-        origin.is_forbidden = t.FORBIDDEN
-        origin.is_ignore = t.IGNORE
-        --set_pkgname(origin, "pkg_new", t.PKGNAME)
         origin.pkgname = t.PKGNAME
         origin.flavor = t.FLAVOR
         set_table(origin, "flavors", t.FLAVORS)
         check_origin_alias(origin) ---- SEARCH FOR AND MERGE WITH POTENTIAL ALIAS
+        origin.is_broken = t.BROKEN
+        origin.is_forbidden = t.FORBIDDEN
+        origin.is_ignore = t.IGNORE
         origin.distinfo_file = t.DISTINFO_FILE
         set_bool(origin, "is_interactive", t.IS_INTERACTIVE)
         set_bool(origin, "no_build", t.NO_BUILD)
-        origin.make_jobs_number = tonumber(t.MAKE_JOBS_NUMBER)
+        origin.make_jobs_number = tonumber(t.MAKE_JOBS_NUMBER) or 1
         origin.make_jobs_number_limit = tonumber(t.MAKE_JOBS_NUMBER_LIMIT) or origin.make_jobs_number
         set_bool(origin, "make_jobs_unsafe", t.MAKE_JOBS_UNSAFE)
         set_bool(origin, "disable_make_jobs", t.DISABLE_MAKE_JOBS)

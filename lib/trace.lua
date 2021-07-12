@@ -44,6 +44,7 @@ local function trace(...)
                 local module = string.match(info.short_src, "[^/]*$")
                 f = module .. ":" .. info.linedefined
                 FunctionTable[v] = f
+                --trace("GETINFO", tostring(v), info)
             end
             return f or tostring(v)
         end

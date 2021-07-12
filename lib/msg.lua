@@ -104,9 +104,9 @@ local function show(args)
             else
                 args.start = true
                 State.sameline = true
-                State.sep = sep1
                 stdout:write("\n")
             end
+            State.sep = sep1
         elseif State.sameline then
             args.start = true
             State.at_start = false
@@ -119,8 +119,8 @@ local function show(args)
             State.sep = sep1
         end
         if args.verbatim then
-            -- print message with separator for new message section
             stdout:write(table.unpack(args))
+            stdout:flush()
         else
             if args.prompt then
                 -- print a prompt to request user input
@@ -144,13 +144,13 @@ local function show(args)
                     empty_line()
                 end
                 -- print lines prefixed with SEP
+                local nl = State.sameline and "" or "\n"
                 for i, line in ipairs(lines) do
                     if not line or line == "" then
                         empty_line()
                     else
                         State.empty_line = false
-                        local  nl = "\n"
-                        if State.doprompt or State.sameline then
+                        if State.doprompt then
                             if i == #lines then
                                 -- no newline after final line of prompt message
                                 nl = ""
@@ -160,6 +160,10 @@ local function show(args)
                         State.sep = sep2
                     end
                     State.at_start = false
+                end
+                if #nl == 0 then
+                    -- flush output if it did not end in a new-line character
+                    stdout:flush()
                 end
                 -- reset to default prefix after reading user input
                 if State.doprompt then

@@ -29,11 +29,11 @@ SUCH DAMAGE.
 local Excludes = require("portmaster.excludes")
 local Msg = require("portmaster.msg")
 local Param = require("portmaster.param")
-local Trace = require("portmaster.trace")
+--local Trace = require("portmaster.trace")
 local Util = require("portmaster.util")
 
 -------------------------------------------------------------------------------
-local TRACE = Trace.trace
+--local TRACE = Trace.trace
 
 -------------------------------------------------------------------------------------
 local P = require "posix"
@@ -48,7 +48,6 @@ local VERSION = "4.0.0a1" -- GLOBAL
 
 -------------------------------------------------------------------------------------
 -- options and rc file processing
-local Options = {}
 local LONGOPT = {}
 local VALID_OPTS = {}
 
@@ -214,18 +213,22 @@ end
 
 -- set package format option with check for supported values
 local VALID_FORMATS = {
+    bsd = true,
     tar = true,
-    tgz = true,
     tbz = true,
+    tgz = true,
     txz = true,
     zstd = true,
-    bsd = true,
 }
 
+--
 local function set_package_format(var, fmt)
     assert(VALID_FORMATS[fmt], "invalid package format '" .. fmt .. "'")
     Param[var] = fmt
 end
+
+-------------------------------------------------------------------------------------
+local Options = {}
 
 -- set option (or clear, if value is nil)
 local function opt_set(opt, value)

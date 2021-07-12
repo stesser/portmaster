@@ -427,26 +427,27 @@ local function packages_cache_load(Package)
     if PACKAGES_CACHE_LOADED then
         return PACKAGES_CACHE
     end
-    local pkg_flavor = {}
-    local pkg_fbsd_version = {}
+    local attributes_table = {}
     Msg.show {level = 2, start = true, "Load list of installed packages ..."}
     local lines = PkgDb.query {table = true, "%At %Av %n-%v"}
     if lines then
         for _, line in ipairs(lines) do
             local tag, value, pkgname = string.match(line, "(%S+) (%S+) (%S+)")
-            if tag == "flavor" then
-                pkg_flavor[pkgname] = value
-            elseif tag == "FreeBSD_version" then
-                pkg_fbsd_version[pkgname] = value
-            end
+            -- tags in use are: flavor, FreeBSD_version, cpe, deprecated, expiration_date, no_provide_shlib
+            TRACE("PKG_ATTRIBUTE", pkgname, tag, value)
+            local pkg_attributes = attributes_table[pkgname] or {}
+            pkg_attributes[tag] = value
+            attributes_table[pkgname] = pkg_attributes
         end
     end
     -- load
     local pkg_count = 0
+    -- XXX further attributes could be added to the package instance: 
     lines = PkgDb.query {table = true, "%n-%v %o %q %a %k"} -- no dependent packages
     for _, line in ipairs(lines) do
         local pkgname, origin_name, abi, automatic, locked = string.match(line, "(%S+) (%S+) (%S+) (%d) (%d)")
-        local f = pkg_flavor[pkgname]
+        local attr = attributes_table[pkgname] or {}
+        local f = attr.flavor
         if f then
             origin_name = origin_name .. "@" .. f
         else
@@ -460,7 +461,7 @@ local function packages_cache_load(Package)
         p.is_locked = locked == "1"
         p.is_installed = not Options.jailed
         p.num_depending = 0
-        p.fbsd_version = pkg_fbsd_version[pkgname]
+        p.fbsd_version = attr.FreeBSD_version
         pkg_count = pkg_count + 1
     end
     Msg.show {level = 2, "The list of installed packages has been loaded (" .. pkg_count .. " packages)"}

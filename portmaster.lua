@@ -114,80 +114,7 @@ local function ports_add_changed_origin(build_type, name, o_n) -- 3rd arg is NOT
     end
 end
 
--- ---------------------------------------------------------------------------
--- deletes files within a prefix path
-local function batch_delete(filepath, files, as_root)
-    local function do_unlink(file, as_root)
-        Exec.run{
-            as_root = as_root,
-            log = true,
-            CMD.unlink, file
-        }
-    end
-    for _, file in ipairs(files) do
-        local fullpath = filepath + file
-        Exec.spawn(do_unlink, fullpath.name, as_root)
-    end
-    Exec.finish_spawned(do_unlink)
-end
-
---
-local function delete_empty_directories(path, as_root)
-    TRACE("DELETE_EMPTY_DIRS", path)
-    --local dirs = scan_dirs(path.name)
-    local dirs = path:find_dirs()
-    if #dirs > 0 then
-        table.sort(dirs, function (a, b) return a > b end)
-    end
-    for _, v in ipairs(dirs) do
-        Exec.run{
-            as_root = as_root,
-            CMD.rmdir, (path + v).name
-        }
-    end
-end
-
 -------------------------------------------------------------------------------------
---
-local distinfo_cache = {}
-
--- offer to delete old distfiles that are no longer required by any port
-local function clean_stale_distfiles ()
-    local function fetch_distinfo(pkg) -- move to Cache module
-        local o_o = Origin:new(pkg.origin_name)
-        TRACE("FETCH_DISTINFO", pkg.name, pkg.origin_name, o_o)
-        if o_o then
-            local f = o_o.distinfo_file
-            if f then
-                local t = Distfile.parse_distinfo(o_o)
-                for k, v in pairs(t) do
-                    TRACE("DISTINFO_ADD", k, v)
-                    distinfo_cache[k] = v
-                end
-            end
-        end
-    end
-    Msg.show {start = true, "Gathering list of distribution files of all installed ports ..."}
-    for _, pkg in ipairs(Strategy.all_pkgs()) do -- move to Cache module
-        Exec.spawn (fetch_distinfo, pkg)
-    end
-    Exec.finish_spawned(fetch_distinfo)
-    local distfiles = Param.distdir.find_files
-    local unused = {}
-    for _, f in ipairs(distfiles) do
-        if not distinfo_cache[f] then
-            unused[#unused + 1] = f
-        end
-    end
-    if #unused == 0 then
-        Msg.show {"No stale distfiles found"}
-    else
-        local selected = Msg.ask_to_delete ("stale file", unused)
-        batch_delete(Param.distdir, selected, Param.distdir_ro)
-        delete_empty_directories(Param.distdir, Param.distdir_ro)
-    end
-end
-
 --
 local function list_stale_libraries()
     -- create list of shared libraries used by packages and create list of compat libs that are not required (anymore)
@@ -390,12 +317,14 @@ local function main()
 
      -- initialize environment variables based on globals set in prior functions
     Environment.init()
+TRACE("OPTIONS", Options)
+TRACE("PARAM", Param)
 
     -------------------------------------------------------------------------------------
     -- plan tasks based on parameters passed on the command line
     Strategy.init()
 
-    --Origin:make_index() -- ONLY USED TO TEST CREATE INDEX FUNCTIONALITY
+--    Origin:make_index() os.exit(0) -- ONLY USED TO TEST CREATE INDEX FUNCTIONALITY
 
     if Options.replace_origin then
         if #args ~= 1 then
@@ -446,7 +375,7 @@ local function main()
     end
     -- if Options.expunge then expunge (Options.expunge) end
     if Options.scrub_distfiles then
-        clean_stale_distfiles()
+        Distfile.clean_stale(Origin, Strategy.all_pkgs()) -- XXX pass Origin only temporarily
     end
 
     -- display package messages for all updated ports

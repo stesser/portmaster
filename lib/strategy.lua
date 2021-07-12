@@ -46,6 +46,11 @@ local function add_action(args)
     Exec.spawn(Action.new, Action, args) -- XXX need to protect against simultanouos spawns for the same pkg_new !!!
 end
 
+--
+local function finish_add_action()
+    Exec.finish_spawned(Action.new)
+end
+
 --local REQ_FOR_TABLE = { build = {}, run = {} }
 
 --
@@ -86,10 +91,10 @@ local function add_missing_deps(action_list) -- XXX need to also add special dep
                 pkgseen[pkgname] = true
                 local p_n = Package:new(pkgname)
                 p_n.origin_name = o_n.name
-                add_action{pkg_new = p_n} -- XXX just call Action.new since there is no inherent parallelism?
+                add_action{pkg_new = p_n}
             end
         end
-        Exec.finish_spawned(Action.new)
+        finish_add_action()
     end
     local start_elem = 1
     local last_elem = #action_list
@@ -136,6 +141,7 @@ local function ports_update(filters)
         end
         pkgs, rest = rest, {}
     end
+    finish_add_action()
 end
 
 -- add all matching ports identified by pkgnames and/or portnames with optional flavor
@@ -175,6 +181,7 @@ local function add_multiple(args)
             end
         end
     end
+    finish_add_action()
     --[[
    for i, name_glob in ipairs (args) do
       local filenames = (Param.portsdir + name_glob + "Makefile").files
@@ -253,13 +260,11 @@ local function add_all_installed()
             pkg_old = pkg
         }
     end
+    finish_add_action()
 end
 
 --
 local function execute()
-    -- wait for all spawned tasks to complete
-    Exec.finish_spawned(Action.new)
-
     -- cache local reference to ACTION_LIST
     local action_list = Action.list()
     --TRACE("ACTION_LIST", action_list)

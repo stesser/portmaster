@@ -31,6 +31,9 @@ local Lock = require("portmaster.lock")
 local Param = require("portmaster.param")
 local Trace = require("portmaster.trace")
 local Util = require("portmaster.util")
+local Msg = require("portmaster.msg")
+local CMD = require("portmaster.cmd")
+local Filepath = require("portmaster.filepath")
 
 -------------------------------------------------------------------------------------
 local TRACE = Trace.trace
@@ -197,9 +200,84 @@ local function fetch_finish()
    end
 end
 
+-------------------------------------------------------------------------------------
+-- XXX move this functionality into the Distfiles module !!!
+-- deletes files within a prefix path
+local function batch_delete(filepath, files, as_root)
+    for _, file in ipairs(files) do
+      local fullpath = filepath + file
+      TRACE("BATCH_DELETE", fullpath.name, as_root)
+      if not Filepath.delete(fullpath) then
+         Exec.run{
+               as_root = true,
+               log = true,
+               CMD.unlink, fullpath.name
+         }
+        end
+    end
+end
+
+--
+local function delete_empty_directories(path, as_root)
+    local dirs = path.find_dirs
+    TRACE("DELETE_EMPTY_DIRS", path, dirs)
+    if #dirs > 0 then
+        table.sort(dirs, function (a, b) return a.name > b.name end)
+    end
+    for _, v in ipairs(dirs) do
+        Exec.run{
+            as_root = as_root,
+            CMD.rmdir,
+            (path + v.name).name
+        }
+    end
+end
+
+--
+local distinfo_cache = {}
+
+-- offer to delete old distfiles that are no longer required by any port
+local function clean_stale(Origin, all_pkgs)
+    local function fetch_distinfo(pkg) -- move to Cache module
+        local o_o = Origin:new(pkg.origin_name)
+        TRACE("FETCH_DISTINFO", pkg.name, pkg.origin_name, o_o)
+        if o_o then
+            local f = o_o.distinfo_file
+            if f then
+                local t = parse_distinfo(o_o)
+                for k, v in pairs(t) do
+                    TRACE("DISTINFO_ADD", k, v)
+                    distinfo_cache[k] = v
+                end
+            end
+        end
+    end
+    Msg.show {start = true, "Gathering list of distribution files of all installed ports ..."}
+    for _, pkg in ipairs(all_pkgs) do -- move to Cache module
+        Exec.spawn (fetch_distinfo, pkg)
+    end
+    Exec.finish_spawned(fetch_distinfo)
+    local distfiles = Param.distdir.find_files
+    local unused = {}
+    for _, f in ipairs(distfiles) do
+        local filename = f.name
+        if not distinfo_cache[filename] then
+            unused[#unused + 1] = filename
+        end
+    end
+    if #unused == 0 then
+        Msg.show {"No stale distfiles found"}
+    else
+        local selected = Msg.ask_to_delete ("stale file", unused)
+        batch_delete(Param.distdir, selected, Param.distdir_ro)
+        delete_empty_directories(Param.distdir, Param.distdir_ro)
+    end
+end
+
 return {
     fetch = fetch,
     fetch_finish = fetch_finish,
     fetch_wait = fetch_wait,
     parse_distinfo = parse_distinfo,
+    clean_stale = clean_stale,
 }

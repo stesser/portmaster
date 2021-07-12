@@ -27,12 +27,14 @@ SUCH DAMAGE.
 
 -------------------------------------------------------------------------------------
 local CMD = require("portmaster.cmd")
-local P = require("posix")
---local Trace = require("portmaster.trace")
 local Filepath = require("portmaster.filepath")
+local Trace = require("portmaster.trace")
+local Util = require("portmaster.util")
+
+local P = require("posix")
 
 -------------------------------------------------------------------------------------
---local TRACE = Trace.trace
+local TRACE = Trace.trace
 
 local geteuid = P.geteuid
 local getpwuid = P.getpwuid
@@ -55,6 +57,7 @@ local globalmakevars = {
         "DISABLE_LICENSES",
         "TRY_BROKEN",
         "DISABLE_MAKE_JOBS",
+        "OVERLAYS",
 }
 
 local function __index(param, k)
@@ -70,6 +73,16 @@ local function __index(param, k)
         end
         pipe:close()
         return Param[k]
+    end
+
+    local function __portsdirs()
+        local portsdirs = {}
+        for _, overlay in ipairs(Util.split_words(Param.overlays) or {}) do
+            portsdirs[#portsdirs + 1] = Filepath:new(overlay)
+        end
+        portsdirs[#portsdirs + 1] = Param.portsdir
+        TRACE("PORTSDIRS", portsdirs)
+        return portsdirs
     end
 
     local function __local_lib()
@@ -196,11 +209,13 @@ local function __index(param, k)
         local_lib = __local_lib,
         local_lib_compat = __local_lib_compat,
         localbase = __globalmakevars,
+        overlays = __globalmakevars,
         packages = __globalmakevars,
         packages_backup = __packages_backup,
         pkg_dbdir = __globalmakevars,
         port_dbdir = __globalmakevars,
         portsdir = __globalmakevars,
+        portsdirs = __portsdirs,
         tmpdir = __tmpdir,
         wrkdirprefix = __globalmakevars,
     }
@@ -217,8 +232,8 @@ local function __index(param, k)
             else
                 w = false
             end
-        --else
-            -- error("illegal field requested: Package." .. k)
+        else
+            error("Illegal field requested: Param." .. k)
         end
         --TRACE("INDEX(param)->", param, k, w)
     else

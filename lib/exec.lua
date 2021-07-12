@@ -210,7 +210,6 @@ local function tasks_poll(timeout)
                             t[#t + 1] = data
                             --TRACE("READ", fdstat[fd].pid, fd, #data)
                             idle = false
-                            timeout = 0 -- timeout > 0 and 1 or timeout -- reduce timeout if more than 1 iteration through loop
                         elseif revents.HUP then
                             local pid = rm_poll_fd(fd)
                             if pid then
@@ -352,7 +351,7 @@ local function shell(args)
         -- in main program wait for and return results
         co_table[pid] = false
         local exitcode, stdout, stderr
-        while exitcode == nil do
+        repeat
             --TRACE("WAIT FOR DATA - PID=", pid)
             local task_done
             repeat
@@ -360,7 +359,7 @@ local function shell(args)
             until task_done
             exitcode, stdout, stderr = task_result(pid)
             --TRACE("EXITCODE", exitcode)
-        end
+        until exitcode ~= nil
         --TRACE("SHELL(stdout)", stdout)
         --TRACE("SHELL(stderr)", stderr)
         --TRACE("SHELL(exitcode)", exitcode)
@@ -416,13 +415,14 @@ local function run(args)
         args.to_tty = nil
         args.as_root = false
     end
-    tasks_poll(0)
+    tasks_poll()
     tasks_forked = tasks_forked + 1
     --TRACE("NUM_TASKS+", tasks_spawned, tasks_forked, Lock.blocked_tasks())
     local exitcode, stdout, stderr = shell(args)
     --TRACE("EXEC->", exitcode, stdout, stderr, args)
     tasks_forked = tasks_forked - 1
     --TRACE("NUM_TASKS-", tasks_spawned, tasks_forked, Lock.blocked_tasks())
+    tasks_poll() -- XXX verify that this call really improves the performance
     if args.to_tty then
         return exitcode == 0, "", exitcode
     else

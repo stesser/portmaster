@@ -79,7 +79,7 @@ local JAIL_FS = {
     ["/usr/share"] = {fs_type = "null"},
     ["/usr/src"] = {fs_type = "null"},
     ["/usr/tests"] = {fs_type = "null"},
-    ["/usr/work"] = {fs_type = "tmp", fs_opt = "size=12g"},
+    ["/usr/work"] = {fs_type = "tmp", fs_opt = "size=20g"},
     ["/var"] = {fs_type = "tmp", fs_opt = "size=1g"},
     ["/var/db"] = {fs_type = "tmp", fs_opt = "size=4g"},
     ["/var/db/fontconfig"] = {fs_type = "dir"},

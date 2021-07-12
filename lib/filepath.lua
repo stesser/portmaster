@@ -26,6 +26,7 @@ SUCH DAMAGE.
 --]]
 
 -------------------------------------------------------------------------------------
+local CMD = require("portmaster.cmd")
 local Trace = require("portmaster.trace")
 
 local TRACE = Trace.trace
@@ -43,6 +44,7 @@ local stat_isreg = P_SS.S_ISREG
 
 local P_US = require("posix.unistd")
 local access = P_US.access
+local unlink = P_US.unlink
 
 local Filepath = {}
 
@@ -68,10 +70,10 @@ end
 --
 local function delete(filepath)
     local filename = filepath.name
-    if filename then
-        P.unlink(filename)
-    end
+    return unlink(filename)
 end
+
+Filepath.delete = delete
 
 local function __add(path, k)
     TRACE("FILEPATH_ADD", path, k)

@@ -127,19 +127,24 @@ local previous_action_co
 
 local function log(action, args)
     --TRACE("LOG", args, action)
-    local co = coroutine.running()
     if not rawget(action, "startno_string") then
         action.startno_string = "[" .. tostring(action.startno) .. "/" .. tostring(#ACTION_LIST) .. "]"
         TRACE("STARTNO", action.startno_string, action.listpos, action.short_name)
         action:log{start = true, "START:", describe(action)}
         args.start = nil
     end
+    local co = coroutine.running()
     args.start = args.start or co ~= previous_action_co
+    previous_action_co = co
     table.insert(args, 1, action.startno_string)
     table.insert(args, 2, action.short_name .. ":")
     TRACE("LOG", args)
     Msg.show(args)
-    previous_action_co = co
+end
+
+local function log_scan(action)
+    local listpos = action.listpos
+    Msg.show{sameline = true, "Scanning installed packages", listpos}
 end
 
 -------------------------------------------------------------------------------------
@@ -328,7 +333,7 @@ end
 -- de-install (possibly partially installed) port after installation failure
 local function deinstall_failed_port(action)
     local o_n = action.o_n
-    action:log {"Installation from", o_n.name, "failed, deleting partially installed package"}
+    action:log {"Installation from", o_n.name, "failed, deleting partially installed package:"}
     local out, err, exitcode =
         o_n:port_make {
         log = true,
@@ -638,17 +643,19 @@ local function perform_install_or_upgrade(action, phase)
                 --TRACE("FAILED?", p)
                 local a = ACTION_CACHE[p]
                 if a and failed(a) then
-                    a.ignore = true
+                    action.ignore = true
                     return fail(action, "Skipped because of failed dependency " .. p)
                 end
             end
         end
     end
     local function preserve_old_shared_libraries()
+        TRACE("PRESERVE_OLD_SHARED_LIBRARIES", old_pkgs)
         -- preserve currently installed shared libraries
         for _, p_o in ipairs(old_pkgs) do
-            TRACE("PRESERVE_OLD_SHARED_LIBRARIES", p_o.name, p_o.shared_libs)
-            if p_o.shared_libs then
+            local shared_libs = rawget(p_o, "shared_libs")
+            TRACE("PRESERVE_OLD_SHARED_LIBRARIES+", p_o.name, shared_libs)
+            if shared_libs then
                 action:log {level = 2, "Preserve shared libraries of old version", p_o.name}
                 if not p_o:shlibs_backup() then
                     return fail(action, "Could not save old shared libraries to compat directory")
@@ -712,7 +719,7 @@ local function perform_install_or_upgrade(action, phase)
     local function install_from_package()
         -- try to install from package
         TRACE("PERFORM_INSTALLATION/PKGFILE", p_n)
-        action:log{"Install from package file", p_n.pkgfile.name}
+        action:log{"Install from package file", p_n.pkg_filename.name}
         -- <se> DEAL WITH CONFLICTS ONLY DETECTED BY PLIST CHECK DURING PKG REGISTRATION!!!
         local _, err, exitcode = p_n:install()
         local errtxt
@@ -726,14 +733,10 @@ local function perform_install_or_upgrade(action, phase)
                     end
                 end
             end
-            --[[ rename only if failure was not due to a conflict with an installed package!!!
-            {"Rename", pkgfile, "to", pkgfile .. ".NOTOK after failed installation")
-            os.rename(pkgfile, pkgfile .. ".NOTOK")
-            --]]
-            fail(action, "Failed to install from package file " .. p_n.pkgfile.name, err)
             if errtxt then
-                fail(action, "Could not re-install previously installed version after failed installation", errtxt)
+                err = err .. "\n" .. "Failed to re-install previous version from backup: " .. errtxt
             end
+            fail(action, "Failed to install from package file " .. p_n.pkg_filename .name, err)
         end
     end
     local function install_from_stage_area()
@@ -765,10 +768,10 @@ local function perform_install_or_upgrade(action, phase)
                     end
                 end
             end
-            fail(action, "Failed to install port " .. portname, errtxt)
             if errtxt then
-                return fail(action, "Could not re-install previously installed version after failed installation", errtxt)
+                err = err .. "\n" .. "Failed to re-install previous version from backup: " .. errtxt
             end
+            fail(action, "Failed to install port " .. portname, err)
         end
     end
     -- perform actual installation from a port or package
@@ -855,11 +858,11 @@ local function perform_install_or_upgrade(action, phase)
             RunnableLock:release(dep_pkgs)
         end
     end
-    local function lock_jobs()
-        JobsLock:acquire{weight = action.jobs}
+    local function lock_jobs(weight)
+        JobsLock:acquire{weight = weight}
     end
-    local function release_jobs()
-        JobsLock:release{weight = action.jobs}
+    local function release_jobs(weight)
+        JobsLock:release{weight = weight}
     end
     local function lock_pkgnew()
         local pkgname = p_n.name
@@ -892,15 +895,17 @@ local function perform_install_or_upgrade(action, phase)
         end
     end
     local function __build_port()
-        lock_jobs() -- >>>> JobsLock(weight = action.jobs)
+        lock_jobs(1) -- >>>> JobsLock(weight = 1)
         build_step(check_license)
         build_step(special_deps)
         build_step(extract)
         build_step(patch)
         --build_step(conflicts)
         build_step(configure)
+        release_jobs(1) -- <<<< JobsLock(weight = 1)
+        lock_jobs(action.jobs) -- >>>> JobsLock(weight = action.jobs)
         build_step(build)
-        release_jobs() -- <<<< JobsLock(weight = action.jobs)
+        release_jobs(action.jobs) -- <<<< JobsLock(weight = action.jobs)
         build_step(stage)
         release_builddeps_shared()
     end
@@ -915,7 +920,7 @@ local function perform_install_or_upgrade(action, phase)
         if plan.deinstall_old then
             lock_pkgdeps_shared() -- >>>> RunnableLock(action.depends.pkg)
             build_step(create_backup_packages)
-            if Options.preserve_old_shared_libraries then
+            if Options.save_shared then
                 build_step(preserve_old_shared_libraries)
             end
             build_step(preserve_precious)
@@ -1947,6 +1952,9 @@ local function cache_add(action)
             listpos = #ACTION_LIST + 1
             action.listpos = listpos
             ACTION_LIST[listpos] = action
+            if listpos % 100 == 0 then
+                log_scan(action)
+            end
         end
         TRACE("ACTION_LIST_ADD", action.listpos, action.short_name)
     end
@@ -2005,37 +2013,37 @@ local function sort_list(action_list)
             if rawget(action, "plan") ~= nil then
                 TRACE ("ADD_DEPS_PLAN", action.short_name, action.plan, action)
             else
-            local plan = action.plan
-            check_config_allow(action)
-            --if not (plan.nothing or action.use_pkgfile) then
-            if (plan.upgrade or plan.provide or plan.install) and not action.use_pkgfile then
-                TRACE("ACTION_FETCH", action.o_n.name, action)
-                action.o_n:fetch()
-                TRACE("BUILDREQUIRED!", action.short_name)
-                if not Options.jailed then -- jailed builds use pkg from base -- it must be separately updated first !!! XXX
-                    add_deps_of_type("pkg", true, false)
+                local plan = action.plan
+                check_config_allow(action)
+                --if not (plan.nothing or action.use_pkgfile) then
+                if (plan.upgrade or plan.provide or plan.install) and not action.use_pkgfile then
+                    TRACE("ACTION_FETCH", action.o_n.name, action)
+                    action.o_n:fetch()
+                    TRACE("BUILDREQUIRED!", action.short_name)
+                    if not Options.jailed then -- jailed builds use pkg from base -- it must be separately updated first !!! XXX
+                        add_deps_of_type("pkg", true, false)
+                    end
+                    add_deps_of_type("build", true, false)
+                    add_deps_of_type("lib", true, true)
+                    add_deps_of_type("special", true, false)
+                    assert(not rawget(action, "planned"), "Dependency loop for: " .. action.short_name)
                 end
-                add_deps_of_type("build", true, false)
-                add_deps_of_type("lib", true, true)
-                add_deps_of_type("special", true, false)
-                assert(not rawget(action, "planned"), "Dependency loop for: " .. action.short_name)
-            end
-            if plan.provide or plan.install then
-                if not Options.jailed then -- jailed builds use pkg from base -- it must be separately updated first !!! XXX
-                    add_deps_of_type("pkg", true, false)
+                if plan.provide or plan.install then
+                    if not Options.jailed then -- jailed builds use pkg from base -- it must be separately updated first !!! XXX
+                        add_deps_of_type("pkg", true, false)
+                    end
+                    add_deps_of_type("lib", true, true)
+                    add_deps_of_type("run", is_build_dep, true)
+                    assert(not rawget(action, "planned"), "Dependency loop for: " .. action.short_name)
+                    local listpos = #sorted_list + 1
+                    action.listpos = listpos
+                    sorted_list[listpos] = action
+                    action.planned = true
+                    Msg.show {"[" .. tostring(#sorted_list) .. "]", action.name}
+                else
+                    --Msg.show {"SKIPPING", action.short_name}
                 end
-                add_deps_of_type("lib", true, true)
-                add_deps_of_type("run", is_build_dep, true)
-                assert(not rawget(action, "planned"), "Dependency loop for: " .. action.short_name)
-                local listpos = #sorted_list + 1
-                action.listpos = listpos
-                sorted_list[listpos] = action
-                action.planned = true
-                Msg.show {"[" .. tostring(#sorted_list) .. "]", action.name}
-            else
-                --Msg.show {"SKIPPING", action.short_name}
             end
-        end
         end
     end
 

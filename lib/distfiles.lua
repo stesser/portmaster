@@ -199,7 +199,7 @@ local function fetch_finish()
    if FetchLock and next(Fetching) then
       local ports = Util.table_keys(Fetching)
       table.sort(ports)
-      Exec.finish_spawned(dist_fetch, "Finish background fetching and checking of " .. #ports .. " distribution files:\n\t" .. table.concat(ports, "\n\t"))
+      Exec.finish_spawned(dist_fetch, "Finish background fetching and checking for " .. #ports .. " ports:\n\t" .. table.concat(ports, "\n\t"))
       FetchLock:destroy()
       FetchLock = false -- prevent further use as a table
    end

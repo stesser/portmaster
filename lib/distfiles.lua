@@ -70,6 +70,7 @@ end
 
 --
 local DISTINFO_CACHE = {}
+local Fetching = {}
 
 -- perform "make checksum", analyse status message and write success status to file (meant to be executed in a background task)
 local FetchLock = Lock:new("FetchLock")
@@ -130,11 +131,12 @@ local function dist_fetch(origin)
    local unchecked = fetch_required(distfiles)
    origin.fetched = #unchecked == 0
    if not origin.fetched then
-      unchecked.tag = port.name
       -- >>>> FetchLock(unchecked)
       FetchLock:acquire(unchecked)
       local really_unchecked = fetch_required(unchecked) -- fetch again since we may have been blocked and sleeping
       if #really_unchecked > 0 then
+         really_unchecked.tag = port.name
+         Fetching[port] = true
          TRACE("FETCH_MISSING", really_unchecked)
          local lines, err, exitcode = origin:port_make{ -- XXX this requires to have all FETCH_DEPENDS installed! (but currently none exist in the ports tree)
             as_root = Param.distdir_ro,
@@ -146,6 +148,7 @@ local function dist_fetch(origin)
             "DEV_WARNING_WAIT=0",
             "checksum"
          }
+         Fetching[port] = nil
          setall(distinfo, "checked", true)
          for _, l in ipairs(lines) do
             --TRACE("FETCH:", l)
@@ -193,8 +196,10 @@ end
 --
 local function fetch_finish()
    --TRACE("FETCH_FINISH")
-   if FetchLock then
-      Exec.finish_spawned(dist_fetch, "Finish background fetching and checking of distribution files")
+   if FetchLock and next(Fetching) then
+      local ports = Util.table_keys(Fetching)
+      table.sort(ports)
+      Exec.finish_spawned(dist_fetch, "Finish background fetching and checking of " .. #ports .. " distribution files:\n\t" .. table.concat(ports, "\n\t"))
       FetchLock:destroy()
       FetchLock = false -- prevent further use as a table
    end

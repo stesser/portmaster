@@ -238,7 +238,7 @@ local function finish_spawned (f, msg) -- if f is provided then only spawns of t
             break
         end
         if msg then
-            Msg.show{start = true, level = 2, msg}
+            Msg.show{start = true, msg}
             msg = nil
         end
         local pid = tasks_poll(Lock.blocked_tasks() > 0 and 100 or -1)

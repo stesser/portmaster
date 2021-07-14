@@ -99,6 +99,10 @@ local function __index(param, k)
         return Filepath:new("") -- will be overridden in Jail module if required
     end
 
+    local function __jailed()
+        return Param.jailbase ~= ""
+    end
+
     local function __packages_backup()
     return Filepath:new("/usr/packages/portmaster-backup")
     end
@@ -205,6 +209,7 @@ local function __index(param, k)
         user = __user,
         wrkdir_ro = __wrkdir_ro,
         distdir = __globalmakevars,
+        jailed = __jailed,
         jailbase = __jailbase,
         local_lib = __local_lib,
         local_lib_compat = __local_lib_compat,

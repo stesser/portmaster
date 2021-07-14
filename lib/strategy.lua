@@ -286,16 +286,14 @@ local function execute()
 
     -- end of scan phase, all required actions are known at this point, builds may start
     Action.perform_actions(action_list)
-    Action.start_phase("finish")
 
     Action.report_results(action_list)
 end
 
 local function init()
-    Param.phase = "scan"
     Action.block_phase("build")
-    Action.block_phase("install")
-    Action.block_phase("finish")
+--    Action.block_phase("install")
+--    Action.block_phase("finish")
 end
 
 return {

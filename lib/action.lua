@@ -380,12 +380,14 @@ local function block_phase(phase)
     PhaseLock:acquire({phase})
 end
 local function start_phase(phase)
+    Param.phase = phase
     PhaseLock:release({phase})
 end
 local function wait_for_phase(phase)
     PhaseLock:acquire({shared = true, phase})
 end
 local function finish_phase(phase)
+    Param.phase = ""
     PhaseLock:release({shared = true, phase})
 end
 
@@ -746,7 +748,7 @@ local function perform_install_or_upgrade(action, phase)
         -- PkgDb.lock() -- only one installation at a time due to exclusive lock on pkgdb
         local verb
         local dest
-        if action.jail_base then
+        if action.jailbase then
             verb = "Provide"
             dest = "in build jail"
         else
@@ -759,7 +761,7 @@ local function perform_install_or_upgrade(action, phase)
         -- <<<< PkgDbLock(weight = 1)
         if exitcode ~= 0 then
             local errtxt
-            if not action.jail_base then
+            if not action.jailbase then
                 deinstall_failed_port(action)
                 for _, p_o in ipairs(old_pkgs) do
                     local out, err, exitcode = p_o:recover()
@@ -952,12 +954,12 @@ local function perform_install_or_upgrade(action, phase)
     end
     local function __check_failed()
         local failed_msg, failed_log = failed(action)
-        if failed_msg then
+        if failed_msg and not Options.dry_run then
             action:log {describe(action), "FAILURE:", failed_msg .. (failed_log and ":" or "")}
             if failed_log then
                 Msg.show {verbatim = true, failed_log, "\n"}
             end
-        else
+        elseif plan.upgrade then
             action:log {"SUCCESS:", describe(action)}
         end
     end
@@ -1026,7 +1028,6 @@ local function perform_install_or_upgrade(action, phase)
         if do_provide and not delay_installation then
             __deinstall_old()
         end
-        finish_phase("build")
         -- install build depends immediately but optionally delay installation of other ports
         if do_provide then -- install immediately to jail or base system
             if action.use_pkgfile then
@@ -1049,7 +1050,7 @@ local function perform_install_or_upgrade(action, phase)
     elseif phase == "install" then
         if not failed(action) then
             if plan.install and not action.buildstate.install then
-                action.jail_base = nil
+                action.jailbase = nil
                 action.pkgfile = nil -- force search for new package file
                 action.use_pkgfile = true
                 --wait_for_phase("install")
@@ -1060,9 +1061,7 @@ local function perform_install_or_upgrade(action, phase)
         end
     end
     -- report success or failure ...
-    if not Options.dry_run then
-        __check_failed()
-    end
+    __check_failed()
     --Msg.show{level = 3, start = true, Exec.spawned_tasks() -1 , "spawned threads,", Lock.blocked_tasks(RunnableLock), "blocked treads,", Exec.forked_tasks(), "forked processes"}
     return not failed(action)
 end
@@ -1088,9 +1087,15 @@ local function perform_upgrades(action_list)
             Exec.spawn(perform_install_or_upgrade, action, "build")
         end
     end
+    if Options.jailed then
+        Jail.create()
+    end
     start_phase("build") -- XXX use build phase lock local to this package instead of phase
     Exec.finish_spawned(perform_install_or_upgrade)
-    start_phase("install")
+    finish_phase("build")
+    if Options.jailed then
+        Jail.destroy()
+    end
     if Options.delay_installation then
         for _, action in ipairs(action_list) do
             Exec.spawn(perform_install_or_upgrade, action, "install")
@@ -1636,8 +1641,8 @@ TRACE("XXX2", basename)
         end
         return true
     end
-    local function __jail_base()
-        return Options.jailed and Param.jail_base
+    local function __jailbase()
+        return Options.jailed and Param.jailbase
     end
     local function __create_action_plan()
         local function __check_upgrade_needed()
@@ -1676,16 +1681,18 @@ TRACE("XXX2", basename)
             return __build_needed and Options.create_package
         end
         local function __check_install_needed()
-            TRACE("CHECK_INSTALL_NEEDED", rawget(action, "is_build_dep"), action)
+            TRACE("CHECK_INSTALL_NEEDED", action.short_name, rawget(action, "is_build_dep"), action)
             if action.pkg_new then
+                --[[
                 if Options.jailed or Options.delay_installation then
                     return rawget(action, "is_build_dep")
                 end
+                --]]
                 return __upgrade_needed
             end
         end
         local __install_needed = __check_install_needed()
-        TRACE("CHECK_INSTALL_NEEDED->", __install_needed, action)
+        TRACE("CHECK_INSTALL_NEEDED->", action.short_name, __install_needed, action)
 --[[
         local function __check_delay_installation_to_base()
             return Options.jailed and not action.depends.build
@@ -1830,7 +1837,7 @@ TRACE("XXX2", basename)
         use_pkgfile = __use_pkgfile,            -- pkgfile exists with matching ABI
         plan = __create_action_plan,
         force = __check_forced,
-        jail_base = __jail_base,
+        jailbase = __jailbase,
     }
 
     TRACE("INDEX(a)", rawget(action, "short_name"), k)
@@ -2073,13 +2080,8 @@ local function perform_actions(action_list)
             Progress.clear()
             if Msg.read_yn("y", "Perform these upgrades now?") then
                 -- perform the planned tasks in the order recorded in action_list
-                Param.phase = "build"
                 Msg.show {start = true}
                 Progress.set_max(tasks_count())
-                --
-                if Options.jailed then
-                    Jail.create()
-                end
                 perform_upgrades(action_list)
                 -- if Options.hide_build then -- shell_pipe ("cat > /dev/tty", BUILDLOG)
                 if Options.jailed then
@@ -2088,24 +2090,12 @@ local function perform_actions(action_list)
                 Progress.clear()
                 if Options.repo_mode then
                     perform_repo_update()
-                else
-                    Param.phase = "install"
-                    --[[
-                    -- XXX fold into perform_upgrades()???
-                    -- new action verb required???
-                    -- or just a plain install from package???)
-                    if #DELAYED_INSTALL_LIST > 0 then -- NYI to be implemented in a different way
-
-                        perform_delayed_installations()
-                    end
-                    --]]
                 end
             end
             if tasks_count() == 0 then
                 Msg.show {start = true, "All requested actions have been completed"}
             end
             Progress.clear()
-            Param.phase = ""
         end
     end
     return true

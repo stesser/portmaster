@@ -147,7 +147,7 @@ end
 --
 local function deinstall(package)
     local pkgname = package.name
-    local from_jail = Options.jailed and Param.phase ~= "install"
+    local from_jail = Param.jailed
     return Exec.pkg{
         log = true,
         jailed = from_jail,
@@ -159,7 +159,7 @@ end
 -------------------------------------------------------------------------------------
 -- get package message in case of an installation to the base system
 local function message(pkg)
-    if not Options.dry_run and (not Options.jailed or Param.phase == "install") then
+    if not Options.dry_run and not Param.jailed then
         local msg = PkgDb.query {"%M", pkg.name}
         if type(msg) == "string" then
             return msg
@@ -172,7 +172,7 @@ end
 local function install(pkg, abi)
     TRACE("INSTALL PACKAGE", pkg)
     local pkgfile = pkg.pkg_filename.name
-    local jailed = Options.jailed and Param.phase == "build"
+    local jailed = Param.jailed
     --local env = {IGNORE_OSVERSION = "yes"}
     local env = {}
     TRACE("INSTALL", abi, pkgfile)
@@ -194,7 +194,6 @@ local function install(pkg, abi)
     elseif abi then
         env.ABI = abi
     end
-    env.PACKAGES = "/dev/null"
     return Exec.pkg{
         log = true,
         as_root = true,

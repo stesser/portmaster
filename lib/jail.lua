@@ -322,9 +322,11 @@ local function create()
         setup_var_run(Param.jailbase)
         setup_usr_local(Param.jailbase)
     end
+    Param.jailed = true
 end
 
 local function destroy()
+    Param.jailed = false
     if not Options.dry_run and not Options.developer_mode then
         unmount_all(Param.jailbase)
     end

@@ -652,11 +652,11 @@ local function perform_install_or_upgrade(action, phase)
         end
     end
     local function preserve_old_shared_libraries()
-        TRACE("PRESERVE_OLD_SHARED_LIBRARIES", old_pkgs)
+        --TRACE("PRESERVE_OLD_SHARED_LIBRARIES", old_pkgs)
         -- preserve currently installed shared libraries
         for _, p_o in ipairs(old_pkgs) do
             local shared_libs = rawget(p_o, "shared_libs")
-            TRACE("PRESERVE_OLD_SHARED_LIBRARIES+", p_o.name, shared_libs)
+            --TRACE("PRESERVE_OLD_SHARED_LIBRARIES+", p_o.name, shared_libs)
             if shared_libs then
                 action:log {level = 2, "Preserve shared libraries of old version", p_o.name}
                 if not p_o:shlibs_backup() then
@@ -787,7 +787,9 @@ local function perform_install_or_upgrade(action, phase)
     local function cleanup_old_shared_libraries()
         -- remove all shared libraries replaced by new versions from shlib backup directory
         for _, p_o in ipairs (old_pkgs) do
-            p_o:shlibs_backup_remove_stale() -- use action as argument???
+            if rawget(p_o, "shared_libs") then
+                p_o:shlibs_backup_remove_stale() -- use action as argument???
+            end
         end
     end
     local function delete_stale_pkgfiles()
@@ -966,7 +968,7 @@ local function perform_install_or_upgrade(action, phase)
     local function __postinstall_cleanup()
         build_step(post_install_fixup)
         build_step(delete_stale_pkgfiles)
-        if Options.preserve_old_shared_libraries then
+        if Options.save_shared then
             build_step(cleanup_old_shared_libraries)
         end
         -- wait for availability of all run dependencies

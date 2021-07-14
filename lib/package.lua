@@ -60,44 +60,51 @@ end
 -------------------------------------------------------------------------------------
 -- remove from shlib backup directory all shared libraries replaced by new versions
 -- preserve currently installed shared libraries // <se> check name of control variable
+-- Cache local library names and paths (need not be updated when libraries are installed or removed)
+local LocalLibs
+
 local function shlibs_backup(pkg)
-    local pkg_libs = pkg.shared_libs
-    TRACE("SHLIBS_BACKUP", pkg.name, pkg_libs, pkg)
-    if pkg_libs then
+    local function __load_locallibs()
         local ldconfig_lines = Exec.run{ -- "RT?" ??? CACHE LDCONFIG OUTPUT???
             table = true,
             safe = true,
             CMD.ldconfig, "-r"
         }
+        local local_lib_dir = Param.local_lib.name
+        LocalLibs = {}
         for _, line in ipairs(ldconfig_lines) do
-            local libpath, lib = string.match(line, " => (" .. Param.local_lib.name .. "*(lib.*%.so%..*))")
+            local libpath, lib = string.match(line, " => (" .. local_lib_dir .. ".*/(lib[^/]]*%.so%..*))")
             if lib then
-                local libfile = Filepath:new(libpath)
-                TRACE("SHLIBS_BACKUP+", libpath, lib, stat, mode)
-                if libfile.is_reg then
-                    for _, l in ipairs(pkg_libs) do
-                        if l == lib then
-                            local backup_lib = Param.local_lib_compat + lib
-                            if backup_lib.is_readable then
-                                Exec.run{
-                                    as_root = true,
-                                    log = true,
-                                    CMD.unlink, backup_lib.name
-                                }
-                            end
-                            local out, err, exitcode = Exec.run{
-                                as_root = true,
-                                log = true,
-                                CMD.cp, libpath, backup_lib.name
-                            }
-                            --TRACE("SHLIBS_BACKUP", tostring(out), err)
-                            if exitcode ~= 0 then
-                                return out, err
-                            end
-                        end
-                    end
-                else
-                    TRACE("SHLIBS_BACKUP-", libpath, lib, stat, mode)
+                LocalLibs[lib] = libpath
+            end
+        end
+        return LocalLibs
+    end
+    local pkg_libs = rawget(pkg, "shared_libs")
+    TRACE("SHLIBS_BACKUP", pkg.name, pkg_libs)
+    if pkg_libs then
+        if not LocalLibs then
+            __load_locallibs()
+        end
+        for _, l in ipairs(pkg_libs) do
+            local libpath = LocalLibs[l]
+            if libpath then
+                local backup_lib = Param.local_lib_compat + l
+                TRACE("SHLIBS_BACKUP!", libpath, backup_lib.name)
+                if backup_lib.is_readable then
+                    Exec.run{
+                        as_root = true,
+                        log = true,
+                        CMD.unlink, backup_lib.name
+                    }
+                end
+                local out, err, exitcode = Exec.run{
+                    as_root = true,
+                    log = true,
+                    CMD.cp, libpath, backup_lib.name
+                }
+                if exitcode ~= 0 then
+                    return out, err
                 end
             end
         end
@@ -107,17 +114,20 @@ end
 
 -- remove from shlib backup directory all shared libraries replaced by new versions
 local function shlibs_backup_remove_stale(pkg)
-    local pkg_libs = pkg.shared_libs
-    --TRACE("BACKUP_REMOVE_SHARED", pkg_libs, pkg)
+    local pkg_libs = rawget(pkg, "shared_libs")
+    TRACE("SHLIBS_BACKUP_REMOVE_STALE", pkg.name, pkg_libs)
     if pkg_libs then
         local deletes = {}
         for _, lib in ipairs(pkg_libs) do
-            local backup_lib = Param.local_lib_compat + lib
-            if backup_lib.is_readable then
+            local local_lib = Param.local_lib + lib
+            if local_lib.is_readable then
+                local libname = string.match(lib, "lib[^/]*%.so%.[^/]*$")
+                local backup_lib = Param.local_lib_compat + libname
                 table.insert(deletes, backup_lib.name)
             end
         end
         if #deletes > 0 then
+            TRACE("SHLIBS_BACKUP_REMOVE_STALE!", deletes)
             Exec.run{
                 as_root = true,
                 log = true,

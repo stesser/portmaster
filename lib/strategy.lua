@@ -66,14 +66,14 @@ local function add_missing_deps(action_list) -- XXX need to also add special dep
             TRACE("DEPVARS", depvars)
             if depvars then
                 for n, t in pairs(depvars) do
-                    TRACE("COLLECT_DEP_ORIGINS", n, t)
+                    TRACE("COLLECT_DEP_ORIGINS", o_n.name, n, t)
                     if t then
                         for _, dep in ipairs(t) do
                             local origin = string.match(dep, "[^:]*:([^:]*)")
                             if origin and not originseen[origin] then
                                 originseen[origin] = true
                                 origins[#origins + 1] = origin
-                                TRACE("COLLECT_DEP_ORIGINS+", #origins, n, origin)
+                                TRACE("COLLECT_DEP_ORIGINS+", o_n.name, #origins, n, origin)
                             end
                         end
                     end
@@ -87,23 +87,25 @@ local function add_missing_deps(action_list) -- XXX need to also add special dep
         TRACE("PROCESS_DEPENDS", #origins)
         for _, o_n in ipairs(Origin:getmultiple(origins)) do
             local pkgname = o_n and o_n.pkgname
-            if pkgname and not (pkgseen[pkgname] or Action.get(pkgname)) then
+            if pkgname and not pkgseen[pkgname] then
                 pkgseen[pkgname] = true
-                local p_n = Package:new(pkgname)
-                p_n.origin_name = o_n.name
-                add_action{pkg_new = p_n}
+                local a = Action.get(pkgname)
+                if not a then
+                    local p_n = Package:new(pkgname)
+                    p_n.origin_name = o_n.name
+                    --add_action{pkg_new = p_n}
+                    Action:new{pkg_new = p_n}
+                end
             end
         end
-        finish_add_action()
+        --finish_add_action()
     end
     local start_elem = 1
     local last_elem = #action_list
     while start_elem <= last_elem do
         TRACE("ADD_MISSING_DEPS:", start_elem, last_elem)
         local dep_origins = collect_dep_origins(start_elem, last_elem)
---        add_all_deps(start_elem, last_elem)
         TRACE("WAIT(NEW)START", dep_origins)
---        process_depends(Util.table_keys(dep_origins))
         process_depends(dep_origins)
         TRACE("WAIT(NEW)END")
         start_elem = last_elem + 1

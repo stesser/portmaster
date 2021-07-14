@@ -1982,7 +1982,6 @@ end
 local function sort_list(action_list)
     --local max_str = tostring(#action_list)
     local sorted_list = {}
-    local seen = {}
     local function add_deps(action, is_build_dep, is_run_dep)
         local function add_deps_of_type(type, is_build_dep, is_run_dep)
             local deps = action.depends[type]
@@ -2012,37 +2011,37 @@ local function sort_list(action_list)
             TRACE("ADD_DEPS", action.short_name, action)
             if rawget(action, "plan") ~= nil then
                 TRACE ("ADD_DEPS_PLAN", action.short_name, action.plan, action)
+                action.plan = nil
+            end
+            local plan = action.plan
+            check_config_allow(action)
+            --if not (plan.nothing or action.use_pkgfile) then
+            if (plan.upgrade or plan.provide or plan.install) and not action.use_pkgfile then
+                TRACE("ACTION_FETCH", action.o_n.name, action)
+                action.o_n:fetch()
+                TRACE("BUILDREQUIRED!", action.short_name)
+                if not Options.jailed then -- jailed builds use pkg from base -- it must be separately updated first !!! XXX
+                    add_deps_of_type("pkg", true, false)
+                end
+                add_deps_of_type("build", true, false)
+                add_deps_of_type("lib", true, true)
+                add_deps_of_type("special", true, false)
+                assert(not rawget(action, "planned"), "Dependency loop for: " .. action.short_name)
+            end
+            if plan.provide or plan.upgrade or plan.install then
+                if not Options.jailed then -- jailed builds use pkg from base -- it must be separately updated first !!! XXX
+                    add_deps_of_type("pkg", true, false)
+                end
+                add_deps_of_type("lib", true, true)
+                add_deps_of_type("run", is_build_dep, true)
+                assert(not rawget(action, "planned"), "Dependency loop for: " .. action.short_name)
+                local listpos = #sorted_list + 1
+                action.listpos = listpos
+                sorted_list[listpos] = action
+                action.planned = true
+                Msg.show {"[" .. tostring(#sorted_list) .. "]", action.name}
             else
-                local plan = action.plan
-                check_config_allow(action)
-                --if not (plan.nothing or action.use_pkgfile) then
-                if (plan.upgrade or plan.provide or plan.install) and not action.use_pkgfile then
-                    TRACE("ACTION_FETCH", action.o_n.name, action)
-                    action.o_n:fetch()
-                    TRACE("BUILDREQUIRED!", action.short_name)
-                    if not Options.jailed then -- jailed builds use pkg from base -- it must be separately updated first !!! XXX
-                        add_deps_of_type("pkg", true, false)
-                    end
-                    add_deps_of_type("build", true, false)
-                    add_deps_of_type("lib", true, true)
-                    add_deps_of_type("special", true, false)
-                    assert(not rawget(action, "planned"), "Dependency loop for: " .. action.short_name)
-                end
-                if plan.provide or plan.install then
-                    if not Options.jailed then -- jailed builds use pkg from base -- it must be separately updated first !!! XXX
-                        add_deps_of_type("pkg", true, false)
-                    end
-                    add_deps_of_type("lib", true, true)
-                    add_deps_of_type("run", is_build_dep, true)
-                    assert(not rawget(action, "planned"), "Dependency loop for: " .. action.short_name)
-                    local listpos = #sorted_list + 1
-                    action.listpos = listpos
-                    sorted_list[listpos] = action
-                    action.planned = true
-                    Msg.show {"[" .. tostring(#sorted_list) .. "]", action.name}
-                else
-                    --Msg.show {"SKIPPING", action.short_name}
-                end
+                --Msg.show {"SKIPPING", action.short_name}
             end
         end
     end
